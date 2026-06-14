@@ -1,0 +1,117 @@
+package routes
+
+import (
+	"monitoring-service/app/controllers"
+
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
+)
+
+func ConfigureRouter(e *echo.Echo, controller *controllers.Main) {
+	api := e.Group("/api")
+
+	api.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins: []string{"*"},
+		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders: []string{"Content-Type", "Authorization"},
+	}))
+
+	// ========================
+	// User Endpoints
+	// ========================
+	api.POST("/auth/login", controller.User.Login)
+    api.POST("/auth/register", controller.User.Create)
+    api.POST("/auth/google", controller.User.GoogleLogin)
+    
+    api.POST("/login", controller.User.Login)
+    api.POST("/users", controller.User.Create)
+    api.GET("/users", controller.User.GetAll)
+    api.GET("/users/:id", controller.User.GetByID)
+    api.PUT("/users/:id", controller.User.Update)
+    api.DELETE("/users/:id", controller.User.Delete)
+
+	// ========================
+	// Riwayat Endpoints
+	// ========================
+	api.POST("/riwayat", controller.Riwayat.Create)
+	api.GET("/riwayat", controller.Riwayat.GetAll)
+	api.GET("/riwayat/:id", controller.Riwayat.GetByID)
+	api.GET("/riwayat/user/:user_id", controller.Riwayat.GetByUserID)
+	api.PUT("/riwayat/:id", controller.Riwayat.Update)
+	api.DELETE("/riwayat/:id", controller.Riwayat.Delete)
+
+	// ========================
+	// Laporan Lab Endpoints
+	// ========================
+	api.POST("/laporan-lab", controller.LaporanLab.Create)
+	api.GET("/laporan-lab", controller.LaporanLab.GetAll)
+	api.GET("/laporan-lab/:id", controller.LaporanLab.GetByID)
+	api.GET("/laporan-lab/user/:user_id", controller.LaporanLab.GetByUserID)
+	// Aggregated monitoring endpoint (normalized yRatio for frontend charts)
+	api.GET("/monitoring/user/:user_id", controller.Monitoring.GetByUserID)
+	api.PUT("/laporan-lab/:id", controller.LaporanLab.Update)
+	api.DELETE("/laporan-lab/:id", controller.LaporanLab.Delete)
+
+	// ========================
+	// Obat Endpoints
+	// ========================
+	api.POST("/obat", controller.Obat.Create)
+	api.GET("/obat", controller.Obat.GetAll)
+	api.GET("/obat/:id", controller.Obat.GetByID)
+	api.GET("/obat/user/:user_id", controller.Obat.GetByUserID)
+	api.PUT("/obat/:id", controller.Obat.Update)
+	api.DELETE("/obat/:id", controller.Obat.Delete)
+
+	// ========================
+	// Wearable Endpoints
+	// ========================
+	api.POST("/wearable", controller.Wearable.Create)
+	api.GET("/wearable", controller.Wearable.GetAll)
+	api.GET("/wearable/:id", controller.Wearable.GetByID)
+	api.GET("/wearable/riwayat/:riwayat_id", controller.Wearable.GetByRiwayatID)
+	api.GET("/wearable/user/:user_id", controller.Wearable.GetByUserID)
+	api.PUT("/wearable/:id", controller.Wearable.Update)
+	api.DELETE("/wearable/:id", controller.Wearable.Delete)
+
+	// ========================
+	// Hasil Lab Endpoints
+	// ========================
+	api.POST("/hasil-lab", controller.HasilLab.Create)
+	api.GET("/hasil-lab", controller.HasilLab.GetAll)
+	api.GET("/hasil-lab/:id", controller.HasilLab.GetByID)
+	api.GET("/hasil-lab/laporan/:laporan_id", controller.HasilLab.GetByLaporanLabID)
+	api.GET("/hasil-lab/riwayat/:riwayat_id", controller.HasilLab.GetByRiwayatID)
+	api.GET("/hasil-lab/user/:id_user/date/:tanggal", controller.HasilLab.GetByUserAndDate)
+	api.GET("/hasil-lab/riwayat/:riwayat_id/date/:date", controller.HasilLab.GetByRiwayatAndDate)
+	api.PUT("/hasil-lab/:id", controller.HasilLab.Update)
+	api.DELETE("/hasil-lab/:id", controller.HasilLab.Delete)
+
+	// ========================
+	// Hasil AI Endpoints
+	// ========================
+	api.POST("/hasil-ai", controller.HasilAI.Create)
+	api.GET("/hasil-ai", controller.HasilAI.GetAll)
+	api.GET("/hasil-ai/:id", controller.HasilAI.GetByID)
+	api.GET("/hasil-ai/riwayat/:riwayat_id", controller.HasilAI.GetByRiwayatID)
+	api.GET("/hasil-ai/wearable/:wearable_id", controller.HasilAI.GetByWearableID)
+	api.GET("/hasil-ai/hasil-lab/:hasil_lab_id", controller.HasilAI.GetByHasilLabID)
+	api.PUT("/hasil-ai/:id/read", controller.HasilAI.UpdateIsRead)
+
+	// ========================
+	// Jadwal Obat Endpoints
+	// ========================
+	api.POST("/jadwal-obat", controller.JadwalObat.Create)
+	api.GET("/jadwal-obat", controller.JadwalObat.GetAll)
+	api.GET("/jadwal-obat/:id", controller.JadwalObat.GetByID)
+	api.GET("/jadwal-obat/obat/:obat_id", controller.JadwalObat.GetByObatID)
+	api.PUT("/jadwal-obat/:id", controller.JadwalObat.Update)
+	api.DELETE("/jadwal-obat/:id", controller.JadwalObat.Delete)
+
+	// ========================
+	// Lab (Legacy/Assessment) Endpoints
+	// ========================
+	api.POST("/lab", controller.Lab.Create)
+	api.GET("/lab", controller.Lab.GetAll)
+	api.GET("/lab/user/:user_id", controller.Lab.GetByUserID)
+	api.POST("/assess", controller.Lab.Assess)
+}

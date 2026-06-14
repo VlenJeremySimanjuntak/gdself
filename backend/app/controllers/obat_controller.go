@@ -1,0 +1,173 @@
+package controllers
+
+import (
+	"log"
+	"net/http"
+	"strconv"
+	"time"
+
+	"monitoring-service/app/constants"
+	"monitoring-service/app/models"
+	"monitoring-service/app/usecases"
+
+	"github.com/labstack/echo/v4"
+)
+
+type ObatController interface {
+	Create(c echo.Context) error
+	GetByID(c echo.Context) error
+	GetByUserID(c echo.Context) error
+	GetAll(c echo.Context) error
+	Update(c echo.Context) error
+	Delete(c echo.Context) error
+}
+
+type obatController struct {
+	usecase usecases.ObatUsecase
+}
+
+func NewObatController(u usecases.ObatUsecase) ObatController {
+	return &obatController{usecase: u}
+}
+
+func (ctrl *obatController) Create(c echo.Context) error {
+	var input models.CreateObatRequest
+
+	if err := c.Bind(&input); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": constants.MSG_INVALID_PAYLOAD})
+	}
+
+	if input.IDUser == 0 || input.NamaObat == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id_user dan nama_obat harus diisi"})
+	}
+
+	statusAktif := true
+	if input.StatusAktif != nil {
+		statusAktif = *input.StatusAktif
+	}
+
+	var tanggalMulai *time.Time
+	if input.TanggalMulai != nil && *input.TanggalMulai != "" {
+		t, err := time.Parse("2006-01-02", *input.TanggalMulai)
+		if err == nil {
+			tanggalMulai = &t
+		}
+	}
+
+	obat := models.Obat{
+		IDUser:       input.IDUser,
+		NamaObat:     input.NamaObat,
+		Dosis:        input.Dosis,
+		Frekuensi:    input.Frekuensi,
+		TanggalMulai: tanggalMulai,
+		HariKonsumsi: input.HariKonsumsi,
+		StatusAktif:  statusAktif,
+	}
+
+	result, err := ctrl.usecase.CreateObat(obat)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusCreated, models.Response{
+		StatusCode: http.StatusCreated,
+		Message:    "Obat berhasil dibuat",
+		Data:       result,
+	})
+}
+
+func (ctrl *obatController) GetByID(c echo.Context) error {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ID tidak valid"})
+	}
+
+	obat, err := ctrl.usecase.GetObatByID(uint(id))
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, models.Response{
+		StatusCode: http.StatusOK,
+		Message:    "Obat ditemukan",
+		Data:       obat,
+	})
+}
+
+func (ctrl *obatController) GetByUserID(c echo.Context) error {
+	userID, err := strconv.ParseUint(c.Param("user_id"), 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "user_id tidak valid"})
+	}
+
+	obat, err := ctrl.usecase.GetObatByUserID(uint(userID))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Log what we're sending back
+	log.Printf("📤 [ObatController] GetByUserID(%d) returning %d obat", userID, len(obat))
+	for i, o := range obat {
+		log.Printf("  📋 Returning Obat[%d]: %s (ID=%d) dengan %d jadwal", i, o.NamaObat, o.IDObat, len(o.JadwalObat))
+	}
+
+	return c.JSON(http.StatusOK, models.Response{
+		StatusCode: http.StatusOK,
+		Message:    "Daftar obat user",
+		Data:       obat,
+	})
+}
+
+func (ctrl *obatController) GetAll(c echo.Context) error {
+	obat, err := ctrl.usecase.GetAllObat()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, models.Response{
+		StatusCode: http.StatusOK,
+		Message:    "Daftar semua obat",
+		Data:       obat,
+	})
+}
+
+func (ctrl *obatController) Update(c echo.Context) error {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ID tidak valid"})
+	}
+
+	var input models.UpdateObatRequest
+
+	if err := c.Bind(&input); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": constants.MSG_INVALID_PAYLOAD})
+	}
+
+	obat, err := ctrl.usecase.UpdateObat(uint(id), input)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, models.Response{
+		StatusCode: http.StatusOK,
+		Message:    "Obat berhasil diperbarui",
+		Data:       obat,
+	})
+}
+
+func (ctrl *obatController) Delete(c echo.Context) error {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ID tidak valid"})
+	}
+
+	err = ctrl.usecase.DeleteObat(uint(id))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, models.BasicResponse{
+		StatusCode: http.StatusOK,
+		Message:    "Obat berhasil dihapus",
+	})
+}

@@ -1,0 +1,182 @@
+{
+  "info": {
+    "name": "Graves Disease Monitoring & Medication API",
+    "description": "API collection lengkap termasuk Auth, Unified Lab Input, Koleksi Lab per Tanggal, AI Assessment, dan Manajemen Obat (Port 8080)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. AUTH - LOGIN",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"vlen.j@example.com\",\n  \"password\": \"password123\"\n}"
+        },
+        "url": {
+          "raw": "http://127.0.0.1:3000/api/login",
+          "protocol": "http",
+          "host": ["127", "0", "0", "1"],
+          "port": "3000",
+          "path": ["api", "login"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "2. AUTH - REGISTER USER",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nama\": \"Vlen Jeremy\",\n  \"email\": \"vlen.j@example.com\",\n  \"password\": \"password123\",\n  \"tgl_lahir\": \"2000-01-01\",\n  \"jenis_kelamin\": \"L\",\n  \"tgl_terdiagnosis\": \"2024-04-01\"\n}"
+        },
+        "url": {
+          "raw": "http://127.0.0.1:3000/api/users",
+          "protocol": "http",
+          "host": ["127", "0", "0", "1"],
+          "port": "3000",
+          "path": ["api", "users"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "3. CLINICAL - CREATE HASIL LAB (Unified Payload)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id_user\": 1,\n  \"tgl_periksa\": \"2026-05-02\",\n  \"nama_lab\": \"Laboratorium Kimia Klinik Balige\",\n  \"parameters\": [\n    {\n      \"nama_parameter\": \"FT3\",\n      \"satuan\": \"pmol/L\",\n      \"kategori\": \"Thyroid\",\n      \"nilai\": 4.5,\n      \"rujukan_min\": 3.5,\n      \"rujukan_max\": 6.0\n    },\n    {\n      \"nama_parameter\": \"FT4\",\n      \"satuan\": \"pmol/L\",\n      \"kategori\": \"Thyroid\",\n      \"nilai\": 16.0,\n      \"rujukan_min\": 10.0,\n      \"rujukan_max\": 24.0\n    },\n    {\n      \"nama_parameter\": \"TSH\",\n      \"satuan\": \"mIU/L\",\n      \"kategori\": \"Thyroid\",\n      \"nilai\": 0.3,\n      \"rujukan_min\": 0.4,\n      \"rujukan_max\": 4.0\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "http://127.0.0.1:3000/api/hasil-lab",
+          "protocol": "http",
+          "host": ["127", "0", "0", "1"],
+          "port": "3000",
+          "path": ["api", "hasil-lab"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "4. CLINICAL - GET ALL PARAMETERS BY DATE",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://127.0.0.1:3000/api/hasil-lab/user/1/date/2026-05-02",
+          "protocol": "http",
+          "host": ["127", "0", "0", "1"],
+          "port": "3000",
+          "path": ["api", "hasil-lab", "user", "1", "date", "2026-05-02"]
+        },
+        "description": "Mengambil semua parameter hormon sekaligus (FT3, FT4, TSH) milik User 1 pada tanggal periksa tertentu"
+      },
+      "response": []
+    },
+    {
+      "name": "5. WEARABLE - CREATE DATA",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id_user\": 1,\n  \"tgl_data\": \"2026-05-02\",\n  \"waktu_data\": \"08:00:00\",\n  \"heart_rate_rhr\": 85,\n  \"stress_score\": 55,\n  \"sleep_duration\": 360\n}"
+        },
+        "url": {
+          "raw": "http://127.0.0.1:3000/api/wearable",
+          "protocol": "http",
+          "host": ["127", "0", "0", "1"],
+          "port": "3000",
+          "path": ["api", "wearable"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "6. MEDICATION - CREATE OBAT (Port 8080)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id_user\": 1,\n  \"nama_obat\": \"Propylthiouracil (PTU)\",\n  \"dosis\": \"100 mg\",\n  \"frekuensi\": \"3x Sehari\",\n  \"tanggal_mulai\": \"2026-05-11\",\n  \"status_aktif\": true\n}"
+        },
+        "url": {
+          "raw": "http://127.0.0.1:8080/api/obat",
+          "protocol": "http",
+          "host": ["127", "0", "0", "1"],
+          "port": "8080",
+          "path": ["api", "obat"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "7. MEDICATION - GET OBAT BY USER WITH JADWAL (Port 8080)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://127.0.0.1:8080/api/obat/user/1",
+          "protocol": "http",
+          "host": ["127", "0", "0", "1"],
+          "port": "8080",
+          "path": ["api", "obat", "user", "1"]
+        },
+        "description": "Melihat semua daftar obat beserta nested jadwal minum obat milik User 1"
+      },
+      "response": []
+    },
+    {
+      "name": "8. AI - ASSESSMENT (Lab Day)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"lab\": {\n    \"id_user\": 1,\n    \"tgl_periksa\": \"2026-05-02\",\n    \"parameters\": [\n      { \"nama_parameter\": \"FT3\", \"nilai\": 4.5 },\n      { \"nama_parameter\": \"FT4\", \"nilai\": 16.0 },\n      { \"nama_parameter\": \"TSH\", \"nilai\": 0.3 }\n    ]\n  },\n  \"wearable\": {\n    \"hr\": 85,\n    \"stress\": 55,\n    \"sleep_minutes\": 360\n  },\n  \"is_lab_day\": true\n}"
+        },
+        "url": {
+          "raw": "http://127.0.0.1:3000/api/assess",
+          "protocol": "http",
+          "host": ["127", "0", "0", "1"],
+          "port": "3000",
+          "path": ["api", "assess"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "9. AI - GET HISTORI HASIL AI",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://127.0.0.1:3000/api/hasil-ai",
+          "protocol": "http",
+          "host": ["127", "0", "0", "1"],
+          "port": "3000",
+          "path": ["api", "hasil-ai"]
+        }
+      },
+      "response": []
+    }
+  ]
+}
