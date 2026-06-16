@@ -2,176 +2,89 @@ package usecases
 
 import (
 	"fmt"
-	"math"
+	"strings"
+
 	"monitoring-service/app/constants"
 	"monitoring-service/app/models"
-	"strings"
 )
 
-// Helper function to extract hormone values from Parameters
-func extractHormoneValues(params []models.Parameter) (ft3, ft4, tsh float64) {
+// LabAssessmentResult membawa hasil analisis lab untuk dipetakan ke DB
+type LabAssessmentResult struct {
+	StatusTSH    string
+	ReminderTSH  string
+	StatusFT3    string
+	ReminderFT3  string
+	StatusFT4    string
+	ReminderFT4  string
+	StatusTRAb   string
+	ReminderTRAb string
+	Interpretasi string
+}
+
+// extractHormoneValues mengambil nilai hormon dari array Parameter menggunakan field p.Nilai (gorm:"-")
+func extractHormoneValues(params []models.Parameter) (ft3, ft4, tsh, trab float64) {
 	for _, p := range params {
-		paramName := strings.ToUpper(p.NamaParameter)
+		paramName := strings.ToUpper(strings.TrimSpace(p.NamaParameter))
 		switch paramName {
 		case "FT3":
-			ft3 = p.Nilai
+			ft3 = p.Nilai // ✅ Menggunakan field Nilai sesuai dengan payload compatibility model Anda
 		case "FT4":
 			ft4 = p.Nilai
 		case "TSH":
 			tsh = p.Nilai
+		case "TRAB":
+			trab = p.Nilai
 		}
 	}
-	return ft3, ft4, tsh
+	return ft3, ft4, tsh, trab
 }
 
-// computeLabScore returns (score, code)
-func computeLabScore(ft3, ft4, tsh float64) (int, string) {
-	inFT3 := ft3 >= constants.FT3_MIN && ft3 <= constants.FT3_MAX
-	inFT4 := ft4 >= constants.FT4_MIN && ft4 <= constants.FT4_MAX
-	inTSH := tsh >= constants.TSH_MIN && tsh <= constants.TSH_MAX
-
-	if inTSH && inFT3 && inFT4 {
-		return 1, "1"
+// evaluateHormone menganalisis satu hormon spesifik
+func evaluateHormone(nama string, nilai, min, max float64) (status, reminder string) {
+	if nilai == 0 {
+		return "Tidak Ada Data", fmt.Sprintf("Data %s tidak ditemukan dalam laporan lab ini.", nama)
 	}
-
-	// Graves variants
-	if tsh < constants.TSH_MIN && ft3 > constants.FT3_MAX && ft4 > constants.FT4_MAX {
-		return 2, "2a"
+	if nilai < min {
+		return "Rendah", fmt.Sprintf("Nilai %s Anda (%.2f) di bawah batas normal. Segera konsultasikan dengan dokter.", nama, nilai)
 	}
-
-	if tsh < constants.TSH_MIN && ft3 > constants.FT3_MAX && inFT4 {
-		return 2, "2b"
+	if nilai > max {
+		return "Tinggi", fmt.Sprintf("Nilai %s Anda (%.2f) di atas batas normal. Perhatikan gejala yang muncul dan hubungi dokter.", nama, nilai)
 	}
-
-	if tsh < constants.TSH_MIN && inFT3 && ft4 > constants.FT4_MAX {
-		return 2, "2c"
-	}
-
-	return 3, "3"
+	return "Normal", fmt.Sprintf("Nilai %s Anda (%.2f) berada dalam rentang normal. Pertahankan gaya hidup sehat.", nama, nilai)
 }
 
-// computeWearableScore: baseline ranges should be provided. If baseline min/max are zero, treat metric as normal.
-func computeWearableScore(w models.WearableData) int {
-	abnormal := 0
+// AnalyzeLabResults mengeksekusi logika rule-based untuk semua hormon
+func AnalyzeLabResults(params []models.Parameter) LabAssessmentResult {
+	var result LabAssessmentResult
+	ft3, ft4, tsh, trab := extractHormoneValues(params)
 
-	// HR
-	if !(w.BaselineHRMin == 0 && w.BaselineHRMax == 0) {
-		if w.HR < w.BaselineHRMin || w.HR > w.BaselineHRMax {
-			abnormal++
-		}
-	}
+	// 1. Evaluasi Masing-masing Hormon
+	result.StatusTSH, result.ReminderTSH = evaluateHormone("TSH", tsh, constants.TSH_MIN, constants.TSH_MAX)
+	result.StatusFT3, result.ReminderFT3 = evaluateHormone("FT3", ft3, constants.FT3_MIN, constants.FT3_MAX)
+	result.StatusFT4, result.ReminderFT4 = evaluateHormone("FT4", ft4, constants.FT4_MIN, constants.FT4_MAX)
 
-	// Stress
-	if !(w.BaselineStressMin == 0 && w.BaselineStressMax == 0) {
-		if w.Stress < w.BaselineStressMin || w.Stress > w.BaselineStressMax {
-			abnormal++
-		}
-	}
-
-	// Sleep (minutes)
-	if !(w.BaselineSleepMin == 0 && w.BaselineSleepMax == 0) {
-		if w.SleepMinutes < w.BaselineSleepMin || w.SleepMinutes > w.BaselineSleepMax {
-			abnormal++
-		}
-	}
-
-	switch {
-	case abnormal == 0:
-		return 1
-	case abnormal == 1:
-		return 2
-	default:
-		return 3
-	}
-}
-
-// computeTrendFactorY: simple rule — if condition worsens, Y=1.1; improves, Y=0.9; else 1.0
-func computeTrendFactorY(curr, prev int) float64 {
-	if prev == 0 {
-		return 1.0
-	}
-	if curr > prev {
-		return 1.1
-	}
-	if curr < prev {
-		return 0.9
-	}
-	return 1.0
-}
-
-func (u *labUsecase) Assess(input models.AssessmentInput) (models.AssessmentResult, error) {
-	var res models.AssessmentResult
-
-	// Extract hormone values from Parameters
-	ft3, ft4, tsh := extractHormoneValues(input.Lab.Parameters)
-
-	// X
-	x, code := computeLabScore(ft3, ft4, tsh)
-	res.LabScore = x
-	res.LabCode = code
-
-	// Z
-	z := computeWearableScore(input.Wearable)
-	res.WearableScore = z
-
-	// Y
-	y := 1.0
-	if input.IsLabDay && input.PrevLab != nil {
-		prevFT3, prevFT4, prevTSH := extractHormoneValues(input.PrevLab.Parameters)
-		prevX, _ := computeLabScore(prevFT3, prevFT4, prevTSH)
-
-		y = computeTrendFactorY(x, prevX)
-	}
-	res.TrendFactorY = y
-
-	// Final score
-	var final float64
-	if input.IsLabDay {
-		final = (float64(x)*y)*0.7 + float64(z)*0.3
+	// Evaluasi TRAb jika ada nilainya
+	if trab > 0 {
+		result.StatusTRAb, result.ReminderTRAb = evaluateHormone("TRAb", trab, constants.TRAB_MIN, constants.TRAB_MAX)
 	} else {
-		final = float64(x)*0.7 + float64(z)*0.3
+		result.StatusTRAb, result.ReminderTRAb = "Tidak Ada Data", "Data TRAb tidak ditemukan."
 	}
 
-	// Round to one decimal
-	res.FinalScore = math.Round(final*10) / 10
+	// 2. Tentukan Kesimpulan / Interpretasi Klinis (Rule-based Graves Disease)
+	isNormalFT3 := result.StatusFT3 == "Normal"
+	isNormalFT4 := result.StatusFT4 == "Normal"
 
-	// Interpretation mapping based on the table provided (uses X and Z)
-	switch {
-	case x == 1 && z == 1:
-		res.Interpretation = "Normal / wearable normal"
-	case x == 1 && z == 2:
-		res.Interpretation = "Normal / wearable sedang"
-	case x == 1 && z == 3:
-		res.Interpretation = "Normal / wearable jelek"
-	case x == 2 && z == 1:
-		res.Interpretation = "Graves disease / wearable normal"
-	case x == 2 && z == 2:
-		res.Interpretation = "Graves disease / wearable sedang"
-	case x == 2 && z == 3:
-		res.Interpretation = "Graves disease / wearable jelek"
-	case x == 3 && z == 1:
-		res.Interpretation = "Kondisi tidak diketahui / wearable normal"
-	case x == 3 && z == 2:
-		res.Interpretation = "Kondisi tidak diketahui / wearable sedang"
-	case x == 3 && z == 3:
-		res.Interpretation = "Kondisi tidak diketahui / wearable jelek"
-	default:
-		res.Interpretation = "Perlu evaluasi dokter"
+	if result.StatusTSH == "Normal" && isNormalFT3 && isNormalFT4 {
+		result.Interpretasi = "Kondisi tiroid stabil (Normal)."
+	} else if result.StatusTSH == "Rendah" && result.StatusFT3 == "Tinggi" && result.StatusFT4 == "Tinggi" {
+		result.Interpretasi = "Indikasi Overt Graves Disease (Hipertiroid nyata). Harap segera ke dokter."
+	} else if result.StatusTSH == "Rendah" && result.StatusFT3 == "Tinggi" && isNormalFT4 {
+		result.Interpretasi = "Indikasi Graves Disease dominan T3 (T3-toxicosis)."
+	} else if result.StatusTSH == "Rendah" && isNormalFT3 && result.StatusFT4 == "Tinggi" {
+		result.Interpretasi = "Indikasi Graves Disease dominan T4."
+	} else {
+		result.Interpretasi = "Kondisi tiroid tidak menentu atau di luar pola standar Graves. Perlu evaluasi medis lebih lanjut."
 	}
 
-	// Save assessment result to hasil_ai table if usecase is available
-	if u.usecaseHasilAI != nil && input.Lab.IDRiwayat != 0 {
-		_, err := u.usecaseHasilAI.CreateHasilAI(
-			input.Lab.IDRiwayat,
-			nil, // wearableID not available in current request structure
-			&input.Lab.IDHasilLab,
-			res.FinalScore,
-		)
-		if err != nil {
-			// Log error but don't fail the assessment - still return result
-			fmt.Printf("Warning: failed to save assessment result: %v\n", err)
-		}
-	}
-
-	return res, nil
+	return result
 }

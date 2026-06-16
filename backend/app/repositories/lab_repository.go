@@ -8,7 +8,7 @@ import (
 
 type LabRepository interface {
 	Create(lab models.HasilLab) (models.HasilLab, error)
-	GetAll() ([]models.HasilLab, error) // Kontrak mewajibkan ini
+	GetAll() ([]models.HasilLab, error)
 	GetByUserID(userID uint) ([]models.HasilLab, error)
 }
 
@@ -25,20 +25,20 @@ func (r *labRepository) Create(lab models.HasilLab) (models.HasilLab, error) {
 	return lab, err
 }
 
-// TAMBAHKAN INI: Supaya kontrak 'GetAll' terpenuhi
 func (r *labRepository) GetAll() ([]models.HasilLab, error) {
 	var results []models.HasilLab
 	err := r.db.Find(&results).Error
 	return results, err
 }
 
-// Ini fungsi tambahan kamu, tetap pertahankan
 func (r *labRepository) GetByUserID(userID uint) ([]models.HasilLab, error) {
 	var results []models.HasilLab
-	// Join dengan laporan_lab untuk mendapatkan hasil lab berdasarkan user_id
+	// ✅ PERBAIKAN: Join dua kali (LaporanLab lalu Riwayat) untuk mengecek userID
 	err := r.db.
 		Joins("JOIN laporan_lab ON hasil_lab.id_laporan_lab = laporan_lab.id_laporan_lab").
-		Where("laporan_lab.id_user = ?", userID).
+		Joins("JOIN riwayat ON laporan_lab.id_riwayat = riwayat.id_riwayat").
+		Where("riwayat.id_user = ?", userID).
+		Preload("Parameter").
 		Find(&results).Error
 	return results, err
 }

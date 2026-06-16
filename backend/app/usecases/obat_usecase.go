@@ -2,7 +2,6 @@ package usecases
 
 import (
 	"fmt"
-	"time"
 
 	"monitoring-service/app/models"
 	"monitoring-service/app/repositories"
@@ -63,13 +62,13 @@ func (u *obatUsecase) UpdateObat(id uint, input models.UpdateObatRequest) (model
 		return models.Obat{}, fmt.Errorf("id tidak valid")
 	}
 
-	// Get existing obat
+	// 1. Ambil data lama dari database
 	obat, err := u.repo.GetByID(id)
 	if err != nil || obat.IDObat == 0 {
 		return models.Obat{}, fmt.Errorf("obat tidak ditemukan")
 	}
 
-	// Update only non-empty fields
+	// 2. Update field yang ada di DTO (sesuaikan dengan struct UpdateObatRequest)
 	if input.NamaObat != "" {
 		obat.NamaObat = input.NamaObat
 	}
@@ -79,24 +78,23 @@ func (u *obatUsecase) UpdateObat(id uint, input models.UpdateObatRequest) (model
 	if input.Frekuensi != "" {
 		obat.Frekuensi = input.Frekuensi
 	}
-	if input.HariKonsumsi != "" {
-		obat.HariKonsumsi = input.HariKonsumsi
+	if input.TipeObat != "" {
+		obat.TipeObat = input.TipeObat
 	}
-	if input.StatusAktif != nil {
-		obat.StatusAktif = *input.StatusAktif
+    
+	// ✅ Karena TglMulai & TglSelesai di model adalah *CustomDate, 
+    // kita bisa langsung assign dari input
+	if input.TglMulai != nil {
+		obat.TglMulai = input.TglMulai
+	}
+	if input.TglSelesai != nil {
+		obat.TglSelesai = input.TglSelesai
 	}
 
-	// 👇 TAMBAHKAN BLOK KODE INI MAS 👇
-	if input.TanggalMulai != nil && *input.TanggalMulai != "" {
-		t, err := time.Parse("2006-01-02", *input.TanggalMulai)
-		if err == nil {
-			obat.TanggalMulai = &t
-		}
-	}
-	// 👆 SAMPAI SINI 👆
-
+	// 3. Simpan kembali ke repository
 	return u.repo.Update(id, obat)
 }
+
 
 func (u *obatUsecase) DeleteObat(id uint) error {
 	if id == 0 {

@@ -84,9 +84,15 @@ func (u *userUsecase) GoogleLogin(idToken string) (models.User, error) {
 		return models.User{}, fmt.Errorf("token google tidak valid: %w", err)
 	}
 
-	// 2. Ambil data email dan nama dari payload Google
-	email := payload.Claims["email"].(string)
-	name := payload.Claims["name"].(string)
+	// 2. Ambil data email, nama, dan foto dari payload Google
+	email, _ := payload.Claims["email"].(string)
+	name, _ := payload.Claims["name"].(string)
+	
+	// ✅ BARU: Menarik URL Foto Profil langsung dari akun Google pengguna
+	var picture string
+	if picClaim, ok := payload.Claims["picture"]; ok {
+		picture = picClaim.(string)
+	}
 
 	// 3. Cek apakah user sudah ada di database
 	user, err := u.repo.GetByEmail(email)
@@ -95,8 +101,9 @@ func (u *userUsecase) GoogleLogin(idToken string) (models.User, error) {
 		newUser := models.User{
 			Nama:         name,
 			Email:        email,
-			Password:     "",  // Dikosongkan karena login via Google
-			JenisKelamin: "L", // Default
+			Password:     "",      // Dikosongkan karena login via Google
+			JenisKelamin: "L",     // Default
+			FotoProfil:   picture, // ✅ Menyimpan URL Foto Google ke database
 		}
 		
 		createdUser, createErr := u.repo.Create(newUser)
@@ -104,6 +111,12 @@ func (u *userUsecase) GoogleLogin(idToken string) (models.User, error) {
 			return models.User{}, fmt.Errorf("gagal membuat user baru: %w", createErr)
 		}
 		return createdUser, nil
+	}
+
+	// ✅ BARU (Opsional): Jika user login lagi via Google tapi fotonya di DB masih kosong, kita update
+	if user.FotoProfil == "" && picture != "" {
+		user.FotoProfil = picture
+		u.repo.Update(user.IDUser, user) // Mengabaikan error update demi kelancaran login
 	}
 
 	// Jika user sudah ada, kembalikan user tersebut
@@ -167,6 +180,12 @@ func (u *userUsecase) UpdateUser(id uint, input models.UpdateUserRequest) (model
 	if input.TglTerdiagnosis != nil {
 		user.TglTerdiagnosis = input.TglTerdiagnosis
 	}
+	
+	// Jika nanti Anda menambahkan FotoProfil ke dalam struct UpdateUserRequest di models/user.go
+	// Silakan uncomment kode di bawah ini:
+	// if input.FotoProfil != "" {
+	// 	user.FotoProfil = input.FotoProfil
+	// }
 
 	return u.repo.Update(id, user)
 }

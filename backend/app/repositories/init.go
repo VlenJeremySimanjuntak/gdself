@@ -17,9 +17,14 @@ type Main struct {
 	Wearable   WearableRepository
 	HasilLab   HasilLabRepository
 	Parameter  ParameterRepository
-	HasilAI    HasilAIRepository
 	JadwalObat JadwalObatRepository
 	Lab        LabRepository // Untuk backward compatibility dengan lab operations
+
+	// ✅ BARU: Repository AI yang sudah dipecah dan USG Tiroid
+	HasilAIHarian HasilAIHarianRepository
+	HasilAILab    HasilAILabRepository
+	HasilAITren   HasilAITrenRepository
+	UsgTiroid     UsgTiroidRepository
 }
 
 type Options struct {
@@ -38,8 +43,13 @@ func Init(opts Options) *Main {
 		Wearable:   NewWearableRepository(opts.DB),
 		HasilLab:   NewHasilLabRepository(opts.DB),
 		Parameter:  NewParameterRepository(opts.DB),
-		HasilAI:    NewHasilAIRepository(opts.DB),
 		JadwalObat: NewJadwalObatRepository(opts.DB),
 		Lab:        NewLabRepository(opts.DB), // Untuk backward compatibility
+
+		// ✅ BARU: Inisialisasi instance repository baru
+		HasilAIHarian: NewHasilAIHarianRepository(opts.DB),
+		HasilAILab:    NewHasilAILabRepository(opts.DB),
+		HasilAITren:   NewHasilAITrenRepository(opts.DB),
+		UsgTiroid:     NewUsgTiroidRepository(opts.DB),
 	}
 }

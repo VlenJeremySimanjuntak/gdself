@@ -32,22 +32,38 @@ func (ctrl *laporanLabController) Create(c echo.Context) error {
 	var input models.CreateLaporanLabRequest
 
 	if err := c.Bind(&input); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": constants.MSG_INVALID_PAYLOAD})
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error":  constants.MSG_INVALID_PAYLOAD,
+			"detail": err.Error(),
+		})
 	}
 
-	if input.IDUser == 0 || input.NamaLab == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id_user dan nama_lab harus diisi"})
+	// Validasi field wajib
+	if input.IDUser == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "id_user harus diisi",
+		})
 	}
 
+	if input.NamaLab == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "nama_lab harus diisi",
+		})
+	}
+
+	// Mapping ke model LaporanLab
+	// Note: IDRiwayat akan di-handle oleh usecase (create or find existing Riwayat)
 	laporan := models.LaporanLab{
-		IDUser:     input.IDUser,
+		IDRiwayat:  input.IDRiwayat,
 		TglPeriksa: input.TglPeriksa,
 		NamaLab:    input.NamaLab,
 	}
 
 	result, err := ctrl.usecase.CreateLaporanLab(laporan)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
 	}
 
 	return c.JSON(http.StatusCreated, models.Response{
@@ -60,12 +76,16 @@ func (ctrl *laporanLabController) Create(c echo.Context) error {
 func (ctrl *laporanLabController) GetByID(c echo.Context) error {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ID tidak valid"})
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "ID tidak valid",
+		})
 	}
 
 	laporan, err := ctrl.usecase.GetLaporanLabByID(uint(id))
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusNotFound, map[string]string{
+			"error": err.Error(),
+		})
 	}
 
 	return c.JSON(http.StatusOK, models.Response{
@@ -78,49 +98,89 @@ func (ctrl *laporanLabController) GetByID(c echo.Context) error {
 func (ctrl *laporanLabController) GetByUserID(c echo.Context) error {
 	userID, err := strconv.ParseUint(c.Param("user_id"), 10, 32)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "user_id tidak valid"})
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "user_id tidak valid",
+		})
 	}
 
-	laporan, err := ctrl.usecase.GetLaporanLabByUserID(uint(userID))
+	// Karena LaporanLabUsecase belum memiliki method GetLaporanLabByUserID,
+	// kita gunakan GetAllLaporanLab lalu filter berdasarkan Riwayat.IDUser
+	allLaporan, err := ctrl.usecase.GetAllLaporanLab()
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	// Filter laporan yang memiliki Riwayat dengan IDUser yang sesuai
+	var filteredLaporan []models.LaporanLab
+	for _, laporan := range allLaporan {
+		if laporan.Riwayat != nil && laporan.Riwayat.IDUser == uint(userID) {
+			filteredLaporan = append(filteredLaporan, laporan)
+		}
+	}
+
+	// Jika tidak ada laporan, kembalikan array kosong
+	if filteredLaporan == nil {
+		filteredLaporan = []models.LaporanLab{}
 	}
 
 	return c.JSON(http.StatusOK, models.Response{
 		StatusCode: http.StatusOK,
 		Message:    "Daftar laporan lab user",
-		Data:       laporan,
+		Data:       filteredLaporan,
 	})
 }
 
 func (ctrl *laporanLabController) GetAll(c echo.Context) error {
-	laporan, err := ctrl.usecase.GetAllLaporanLab()
+	laporanList, err := ctrl.usecase.GetAllLaporanLab()
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	// Jika tidak ada laporan, kembalikan array kosong
+	if laporanList == nil {
+		laporanList = []models.LaporanLab{}
 	}
 
 	return c.JSON(http.StatusOK, models.Response{
 		StatusCode: http.StatusOK,
 		Message:    "Daftar semua laporan lab",
-		Data:       laporan,
+		Data:       laporanList,
 	})
 }
 
 func (ctrl *laporanLabController) Update(c echo.Context) error {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ID tidak valid"})
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "ID tidak valid",
+		})
 	}
 
 	var input models.UpdateLaporanLabRequest
 
 	if err := c.Bind(&input); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": constants.MSG_INVALID_PAYLOAD})
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error":  constants.MSG_INVALID_PAYLOAD,
+			"detail": err.Error(),
+		})
+	}
+
+	// Validasi minimal ada field yang diupdate
+	if input.TglPeriksa == nil && input.NamaLab == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Minimal satu field (tgl_periksa atau nama_lab) harus diisi untuk update",
+		})
 	}
 
 	laporan, err := ctrl.usecase.UpdateLaporanLab(uint(id), input)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
 	}
 
 	return c.JSON(http.StatusOK, models.Response{
@@ -133,12 +193,15 @@ func (ctrl *laporanLabController) Update(c echo.Context) error {
 func (ctrl *laporanLabController) Delete(c echo.Context) error {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ID tidak valid"})
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "ID tidak valid",
+		})
 	}
 
-	err = ctrl.usecase.DeleteLaporanLab(uint(id))
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	if err := ctrl.usecase.DeleteLaporanLab(uint(id)); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
 	}
 
 	return c.JSON(http.StatusOK, models.BasicResponse{

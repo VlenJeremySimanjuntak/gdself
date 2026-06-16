@@ -19,3 +19,9 @@ type AssessmentResult struct {
 	FinalScore     float64 `json:"final_score"`
 	Interpretation string  `json:"interpretation"`
 }
+
+// RangeNilai untuk menyimpan nilai min dan max dari input user
+type RangeNilai struct {
+	Min float64 `json:"min"`
+	Max float64 `json:"max"`
+}

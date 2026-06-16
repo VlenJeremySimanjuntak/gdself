@@ -32,13 +32,20 @@ func (ctrl *riwayatController) Create(c echo.Context) error {
 	var input models.CreateRiwayatRequest
 
 	if err := c.Bind(&input); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": constants.MSG_INVALID_PAYLOAD})
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error":  constants.MSG_INVALID_PAYLOAD,
+			"detail": err.Error(),
+		})
 	}
 
+	// Validasi field wajib
 	if input.IDUser == 0 {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id_user harus diisi"})
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "id_user harus diisi",
+		})
 	}
 
+	// Mapping ke model Riwayat sesuai struktur terbaru
 	riwayat := models.Riwayat{
 		IDUser:  input.IDUser,
 		Tanggal: input.Tanggal,
@@ -46,7 +53,9 @@ func (ctrl *riwayatController) Create(c echo.Context) error {
 
 	result, err := ctrl.usecase.CreateRiwayat(riwayat)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
 	}
 
 	return c.JSON(http.StatusCreated, models.Response{
@@ -59,12 +68,16 @@ func (ctrl *riwayatController) Create(c echo.Context) error {
 func (ctrl *riwayatController) GetByID(c echo.Context) error {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ID tidak valid"})
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "ID tidak valid",
+		})
 	}
 
 	riwayat, err := ctrl.usecase.GetRiwayatByID(uint(id))
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusNotFound, map[string]string{
+			"error": err.Error(),
+		})
 	}
 
 	return c.JSON(http.StatusOK, models.Response{
@@ -77,49 +90,79 @@ func (ctrl *riwayatController) GetByID(c echo.Context) error {
 func (ctrl *riwayatController) GetByUserID(c echo.Context) error {
 	userID, err := strconv.ParseUint(c.Param("user_id"), 10, 32)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "user_id tidak valid"})
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "user_id tidak valid",
+		})
 	}
 
-	riwayat, err := ctrl.usecase.GetRiwayatByUserID(uint(userID))
+	riwayatList, err := ctrl.usecase.GetRiwayatByUserID(uint(userID))
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	// Jika tidak ada riwayat, kembalikan array kosong
+	if riwayatList == nil {
+		riwayatList = []models.Riwayat{}
 	}
 
 	return c.JSON(http.StatusOK, models.Response{
 		StatusCode: http.StatusOK,
 		Message:    "Daftar riwayat user",
-		Data:       riwayat,
+		Data:       riwayatList,
 	})
 }
 
 func (ctrl *riwayatController) GetAll(c echo.Context) error {
-	riwayat, err := ctrl.usecase.GetAllRiwayat()
+	riwayatList, err := ctrl.usecase.GetAllRiwayat()
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	// Jika tidak ada riwayat, kembalikan array kosong
+	if riwayatList == nil {
+		riwayatList = []models.Riwayat{}
 	}
 
 	return c.JSON(http.StatusOK, models.Response{
 		StatusCode: http.StatusOK,
 		Message:    "Daftar semua riwayat",
-		Data:       riwayat,
+		Data:       riwayatList,
 	})
 }
 
 func (ctrl *riwayatController) Update(c echo.Context) error {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ID tidak valid"})
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "ID tidak valid",
+		})
 	}
 
 	var input models.UpdateRiwayatRequest
 
 	if err := c.Bind(&input); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": constants.MSG_INVALID_PAYLOAD})
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error":  constants.MSG_INVALID_PAYLOAD,
+			"detail": err.Error(),
+		})
+	}
+
+	// Validasi minimal ada field yang diupdate
+	if input.Tanggal == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Minimal field tanggal harus diisi untuk update",
+		})
 	}
 
 	riwayat, err := ctrl.usecase.UpdateRiwayat(uint(id), input)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
 	}
 
 	return c.JSON(http.StatusOK, models.Response{
@@ -132,12 +175,15 @@ func (ctrl *riwayatController) Update(c echo.Context) error {
 func (ctrl *riwayatController) Delete(c echo.Context) error {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ID tidak valid"})
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "ID tidak valid",
+		})
 	}
 
-	err = ctrl.usecase.DeleteRiwayat(uint(id))
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	if err := ctrl.usecase.DeleteRiwayat(uint(id)); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
 	}
 
 	return c.JSON(http.StatusOK, models.BasicResponse{

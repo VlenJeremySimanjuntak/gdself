@@ -654,7 +654,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
 
   Widget _emptyMedicationCard(VoidCallback onAturPressed) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 34),
+      padding: const EdgeInsets.all(24),
       margin: const EdgeInsets.only(bottom: 24),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -669,25 +669,47 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       child: Column(
         children: [
           CircleAvatar(
-              backgroundColor: const Color(0xFFE6E9F1),
+              backgroundColor: const Color(0xFFF0F2F5), // Warna abu-abu yang lebih lembut
               radius: 40,
               child: Icon(
-                PhosphorIcons.pill(PhosphorIconsStyle.regular), // 👇 Ikon diubah ke Phosphor agar seragam
+                PhosphorIcons.pill(PhosphorIconsStyle.regular),
                 color: Colors.grey.shade400,
                 size: 36,
               )),
-          const SizedBox(height: 22),
+          const SizedBox(height: 20),
           const Text('Belum Ada Obat',
               style: TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 17,
                   color: Color(0xFF263238))),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           const Text(
-            'Anda belum menambahkan jadwal konsumsi obat untuk hari ini.',
+            'Anda belum menambahkan\njadwal konsumsi obat untuk hari ini.',
             textAlign: TextAlign.center,
             style: TextStyle(
-                fontSize: 14, height: 1.45, color: Color(0xFF667085)),
+                fontSize: 14, height: 1.5, color: Color(0xFF667085)),
+          ),
+          const SizedBox(height: 24),
+
+          // 👇 TAMBAHAN: Tombol "Tambah Obat" di pojok kanan bawah
+          Align(
+            alignment: Alignment.centerRight,
+            child: ElevatedButton(
+              onPressed: onAturPressed, // Memanggil fungsi onAturJadwalObat
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF006699), // Warna biru tema aplikasi
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                elevation: 0,
+              ),
+              child: const Text(
+                'Tambah Obat',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+              ),
+            ),
           ),
         ],
       ),

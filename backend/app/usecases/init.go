@@ -12,9 +12,14 @@ type Main struct {
 	Obat       ObatUsecase
 	Wearable   WearableUsecase
 	HasilLab   HasilLabUsecase
-	HasilAI    HasilAIUsecase
 	JadwalObat JadwalObatUsecase
 	Lab        LabUsecase // Untuk backward compatibility dengan lab operations
+
+	// ✅ BARU: Usecase AI yang sudah dipecah dan USG Tiroid
+	HasilAIHarian HasilAIHarianUsecase
+	HasilAILab    HasilAILabUsecase
+	HasilAITren   HasilAITrenUsecase
+	UsgTiroid     UsgTiroidUsecase
 }
 
 type Options struct {
@@ -23,15 +28,27 @@ type Options struct {
 }
 
 func Init(opts Options) *Main {
+	// 1. Inisialisasi Usecase AI baru terlebih dahulu agar bisa di-inject ke Usecase lain
+	hasilAIHarian := NewHasilAIHarianUsecase(opts.Repository.HasilAIHarian)
+	hasilAILab := NewHasilAILabUsecase(opts.Repository.HasilAILab)
+	hasilAITren := NewHasilAITrenUsecase(opts.Repository.HasilAITren)
+
 	return &Main{
 		User:       NewUserUsecase(opts.Repository.User),
 		Riwayat:    NewRiwayatUsecase(opts.Repository.Riwayat),
 		LaporanLab: NewLaporanLabUsecase(opts.Repository.LaporanLab),
 		Obat:       NewObatUsecase(opts.Repository.Obat),
 		Wearable:   NewWearableUsecase(opts.Repository.Wearable),
-		HasilLab:   NewHasilLabUsecase(opts.Repository.HasilLab, opts.Repository.Parameter, opts.Repository.LaporanLab, opts.Repository.Wearable, opts.Repository.HasilAI),
-		HasilAI:    NewHasilAIUsecase(opts.Repository.HasilAI),
 		JadwalObat: NewJadwalObatUsecase(opts.Repository.JadwalObat),
-		Lab:        NewLabUsecase(opts.Repository.Lab, opts.Repository.Parameter, NewHasilAIUsecase(opts.Repository.HasilAI)), // Wire HasilAI for assessment persistence
+
+		// 2. Daftarkan Usecase baru ke dalam Main struct
+		HasilAIHarian: hasilAIHarian,
+		HasilAILab:    hasilAILab,
+		HasilAITren:   hasilAITren,
+		UsgTiroid:     NewUsgTiroidUsecase(opts.Repository.UsgTiroid),
+
+		// 3. Update parameter injeksi untuk HasilLab dan Lab (menggantikan HasilAI lama)
+		HasilLab: NewHasilLabUsecase(opts.Repository.HasilLab, opts.Repository.Parameter, opts.Repository.LaporanLab, opts.Repository.Wearable, hasilAILab, hasilAITren),
+		Lab:      NewLabUsecase(opts.Repository.Lab, opts.Repository.Parameter, hasilAILab, hasilAITren),
 	}
 }
