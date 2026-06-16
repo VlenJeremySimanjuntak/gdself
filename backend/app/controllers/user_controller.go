@@ -40,19 +40,20 @@ func (ctrl *userController) Create(c echo.Context) error {
 	var input models.CreateUserRequest
 
 	if err := c.Bind(&input); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
 			"error":  constants.MSG_INVALID_PAYLOAD,
 			"detail": err.Error(),
 		})
 	}
 
-	// Validation
+	// Validasi field wajib
 	if input.Nama == "" || input.Email == "" || input.Password == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "nama, email, dan password harus diisi",
 		})
 	}
 
+	// Mapping ke model User sesuai struktur terbaru
 	user := models.User{
 		Nama:            input.Nama,
 		Email:           input.Email,
@@ -60,13 +61,13 @@ func (ctrl *userController) Create(c echo.Context) error {
 		TglLahir:        input.TglLahir,
 		JenisKelamin:    input.JenisKelamin,
 		TglTerdiagnosis: input.TglTerdiagnosis,
+		// FotoProfil akan diisi nanti jika user upload atau dari Google
 	}
 
 	result, err := ctrl.usecase.CreateUser(user)
 	if err != nil {
-		errorMessage := helpers.ParseDBError(err)
 		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
-			"error":  errorMessage,
+			"error":  err.Error(),
 			"detail": err.Error(),
 		})
 	}
@@ -82,7 +83,7 @@ func (ctrl *userController) Create(c echo.Context) error {
 		}
 	}
 
-	// Prepare response without password
+	// Prepare response tanpa password
 	userData := models.UserLoginData{
 		IDUser:          result.IDUser,
 		Nama:            result.Nama,
@@ -90,6 +91,7 @@ func (ctrl *userController) Create(c echo.Context) error {
 		TglLahir:        result.TglLahir,
 		JenisKelamin:    result.JenisKelamin,
 		TglTerdiagnosis: result.TglTerdiagnosis,
+		FotoProfil:      result.FotoProfil,
 		UpdateAt:        result.UpdateAt,
 	}
 
@@ -115,6 +117,13 @@ func (ctrl *userController) Login(c echo.Context) error {
 		})
 	}
 
+	// Validasi input
+	if input.Email == "" || input.Password == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "email dan password harus diisi",
+		})
+	}
+
 	user, err := ctrl.usecase.Authenticate(input.Email, input.Password)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
@@ -131,7 +140,7 @@ func (ctrl *userController) Login(c echo.Context) error {
 		}
 	}
 
-	// Prepare response without password
+	// Prepare response tanpa password
 	userData := models.UserLoginData{
 		IDUser:          user.IDUser,
 		Nama:            user.Nama,
@@ -139,6 +148,7 @@ func (ctrl *userController) Login(c echo.Context) error {
 		TglLahir:        user.TglLahir,
 		JenisKelamin:    user.JenisKelamin,
 		TglTerdiagnosis: user.TglTerdiagnosis,
+		FotoProfil:      user.FotoProfil,
 		UpdateAt:        user.UpdateAt,
 	}
 
@@ -164,6 +174,13 @@ func (ctrl *userController) GoogleLogin(c echo.Context) error {
 		})
 	}
 
+	// Validasi ID Token
+	if input.IDToken == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "id_token harus diisi",
+		})
+	}
+
 	user, err := ctrl.usecase.GoogleLogin(input.IDToken)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
@@ -180,7 +197,7 @@ func (ctrl *userController) GoogleLogin(c echo.Context) error {
 		}
 	}
 
-	// Prepare response without password
+	// Prepare response tanpa password
 	userData := models.UserLoginData{
 		IDUser:          user.IDUser,
 		Nama:            user.Nama,
@@ -188,6 +205,7 @@ func (ctrl *userController) GoogleLogin(c echo.Context) error {
 		TglLahir:        user.TglLahir,
 		JenisKelamin:    user.JenisKelamin,
 		TglTerdiagnosis: user.TglTerdiagnosis,
+		FotoProfil:      user.FotoProfil,
 		UpdateAt:        user.UpdateAt,
 	}
 
@@ -214,10 +232,22 @@ func (ctrl *userController) GetByID(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 	}
 
+	// Siapkan response tanpa password
+	userData := models.UserLoginData{
+		IDUser:          user.IDUser,
+		Nama:            user.Nama,
+		Email:           user.Email,
+		TglLahir:        user.TglLahir,
+		JenisKelamin:    user.JenisKelamin,
+		TglTerdiagnosis: user.TglTerdiagnosis,
+		FotoProfil:      user.FotoProfil,
+		UpdateAt:        user.UpdateAt,
+	}
+
 	return c.JSON(http.StatusOK, models.Response{
 		StatusCode: http.StatusOK,
 		Message:    "User ditemukan",
-		Data:       user,
+		Data:       userData,
 	})
 }
 
@@ -227,10 +257,25 @@ func (ctrl *userController) GetAll(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	// Siapkan response tanpa password untuk setiap user
+	var usersData []models.UserLoginData
+	for _, user := range users {
+		usersData = append(usersData, models.UserLoginData{
+			IDUser:          user.IDUser,
+			Nama:            user.Nama,
+			Email:           user.Email,
+			TglLahir:        user.TglLahir,
+			JenisKelamin:    user.JenisKelamin,
+			TglTerdiagnosis: user.TglTerdiagnosis,
+			FotoProfil:      user.FotoProfil,
+			UpdateAt:        user.UpdateAt,
+		})
+	}
+
 	return c.JSON(http.StatusOK, models.Response{
 		StatusCode: http.StatusOK,
 		Message:    "Daftar user",
-		Data:       users,
+		Data:       usersData,
 	})
 }
 
@@ -243,7 +288,18 @@ func (ctrl *userController) Update(c echo.Context) error {
 	var input models.UpdateUserRequest
 
 	if err := c.Bind(&input); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": constants.MSG_INVALID_PAYLOAD})
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error":  constants.MSG_INVALID_PAYLOAD,
+			"detail": err.Error(),
+		})
+	}
+
+	// Validasi minimal ada satu field yang diupdate
+	if input.Nama == "" && input.Email == "" && input.TglLahir == nil && 
+	   input.JenisKelamin == "" && input.TglTerdiagnosis == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Minimal satu field harus diisi untuk update",
+		})
 	}
 
 	user, err := ctrl.usecase.UpdateUser(uint(id), input)
@@ -251,10 +307,22 @@ func (ctrl *userController) Update(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	// Siapkan response tanpa password
+	userData := models.UserLoginData{
+		IDUser:          user.IDUser,
+		Nama:            user.Nama,
+		Email:           user.Email,
+		TglLahir:        user.TglLahir,
+		JenisKelamin:    user.JenisKelamin,
+		TglTerdiagnosis: user.TglTerdiagnosis,
+		FotoProfil:      user.FotoProfil,
+		UpdateAt:        user.UpdateAt,
+	}
+
 	return c.JSON(http.StatusOK, models.Response{
 		StatusCode: http.StatusOK,
 		Message:    "User berhasil diperbarui",
-		Data:       user,
+		Data:       userData,
 	})
 }
 
@@ -264,8 +332,7 @@ func (ctrl *userController) Delete(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ID tidak valid"})
 	}
 
-	err = ctrl.usecase.DeleteUser(uint(id))
-	if err != nil {
+	if err := ctrl.usecase.DeleteUser(uint(id)); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
