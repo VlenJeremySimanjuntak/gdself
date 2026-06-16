@@ -20,15 +20,15 @@ func ConfigureRouter(e *echo.Echo, controller *controllers.Main) {
 	// User Endpoints
 	// ========================
 	api.POST("/auth/login", controller.User.Login)
-    api.POST("/auth/register", controller.User.Create)
-    api.POST("/auth/google", controller.User.GoogleLogin)
-    
-    api.POST("/login", controller.User.Login)
-    api.POST("/users", controller.User.Create)
-    api.GET("/users", controller.User.GetAll)
-    api.GET("/users/:id", controller.User.GetByID)
-    api.PUT("/users/:id", controller.User.Update)
-    api.DELETE("/users/:id", controller.User.Delete)
+	api.POST("/auth/register", controller.User.Create)
+	api.POST("/auth/google", controller.User.GoogleLogin)
+
+	api.POST("/login", controller.User.Login)
+	api.POST("/users", controller.User.Create)
+	api.GET("/users", controller.User.GetAll)
+	api.GET("/users/:id", controller.User.GetByID)
+	api.PUT("/users/:id", controller.User.Update)
+	api.DELETE("/users/:id", controller.User.Delete)
 
 	// ========================
 	// Riwayat Endpoints
@@ -47,10 +47,13 @@ func ConfigureRouter(e *echo.Echo, controller *controllers.Main) {
 	api.GET("/laporan-lab", controller.LaporanLab.GetAll)
 	api.GET("/laporan-lab/:id", controller.LaporanLab.GetByID)
 	api.GET("/laporan-lab/user/:user_id", controller.LaporanLab.GetByUserID)
-	// Aggregated monitoring endpoint (normalized yRatio for frontend charts)
-	api.GET("/monitoring/user/:user_id", controller.Monitoring.GetByUserID)
 	api.PUT("/laporan-lab/:id", controller.LaporanLab.Update)
 	api.DELETE("/laporan-lab/:id", controller.LaporanLab.Delete)
+
+	// ========================
+	// Monitoring Endpoint (Aggregated)
+	// ========================
+	api.GET("/monitoring/user/:user_id", controller.Monitoring.GetByUserID)
 
 	// ========================
 	// Obat Endpoints
@@ -87,15 +90,25 @@ func ConfigureRouter(e *echo.Echo, controller *controllers.Main) {
 	api.DELETE("/hasil-lab/:id", controller.HasilLab.Delete)
 
 	// ========================
-	// Hasil AI Endpoints
+	// Hasil AI Endpoints (DIPERBAIKI)
 	// ========================
-	api.POST("/hasil-ai", controller.HasilAI.Create)
-	api.GET("/hasil-ai", controller.HasilAI.GetAll)
-	api.GET("/hasil-ai/:id", controller.HasilAI.GetByID)
-	api.GET("/hasil-ai/riwayat/:riwayat_id", controller.HasilAI.GetByRiwayatID)
-	api.GET("/hasil-ai/wearable/:wearable_id", controller.HasilAI.GetByWearableID)
-	api.GET("/hasil-ai/hasil-lab/:hasil_lab_id", controller.HasilAI.GetByHasilLabID)
-	api.PUT("/hasil-ai/:id/read", controller.HasilAI.UpdateIsRead)
+	
+	// Hasil AI Harian (dari Wearable)
+	api.POST("/hasil-ai/harian", controller.HasilAI.CreateHarian)
+	api.GET("/hasil-ai/harian/:id", controller.HasilAI.GetHarianByID)
+	api.GET("/hasil-ai/harian/wearable/:wearable_id", controller.HasilAI.GetHarianByWearableID)
+	api.GET("/hasil-ai/harian/riwayat/:riwayat_id", controller.HasilAI.GetHarianByRiwayatID)
+
+	// Hasil AI Lab (dari Laporan Lab)
+	api.GET("/hasil-ai/lab/:id", controller.HasilAI.GetLabByID)
+	api.GET("/hasil-ai/lab/laporan/:laporan_lab_id", controller.HasilAI.GetLabByLaporanLabID)
+
+	// Hasil AI Tren (dari Laporan Lab)
+	api.GET("/hasil-ai/tren/:id", controller.HasilAI.GetTrenByID)
+	api.GET("/hasil-ai/tren/laporan/:laporan_lab_id", controller.HasilAI.GetTrenByLaporanLabID)
+
+	// Process Assessment (Menggantikan Create lama)
+	api.POST("/hasil-ai/assess", controller.HasilAI.ProcessAssessment)
 
 	// ========================
 	// Jadwal Obat Endpoints

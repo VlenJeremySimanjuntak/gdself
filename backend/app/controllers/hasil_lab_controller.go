@@ -36,38 +36,60 @@ func (ctrl *hasilLabController) Create(c echo.Context) error {
 	var input models.CreateHasilLabRequest
 
 	if err := c.Bind(&input); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": constants.MSG_INVALID_PAYLOAD})
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error":  constants.MSG_INVALID_PAYLOAD,
+			"detail": err.Error(),
+		})
 	}
 
-	// Validate required fields: either laporan id or (id_user + nama_lab) must be present
+	// Validasi: id_laporan_lab atau (id_user + nama_lab) harus ada
 	idLaporan := input.IDLaporanLab
 	if idLaporan == 0 {
 		idLaporan = input.IDReport
 	}
 
 	if idLaporan == 0 && (input.IDUser == 0 || strings.TrimSpace(input.NamaLab) == "") {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id_laporan_lab atau (id_user + nama_lab) harus diisi"})
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "id_laporan_lab atau (id_user + nama_lab) harus diisi",
+		})
 	}
 
-	// Note: `id_riwayat` may be created by backend; do not require it here.
-
+	// Validasi: minimal 1 parameter
 	if len(input.Parameters) == 0 {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "minimal 1 parameter harus diisi"})
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "minimal 1 parameter harus diisi",
+		})
 	}
 
-	// Enforce per-parameter rujukan (min/max) presence and nilai presence
-	for _, p := range input.Parameters {
-		if p.RujukanMin == 0 || p.RujukanMax == 0 {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "rujukan_min dan rujukan_max wajib diisi untuk setiap parameter"})
+	// Validasi setiap parameter sesuai dengan CreateParameterRequest
+	for i, p := range input.Parameters {
+		// Validasi nama parameter
+		if strings.TrimSpace(p.NamaParameter) == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"error": "nama_parameter wajib diisi untuk parameter ke-" + strconv.Itoa(i+1),
+			})
 		}
-		if p.Nilai == 0 && p.NilaiHasil == 0 {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "nilai (nilai or nilai_hasil) wajib diisi untuk setiap parameter"})
+
+		// Validasi nilai hasil
+		if p.NilaiHasil == 0 {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"error": "nilai_hasil wajib diisi untuk parameter ke-" + strconv.Itoa(i+1),
+			})
+		}
+
+		// Validasi batas bawah dan batas atas
+		if p.NilaiBatasBawah == 0 || p.NilaiBatasAtas == 0 {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"error": "nilai_batas_bawah dan nilai_batas_atas wajib diisi untuk parameter ke-" + strconv.Itoa(i+1),
+			})
 		}
 	}
 
 	result, err := ctrl.usecase.CreateHasilLab(input)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
 	}
 
 	return c.JSON(http.StatusCreated, models.Response{
@@ -80,12 +102,16 @@ func (ctrl *hasilLabController) Create(c echo.Context) error {
 func (ctrl *hasilLabController) GetByID(c echo.Context) error {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ID tidak valid"})
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "ID tidak valid",
+		})
 	}
 
 	hasilLab, err := ctrl.usecase.GetHasilLabByID(uint(id))
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusNotFound, map[string]string{
+			"error": err.Error(),
+		})
 	}
 
 	return c.JSON(http.StatusOK, models.Response{
@@ -98,110 +124,150 @@ func (ctrl *hasilLabController) GetByID(c echo.Context) error {
 func (ctrl *hasilLabController) GetByLaporanLabID(c echo.Context) error {
 	laporanID, err := strconv.ParseUint(c.Param("laporan_id"), 10, 32)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "laporan_id tidak valid"})
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "laporan_id tidak valid",
+		})
 	}
 
-	hasilLab, err := ctrl.usecase.GetHasilLabByLaporanLabID(uint(laporanID))
+	hasilLabList, err := ctrl.usecase.GetHasilLabByLaporanLabID(uint(laporanID))
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	// Jika tidak ada hasil, kembalikan array kosong
+	if hasilLabList == nil {
+		hasilLabList = []models.HasilLab{}
 	}
 
 	return c.JSON(http.StatusOK, models.Response{
 		StatusCode: http.StatusOK,
 		Message:    "Daftar hasil lab dari laporan",
-		Data:       hasilLab,
+		Data:       hasilLabList,
 	})
 }
 
 func (ctrl *hasilLabController) GetByRiwayatID(c echo.Context) error {
 	riwayatID, err := strconv.ParseUint(c.Param("riwayat_id"), 10, 32)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "riwayat_id tidak valid"})
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "riwayat_id tidak valid",
+		})
 	}
 
-	hasilLab, err := ctrl.usecase.GetHasilLabByRiwayatID(uint(riwayatID))
+	hasilLabList, err := ctrl.usecase.GetHasilLabByRiwayatID(uint(riwayatID))
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	// Jika tidak ada hasil, kembalikan array kosong
+	if hasilLabList == nil {
+		hasilLabList = []models.HasilLab{}
 	}
 
 	return c.JSON(http.StatusOK, models.Response{
 		StatusCode: http.StatusOK,
 		Message:    "Daftar hasil lab dari riwayat",
-		Data:       hasilLab,
+		Data:       hasilLabList,
 	})
 }
 
 func (ctrl *hasilLabController) GetByRiwayatAndDate(c echo.Context) error {
 	riwayatID, err := strconv.ParseUint(c.Param("riwayat_id"), 10, 32)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "riwayat_id tidak valid"})
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "riwayat_id tidak valid",
+		})
 	}
 
 	date := c.Param("date")
-	if date == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "tanggal harus diisi (YYYY-MM-DD)"})
+	if strings.TrimSpace(date) == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "tanggal harus diisi (format: YYYY-MM-DD)",
+		})
 	}
 
-	hasilLab, err := ctrl.usecase.GetHasilLabByRiwayatIDAndDate(uint(riwayatID), date)
+	hasilLabList, err := ctrl.usecase.GetHasilLabByRiwayatIDAndDate(uint(riwayatID), date)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	// Jika tidak ada hasil, kembalikan array kosong
+	if hasilLabList == nil {
+		hasilLabList = []models.HasilLab{}
 	}
 
 	return c.JSON(http.StatusOK, models.Response{
 		StatusCode: http.StatusOK,
 		Message:    "Daftar hasil lab dari riwayat dan tanggal",
-		Data:       hasilLab,
+		Data:       hasilLabList,
 	})
 }
 
 func (ctrl *hasilLabController) GetByUserAndDate(c echo.Context) error {
-	// id_user param (integer) and tanggal param (YYYY-MM-DD)
 	userIDParam := c.Param("id_user")
 	if userIDParam == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id_user tidak valid"})
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "id_user tidak boleh kosong",
+		})
 	}
+
 	userID, err := strconv.ParseUint(userIDParam, 10, 32)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id_user tidak valid"})
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "id_user tidak valid",
+		})
 	}
 
 	tanggal := c.Param("tanggal")
 	if strings.TrimSpace(tanggal) == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "tanggal harus diisi (YYYY-MM-DD)"})
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "tanggal harus diisi (format: YYYY-MM-DD)",
+		})
 	}
 
 	laporan, err := ctrl.usecase.GetLaporanByUserAndDate(uint(userID), tanggal)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusNotFound, map[string]string{
+			"error": err.Error(),
+		})
 	}
 
-	// Build response shape
+	// Build response dengan struktur yang clean
 	type paramResp struct {
-		IDHasilLab uint    `json:"id_hasil_lab"`
-		NilaiHasil float64 `json:"nilai_hasil"`
-		RujukanMin float64 `json:"rujukan_min"`
-		RujukanMax float64 `json:"rujukan_max"`
-		Parameter  struct {
-			NamaParameter string `json:"nama_parameter"`
-			Satuan        string `json:"satuan"`
-			Kategori      string `json:"kategori"`
-		} `json:"parameter"`
+		IDHasilLab      uint    `json:"id_hasil_lab"`
+		NilaiHasil      float64 `json:"nilai_hasil"`
+		NilaiBatasBawah float64 `json:"nilai_batas_bawah"`
+		NilaiBatasAtas  float64 `json:"nilai_batas_atas"`
+		NamaParameter   string  `json:"nama_parameter"`
+		Satuan          string  `json:"satuan"`
+		Kategori        string  `json:"kategori"`
 	}
 
 	var hasilList []paramResp
 	for _, h := range laporan.HasilLab {
 		pr := paramResp{
-			IDHasilLab: h.IDHasilLab,
-			NilaiHasil: h.NilaiHasil,
-			RujukanMin: h.RujukanMin,
-			RujukanMax: h.RujukanMax,
+			IDHasilLab:      h.IDHasilLab,
+			NilaiHasil:      h.NilaiHasil,
+			NilaiBatasBawah: h.NilaiBatasBawah,
+			NilaiBatasAtas:  h.NilaiBatasAtas,
 		}
 		if h.Parameter != nil {
-			pr.Parameter.NamaParameter = h.Parameter.NamaParameter
-			pr.Parameter.Satuan = h.Parameter.Satuan
-			pr.Parameter.Kategori = h.Parameter.Kategori
+			pr.NamaParameter = h.Parameter.NamaParameter
+			pr.Satuan = h.Parameter.Satuan
+			pr.Kategori = h.Parameter.Kategori
 		}
 		hasilList = append(hasilList, pr)
+	}
+
+	// Jika tidak ada hasil, kembalikan array kosong
+	if hasilList == nil {
+		hasilList = []paramResp{}
 	}
 
 	respData := map[string]interface{}{
@@ -219,33 +285,54 @@ func (ctrl *hasilLabController) GetByUserAndDate(c echo.Context) error {
 }
 
 func (ctrl *hasilLabController) GetAll(c echo.Context) error {
-	hasilLab, err := ctrl.usecase.GetAllHasilLab()
+	hasilLabList, err := ctrl.usecase.GetAllHasilLab()
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	// Jika tidak ada hasil, kembalikan array kosong
+	if hasilLabList == nil {
+		hasilLabList = []models.HasilLab{}
 	}
 
 	return c.JSON(http.StatusOK, models.Response{
 		StatusCode: http.StatusOK,
 		Message:    "Daftar semua hasil lab",
-		Data:       hasilLab,
+		Data:       hasilLabList,
 	})
 }
 
 func (ctrl *hasilLabController) Update(c echo.Context) error {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ID tidak valid"})
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "ID tidak valid",
+		})
 	}
 
 	var input models.UpdateHasilLabRequest
 
 	if err := c.Bind(&input); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": constants.MSG_INVALID_PAYLOAD})
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error":  constants.MSG_INVALID_PAYLOAD,
+			"detail": err.Error(),
+		})
+	}
+
+	// Validasi minimal ada field yang diupdate
+	if input.NilaiHasil == 0 && input.NilaiBatasBawah == 0 && input.NilaiBatasAtas == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Minimal satu field harus diisi untuk update",
+		})
 	}
 
 	hasilLab, err := ctrl.usecase.UpdateHasilLab(uint(id), input)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
 	}
 
 	return c.JSON(http.StatusOK, models.Response{
@@ -258,12 +345,15 @@ func (ctrl *hasilLabController) Update(c echo.Context) error {
 func (ctrl *hasilLabController) Delete(c echo.Context) error {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ID tidak valid"})
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "ID tidak valid",
+		})
 	}
 
-	err = ctrl.usecase.DeleteHasilLab(uint(id))
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	if err := ctrl.usecase.DeleteHasilLab(uint(id)); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
 	}
 
 	return c.JSON(http.StatusOK, models.BasicResponse{
