@@ -44,16 +44,19 @@ func (r *hasilLabRepository) GetByLaporanLabID(laporanLabID uint) ([]models.Hasi
 
 func (r *hasilLabRepository) GetByRiwayatID(riwayatID uint) ([]models.HasilLab, error) {
 	var hasilLab []models.HasilLab
-	err := r.db.Where("id_riwayat = ?", riwayatID).Preload("Parameter").Order("created_at DESC").Find(&hasilLab).Error
+	// ✅ PERBAIKAN: Join LaporanLab untuk mencari id_riwayat
+	err := r.db.Joins("JOIN laporan_lab ON hasil_lab.id_laporan_lab = laporan_lab.id_laporan_lab").
+		Where("laporan_lab.id_riwayat = ?", riwayatID).
+		Preload("Parameter").Order("hasil_lab.created_at DESC").Find(&hasilLab).Error
 	return hasilLab, err
 }
 
 func (r *hasilLabRepository) GetByRiwayatIDAndDate(riwayatID uint, date string) ([]models.HasilLab, error) {
 	var hasilLab []models.HasilLab
-	// join laporan_lab to filter by tgl_periksa (date)
+	// ✅ PERBAIKAN: Join LaporanLab
 	err := r.db.Joins("JOIN laporan_lab ON hasil_lab.id_laporan_lab = laporan_lab.id_laporan_lab").
-		Where("hasil_lab.id_riwayat = ? AND laporan_lab.tgl_periksa = ?", riwayatID, date).
-		Preload("Parameter").Order("created_at DESC").Find(&hasilLab).Error
+		Where("laporan_lab.id_riwayat = ? AND laporan_lab.tgl_periksa = ?", riwayatID, date).
+		Preload("Parameter").Order("hasil_lab.created_at DESC").Find(&hasilLab).Error
 	return hasilLab, err
 }
 

@@ -30,16 +30,21 @@ func (r *riwayatRepository) Create(riwayat models.Riwayat) (models.Riwayat, erro
 
 func (r *riwayatRepository) GetByID(id uint) (models.Riwayat, error) {
 	var riwayat models.Riwayat
-	err := r.db.Preload("Wearable").Preload("HasilLab").Preload("HasilAI").First(&riwayat, id).Error
+	// ✅ PERBAIKAN: Mengganti HasilLab dan HasilAI menjadi relasi ERD terbaru
+	err := r.db.
+		Preload("Wearable").
+		Preload("LaporanLab").
+		Preload("USGTiroid").
+		First(&riwayat, id).Error
 	return riwayat, err
 }
 
 func (r *riwayatRepository) GetByUserID(userID uint) ([]models.Riwayat, error) {
 	var riwayat []models.Riwayat
 	err := r.db.Where("id_user = ?", userID).
-		Preload("Wearable").
-		Preload("HasilLab").
-		Preload("HasilAI").
+		Preload("Wearable").     // Menarik data smartwatch
+		Preload("LaporanLab").   // Menarik data Laporan Lab
+		Preload("USGTiroid").    // Menarik data USG
 		Order("tanggal DESC").
 		Find(&riwayat).Error
 	return riwayat, err
@@ -47,7 +52,11 @@ func (r *riwayatRepository) GetByUserID(userID uint) ([]models.Riwayat, error) {
 
 func (r *riwayatRepository) GetAll() ([]models.Riwayat, error) {
 	var riwayat []models.Riwayat
-	err := r.db.Preload("Wearable").Preload("HasilLab").Preload("HasilAI").Find(&riwayat).Error
+	err := r.db.
+		Preload("Wearable").
+		Preload("LaporanLab").
+		Preload("USGTiroid").
+		Find(&riwayat).Error
 	return riwayat, err
 }
 

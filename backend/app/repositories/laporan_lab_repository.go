@@ -31,23 +31,28 @@ func (r *laporanLabRepository) Create(laporan models.LaporanLab) (models.Laporan
 
 func (r *laporanLabRepository) GetByID(id uint) (models.LaporanLab, error) {
 	var laporan models.LaporanLab
-	err := r.db.Preload("HasilLab.Parameter").First(&laporan, id).Error
+	// ✅ Tambahan Preload AI agar lengkap
+	err := r.db.Preload("HasilLab.Parameter").Preload("HasilAILab").Preload("HasilAITren").First(&laporan, id).Error
 	return laporan, err
 }
 
 func (r *laporanLabRepository) GetByUserID(userID uint) ([]models.LaporanLab, error) {
 	var laporan []models.LaporanLab
-	err := r.db.Where("id_user = ?", userID).
-		Preload("HasilLab.Parameter").
-		Order("tgl_periksa DESC").
+	// ✅ PERBAIKAN: Join dengan Riwayat untuk mendapatkan id_user
+	err := r.db.Joins("JOIN riwayat ON riwayat.id_riwayat = laporan_lab.id_riwayat").
+		Where("riwayat.id_user = ?", userID).
+		Preload("HasilLab.Parameter").Preload("HasilAILab").Preload("HasilAITren").
+		Order("laporan_lab.tgl_periksa DESC").
 		Find(&laporan).Error
 	return laporan, err
 }
 
 func (r *laporanLabRepository) GetByUserIDAndDate(userID uint, date string) (models.LaporanLab, error) {
 	var laporan models.LaporanLab
-	err := r.db.Where("id_user = ? AND DATE(tgl_periksa) = ?", userID, date).
-		Preload("HasilLab.Parameter").
+	// ✅ PERBAIKAN: Join dengan Riwayat
+	err := r.db.Joins("JOIN riwayat ON riwayat.id_riwayat = laporan_lab.id_riwayat").
+		Where("riwayat.id_user = ? AND DATE(laporan_lab.tgl_periksa) = ?", userID, date).
+		Preload("HasilLab.Parameter").Preload("HasilAILab").Preload("HasilAITren").
 		First(&laporan).Error
 	return laporan, err
 }
