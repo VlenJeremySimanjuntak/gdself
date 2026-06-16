@@ -15,6 +15,10 @@ const (
 	FT4_MAX float64 = 15.0
 	TSH_MIN float64 = 0.4
 	TSH_MAX float64 = 4.0
+	
+	// ✅ BARU: Batas rujukan klinis untuk TRAb (Normal/Negatif biasanya < 1.75 IU/L)
+	TRAB_MIN float64 = 0.0
+	TRAB_MAX float64 = 1.75
 )
 
 const (

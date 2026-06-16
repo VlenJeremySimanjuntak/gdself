@@ -39,16 +39,25 @@ func (ctrl *wearableController) Create(c echo.Context) error {
 		})
 	}
 
+	// Validasi field wajib
 	if input.IDUser == 0 {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id_user harus diisi"})
 	}
 
-	wearable := models.WearableRecord{
+	if input.HeartRateHr == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "heart_rate_hr harus diisi"})
+	}
+
+	if input.SleepDuration == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "sleep_duration harus diisi"})
+	}
+
+	// Mapping ke model Wearable sesuai struktur terbaru
+	wearable := models.Wearable{
 		IDRiwayat:     input.IDRiwayat,
 		TglData:       input.TglData,
 		WaktuData:     input.WaktuData,
-		HeartRateRHR:  input.HeartRateRHR,
-		StressScore:   input.StressScore,
+		HeartRateHr:   input.HeartRateHr,
 		SleepDuration: input.SleepDuration,
 	}
 
@@ -88,15 +97,15 @@ func (ctrl *wearableController) GetByRiwayatID(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "riwayat_id tidak valid"})
 	}
 
-	wearable, err := ctrl.usecase.GetWearableByRiwayatID(uint(riwayatID))
+	wearables, err := ctrl.usecase.GetWearableByRiwayatID(uint(riwayatID))
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, models.Response{
 		StatusCode: http.StatusOK,
-		Message:    "Daftar data wearable riwayat",
-		Data:       wearable,
+		Message:    "Daftar data wearable berdasarkan riwayat",
+		Data:       wearables,
 	})
 }
 
@@ -106,20 +115,20 @@ func (ctrl *wearableController) GetByUserID(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "user_id tidak valid"})
 	}
 
-	wearable, err := ctrl.usecase.GetWearableByUserID(uint(userID))
+	wearables, err := ctrl.usecase.GetWearableByUserID(uint(userID))
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, models.Response{
 		StatusCode: http.StatusOK,
-		Message:    "Daftar data wearable user",
-		Data:       wearable,
+		Message:    "Daftar data wearable berdasarkan user",
+		Data:       wearables,
 	})
 }
 
 func (ctrl *wearableController) GetAll(c echo.Context) error {
-	wearable, err := ctrl.usecase.GetAllWearable()
+	wearables, err := ctrl.usecase.GetAllWearable()
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -127,7 +136,7 @@ func (ctrl *wearableController) GetAll(c echo.Context) error {
 	return c.JSON(http.StatusOK, models.Response{
 		StatusCode: http.StatusOK,
 		Message:    "Daftar semua data wearable",
-		Data:       wearable,
+		Data:       wearables,
 	})
 }
 
@@ -143,6 +152,13 @@ func (ctrl *wearableController) Update(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
 			"error":  constants.MSG_INVALID_PAYLOAD,
 			"detail": err.Error(),
+		})
+	}
+
+	// Validasi minimal ada satu field yang diupdate
+	if input.TglData == nil && input.WaktuData == nil && input.HeartRateHr == 0 && input.SleepDuration == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Minimal satu field harus diisi untuk update",
 		})
 	}
 
@@ -164,8 +180,7 @@ func (ctrl *wearableController) Delete(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ID tidak valid"})
 	}
 
-	err = ctrl.usecase.DeleteWearable(uint(id))
-	if err != nil {
+	if err := ctrl.usecase.DeleteWearable(uint(id)); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 

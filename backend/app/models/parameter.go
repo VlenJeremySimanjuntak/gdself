@@ -18,8 +18,11 @@ func (Parameter) TableName() string {
 
 // DTO Parameter (opsional jika Mas butuh untuk Create/Update dari admin)
 type CreateParameterRequest struct {
-	NamaParameter string `json:"nama_parameter" binding:"required"`
-	Satuan        string `json:"satuan"`
-	Kategori      string `json:"kategori"`
-	TipeRujukan   string `json:"tipe_rujukan"`
+	NamaParameter   string  `json:"nama_parameter" binding:"required"`
+	Satuan          string  `json:"satuan"`
+	Kategori        string  `json:"kategori"`
+	Nilai           float64 `json:"nilai,omitempty"`
+	NilaiHasil      float64 `json:"nilai_hasil,omitempty"`
+	NilaiBatasBawah float64 `json:"nilai_batas_bawah,omitempty"` // ✅ Tambahan baru
+	NilaiBatasAtas  float64 `json:"nilai_batas_atas,omitempty"`  // ✅ Tambahan baru
 }

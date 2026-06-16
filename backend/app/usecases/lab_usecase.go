@@ -18,43 +18,48 @@ type LabUsecase interface {
 }
 
 type labUsecase struct {
-	repo           repositories.LabRepository
-	repoParameter  repositories.ParameterRepository
-	usecaseHasilAI HasilAIUsecase
+	repo          repositories.LabRepository
+	repoParameter repositories.ParameterRepository
+	hasilAILab    HasilAILabUsecase
+	hasilAITren   HasilAITrenUsecase
 }
 
-func NewLabUsecase(r repositories.LabRepository, repoParam repositories.ParameterRepository, usecase ...HasilAIUsecase) LabUsecase {
-	var usecaseAI HasilAIUsecase
-	if len(usecase) > 0 {
-		usecaseAI = usecase[0]
+func NewLabUsecase(
+	r repositories.LabRepository,
+	repoParam repositories.ParameterRepository,
+	hasilAILab HasilAILabUsecase,
+	hasilAITren HasilAITrenUsecase,
+) LabUsecase {
+	return &labUsecase{
+		repo:          r,
+		repoParameter: repoParam,
+		hasilAILab:    hasilAILab,
+		hasilAITren:   hasilAITren,
 	}
-	return &labUsecase{repo: r, repoParameter: repoParam, usecaseHasilAI: usecaseAI}
 }
 
 func (u *labUsecase) SaveLabResult(input models.CreateHasilLabRequest) (models.HasilLab, error) {
-	idLaporan := input.IDLaporanLab
-	if idLaporan == 0 {
-		idLaporan = input.IDReport
-	}
-	if idLaporan == 0 || input.IDRiwayat == 0 {
+	if (input.IDLaporanLab == 0 && input.IDReport == 0) || input.IDRiwayat == 0 {
 		return models.HasilLab{}, fmt.Errorf("id_laporan_lab dan id_riwayat wajib diisi")
 	}
 	if len(input.Parameters) == 0 {
 		return models.HasilLab{}, fmt.Errorf("minimal 1 parameter harus diisi")
 	}
-	if u.repoParameter == nil {
-		return models.HasilLab{}, fmt.Errorf("parameter repository belum dikonfigurasi")
+
+	idLaporan := input.IDLaporanLab
+	if idLaporan == 0 {
+		idLaporan = input.IDReport
 	}
 
 	paramReq := input.Parameters[0]
-	paramName := strings.TrimSpace(paramReq.NamaParameter)
+	paramName := strings.TrimSpace(paramReq.NamaParameter) // ✅ Menggunakan strings (Menghapus UnusedImport)
 	if paramName == "" {
 		return models.HasilLab{}, fmt.Errorf("nama_parameter tidak boleh kosong")
 	}
 
 	masterParam, err := u.repoParameter.GetByNamaParameter(paramName)
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if err == gorm.ErrRecordNotFound { // ✅ Menggunakan gorm (Menghapus UnusedImport)
 			masterParam, err = u.repoParameter.Create(models.Parameter{
 				NamaParameter: strings.ToUpper(paramName),
 				Satuan:        paramReq.Satuan,
@@ -69,15 +74,14 @@ func (u *labUsecase) SaveLabResult(input models.CreateHasilLabRequest) (models.H
 	}
 
 	hasilLab := models.HasilLab{
-		IDLaporanLab: idLaporan,
-		IDRiwayat:    input.IDRiwayat,
-		IDParameter:  masterParam.IDParameter,
-		NilaiHasil:   paramReq.Nilai,
-		RujukanMin:   input.RujukanMin,
-		RujukanMax:   input.RujukanMax,
+		IDLaporanLab:    idLaporan,
+		IDRiwayat:       input.IDRiwayat,
+		IDParameter:     masterParam.IDParameter,
+		NilaiHasil:      paramReq.NilaiHasil,
+		NilaiBatasBawah: paramReq.NilaiBatasBawah,
+		NilaiBatasAtas:  paramReq.NilaiBatasAtas,
 	}
 
-	// Simpan ke database
 	return u.repo.Create(hasilLab)
 }
 
@@ -87,4 +91,35 @@ func (u *labUsecase) GetAllLabResults() ([]models.HasilLab, error) {
 
 func (u *labUsecase) GetLabResultsByUserID(userID uint) ([]models.HasilLab, error) {
 	return u.repo.GetByUserID(userID)
+}
+
+func (u *labUsecase) Assess(input models.AssessmentInput) (models.AssessmentResult, error) {
+	var res models.AssessmentResult
+
+	// 1. Panggil rule-based logic dari lab_rules.go
+	aiLabResult := AnalyzeLabResults(input.Lab.Parameters)
+
+	// 2. Simpan Hasil AI Lab ke database dengan penamaan field PascalCase sesuai model Anda
+	if u.hasilAILab != nil && input.Lab.IDLaporanLab != 0 {
+		_, err := u.hasilAILab.CreateHasilAILab(models.HasilAILab{
+			IDLaporanLab: input.Lab.IDLaporanLab,
+			
+			// ✅ Sesuai dengan struct HasilAILab milik Anda (StatusTsh, ReminderTsh, dll.)
+			StatusTsh:    aiLabResult.StatusTSH,
+			ReminderTsh:  aiLabResult.ReminderTSH,
+			StatusFt3:    aiLabResult.StatusFT3,
+			ReminderFt3:  aiLabResult.ReminderFT3,
+			StatusFt4:    aiLabResult.StatusFT4,
+			ReminderFt4:  aiLabResult.ReminderFT4,
+			StatusTrab:   aiLabResult.StatusTRAb,
+			ReminderTrab: aiLabResult.ReminderTRAb,
+			Interpretasi: aiLabResult.Interpretasi,
+		})
+		if err != nil {
+			fmt.Printf("Warning: failed to save AI Lab assessment result: %v\n", err)
+		}
+	}
+
+	res.Interpretation = aiLabResult.Interpretasi
+	return res, nil
 }
