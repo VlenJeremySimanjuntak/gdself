@@ -10,12 +10,13 @@ type User struct {
 	TglLahir        *CustomDate `json:"tgl_lahir" gorm:"column:tgl_lahir;type:date"`
 	JenisKelamin    string      `json:"jenis_kelamin" gorm:"column:jenis_kelamin;type:enum('L','P')"`
 	TglTerdiagnosis *CustomDate `json:"tgl_terdiagnosis" gorm:"column:tgl_terdiagnosis;type:date"`
+	FotoProfil      string      `json:"foto_profil" gorm:"column:foto_profil;type:varchar(255)"` // ✅ BARU: Tambah Foto Profil
 	UpdateAt        time.Time   `json:"update_at" gorm:"column:update_at;autoUpdateTime:milli"`
 
 	// Relationships
-	Riwayat    []Riwayat    `json:"riwayat,omitempty" gorm:"foreignKey:IDUser;references:IDUser;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	LaporanLab []LaporanLab `json:"laporan_lab,omitempty" gorm:"foreignKey:IDUser;references:IDUser;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	Obat       []Obat       `json:"obat,omitempty" gorm:"foreignKey:IDUser;references:IDUser;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	Riwayat []Riwayat `json:"riwayat,omitempty" gorm:"foreignKey:IDUser;references:IDUser;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	Obat    []Obat    `json:"obat,omitempty" gorm:"foreignKey:IDUser;references:IDUser;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	// ❌ HAPUS: LaporanLab sudah tidak di sini, pindah ke tabel Riwayat
 }
 
 func (User) TableName() string {
@@ -60,6 +61,7 @@ type UserLoginData struct {
 	TglLahir        *CustomDate `json:"tgl_lahir"`
 	JenisKelamin    string      `json:"jenis_kelamin"`
 	TglTerdiagnosis *CustomDate `json:"tgl_terdiagnosis"`
+	FotoProfil      string      `json:"foto_profil"` // ✅ BARU: Tambah Foto Profil di Response API
 	UpdateAt        time.Time   `json:"update_at"`
 }
 

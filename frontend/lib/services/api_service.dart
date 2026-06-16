@@ -23,7 +23,7 @@ class ApiService {
       // Production        : https://api.domain.com/api
       // Flatter           : 10.237.131.129
       // HW Mahasiswa      : 172.27.65.129
-      baseUrl: 'http://172.29.192.1:3000/api',
+      baseUrl: 'http://172.27.1.54:3000/api',
       connectTimeout: const Duration(seconds: 40),
       receiveTimeout: const Duration(seconds: 40),
       headers: {

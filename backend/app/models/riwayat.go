@@ -6,11 +6,10 @@ type Riwayat struct {
 	Tanggal   *CustomDate `json:"tanggal" gorm:"column:tanggal;type:date"`
 
 	// Relationships
-	User            *User             `json:"user,omitempty" gorm:"foreignKey:IDUser;references:IDUser;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	Wearable        []WearableRecord  `json:"wearable,omitempty" gorm:"foreignKey:IDRiwayat;references:IDRiwayat;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	LaporanLab      []LaporanLab      `json:"laporan_lab,omitempty" gorm:"foreignKey:IDRiwayat;references:IDRiwayat;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	HasilAIHarian   []HasilAIHarian   `json:"hasil_ai_harian,omitempty" gorm:"foreignKey:IDRiwayat;references:IDRiwayat;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	HasilAIGabungan []HasilAIGabungan `json:"hasil_ai_gabungan,omitempty" gorm:"foreignKey:IDRiwayat;references:IDRiwayat;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	User       *User        `json:"user,omitempty" gorm:"foreignKey:IDUser;references:IDUser;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	Wearable   []Wearable   `json:"wearable,omitempty" gorm:"foreignKey:IDRiwayat;references:IDRiwayat;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	LaporanLab []LaporanLab `json:"laporan_lab,omitempty" gorm:"foreignKey:IDRiwayat;references:IDRiwayat;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	USGTiroid  []USGTiroid  `json:"usg_tiroid,omitempty" gorm:"foreignKey:IDRiwayat;references:IDRiwayat;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"` // ✅ BARU: Tambahan relasi ke USG Tiroid
 }
 
 func (Riwayat) TableName() string {

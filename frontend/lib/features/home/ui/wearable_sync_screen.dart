@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../home/providers/user_provider.dart';
@@ -320,75 +321,88 @@ class _WearableSyncScreenState extends ConsumerState<WearableSyncScreen> {
                   const SizedBox(height: 34),
 
                   // LAYOUT LIST UTAMA PIHAK KETIGA
+                  // LAYOUT LIST UTAMA PIHAK KETIGA (DINAMIS SESUAI OS)
                   Expanded(
                     child: ListView(
                       physics: const BouncingScrollPhysics(),
                       children: [
-                        // 1. HEALTH CONNECT
-                        _buildThirdPartyItem(
-                          icon: Icons.apps_outage_rounded,
-                          iconColor: Colors.blueAccent,
-                          title: 'Health Connect',
-                          subtitle: 'Koneksi universal untuk ekosistem Android',
-                          onTap: () {
-                            _showIzinDialog(context, 'Health Connect', () async {
-                              setState(() => _isLoading = true);
-                              final userId = ref.read(userProvider).user?.idUser;
-                              if (userId != null) {
-                                final bool success = await ref
-                                    .read(wearableProvider.notifier)
-                                    .syncRealWearableData(userId);
-                                if (mounted) _handleSyncResult(success);
-                              } else {
-                                if (mounted) _handleSyncResult(false);
-                              }
-                            });
-                          },
-                        ),
 
-                        // 2. SAMSUNG HEALTH
-                        _buildThirdPartyItem(
-                          icon: Icons.watch_rounded,
-                          iconColor: Colors.teal,
-                          title: 'Samsung Health',
-                          subtitle: 'Koneksi native khusus untuk Galaxy Watch',
-                          onTap: () {
-                            _showIzinDialog(context, 'Samsung Health', () async {
-                              setState(() => _isLoading = true);
-                              final userId = ref.read(userProvider).user?.idUser;
-                              if (userId != null) {
-                                final bool success = await ref
-                                    .read(wearableProvider.notifier)
-                                    .syncSamsungHealthData(userId);
-                                if (mounted) _handleSyncResult(success);
-                              } else {
-                                if (mounted) _handleSyncResult(false);
-                              }
-                            });
-                          },
-                        ),
+                        // ==========================================
+                        // TAMPILAN KHUSUS PENGGUNA APPLE (iOS)
+                        // ==========================================
+                        if (Platform.isIOS) ...[
+                          _buildThirdPartyItem(
+                            icon: Icons.favorite_rounded, // Pakai icon heart Apple
+                            iconColor: Colors.pinkAccent,
+                            title: 'Apple Health',
+                            subtitle: 'Koneksi native untuk ekosistem iOS & Apple Watch',
+                            onTap: () {
+                              _showIzinDialog(context, 'Apple Health', () async {
+                                setState(() => _isLoading = true);
+                                final userId = ref.read(userProvider).user?.idUser;
+                                if (userId != null) {
+                                  // syncRealWearableData otomatis memanggil HealthKit di iOS
+                                  final bool success = await ref
+                                      .read(wearableProvider.notifier)
+                                      .syncRealWearableData(userId);
+                                  if (mounted) _handleSyncResult(success);
+                                } else {
+                                  if (mounted) _handleSyncResult(false);
+                                }
+                              });
+                            },
+                          ),
+                        ],
 
-                        // 3. HUAWEI HEALTH
-                        _buildThirdPartyItem(
-                          icon: Icons.donut_large_rounded,
-                          iconColor: Colors.redAccent,
-                          title: 'Huawei Health',
-                          subtitle: 'Koneksi native khusus ekosistem HMS/Huawei',
-                          onTap: () {
-                            _showIzinDialog(context, 'Huawei Health', () async {
-                              setState(() => _isLoading = true);
-                              final userId = ref.read(userProvider).user?.idUser;
-                              if (userId != null) {
-                                final bool success = await ref
-                                    .read(wearableProvider.notifier)
-                                    .syncHuaweiHealthData(userId);
-                                if (mounted) _handleSyncResult(success);
-                              } else {
-                                if (mounted) _handleSyncResult(false);
-                              }
-                            });
-                          },
-                        ),
+                        // ==========================================
+                        // TAMPILAN KHUSUS PENGGUNA ANDROID
+                        // ==========================================
+                        if (Platform.isAndroid) ...[
+                          // 1. HEALTH CONNECT (Universal Android & Samsung)
+                          _buildThirdPartyItem(
+                            icon: Icons.apps_outage_rounded,
+                            iconColor: Colors.blueAccent,
+                            title: 'Health Connect',
+                            subtitle: 'Koneksi universal untuk Android (termasuk Samsung Health)',
+                            onTap: () {
+                              _showIzinDialog(context, 'Health Connect', () async {
+                                setState(() => _isLoading = true);
+                                final userId = ref.read(userProvider).user?.idUser;
+                                if (userId != null) {
+                                  // syncRealWearableData otomatis memanggil Health Connect di Android
+                                  final bool success = await ref
+                                      .read(wearableProvider.notifier)
+                                      .syncRealWearableData(userId);
+                                  if (mounted) _handleSyncResult(success);
+                                } else {
+                                  if (mounted) _handleSyncResult(false);
+                                }
+                              });
+                            },
+                          ),
+
+                          // 2. HUAWEI HEALTH (Hanya tampil di Android, karena HMS)
+                          _buildThirdPartyItem(
+                            icon: Icons.donut_large_rounded,
+                            iconColor: Colors.redAccent,
+                            title: 'Huawei Health',
+                            subtitle: 'Koneksi native khusus ekosistem HMS/Huawei',
+                            onTap: () {
+                              _showIzinDialog(context, 'Huawei Health', () async {
+                                setState(() => _isLoading = true);
+                                final userId = ref.read(userProvider).user?.idUser;
+                                if (userId != null) {
+                                  final bool success = await ref
+                                      .read(wearableProvider.notifier)
+                                      .syncHuaweiHealthData(userId);
+                                  if (mounted) _handleSyncResult(success);
+                                } else {
+                                  if (mounted) _handleSyncResult(false);
+                                }
+                              });
+                            },
+                          ),
+                        ],
                       ],
                     ),
                   ),
