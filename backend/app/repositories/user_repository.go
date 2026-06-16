@@ -30,7 +30,8 @@ func (r *userRepository) Create(user models.User) (models.User, error) {
 
 func (r *userRepository) GetByID(id uint) (models.User, error) {
 	var user models.User
-	err := r.db.Preload("Riwayat").Preload("LaporanLab").Preload("Obat").First(&user, id).Error
+	// LaporanLab dihapus dari Preload karena di ERD baru sudah pindah ke Riwayat
+	err := r.db.Preload("Riwayat").Preload("Obat").First(&user, id).Error
 	return user, err
 }
 
@@ -42,7 +43,8 @@ func (r *userRepository) GetByEmail(email string) (models.User, error) {
 
 func (r *userRepository) GetAll() ([]models.User, error) {
 	var users []models.User
-	err := r.db.Preload("Riwayat").Preload("LaporanLab").Preload("Obat").Find(&users).Error
+	// LaporanLab dihapus dari Preload karena di ERD baru sudah pindah ke Riwayat
+	err := r.db.Preload("Riwayat").Preload("Obat").Find(&users).Error
 	return users, err
 }
 

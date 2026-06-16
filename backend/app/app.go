@@ -17,8 +17,8 @@ import (
 )
 
 type Main struct {
-	cfg      *config.Config
-	database struct {
+	cfg        *config.Config
+	database   struct {
 		MySQL *gorm.DB
 	}
 	repo       *repositories.Main
@@ -55,7 +55,7 @@ func (m *Main) Init() error {
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORS())
 
-	// MySQL
+	// MySQL Configuration
 	mysqlCfg := m.cfg.Database.MySQL.Read
 	if mysqlCfg.Username == "" || mysqlCfg.URL == "" {
 		fmt.Println("[ERROR] MySQL config incomplete")
@@ -77,6 +77,8 @@ func (m *Main) Init() error {
 	}
 
 	fmt.Printf("[INFO] Connecting MySQL with args: %+v\n", args)
+	
+	// 1. Membuka Koneksi ke MySQL
 	m.database.MySQL, err = database.GetConnection(args)
 	if err != nil {
 		fmt.Printf("[ERROR] Failed to connect MySQL: %v\n", err)
@@ -84,50 +86,27 @@ func (m *Main) Init() error {
 	}
 	fmt.Println("[INFO] MySQL connection established")
 
-	// AutoMigrate dengan urutan yang benar berdasarkan foreign key dependencies
-	if err := m.database.MySQL.AutoMigrate(
-		// 1. Base entities tanpa FK (utama)
-		&models.User{},
+	// 2. Menjalankan Auto Migrate & Seeding dari folder models
+	// (Blok panjang AutoMigrate lama diganti jadi 1 baris ini)
+	models.SetupDatabase(m.database.MySQL)
 
-		// 2. Entities dengan FK ke User
-		&models.LaporanLab{},
-		&models.Obat{},
-		&models.Riwayat{},
-		&models.Parameter{}, // Master parameter (FK target for HasilLab)
-
-		// 3. Entities dengan FK ke entities lain
-		&models.WearableRecord{}, // FK: Riwayat
-		&models.HasilLab{},       // FK: LaporanLab, Parameter
-		&models.JadwalObat{},     // FK: Obat
-
-		// 4. HasilAI (tergantung entitas lain)
-		&models.HasilAIHarian{},   // FK: Riwayat, Wearable
-		&models.HasilAIGabungan{}, // FK: HasilLab, Riwayat, Wearable
-	); err != nil {
-		fmt.Printf("[ERROR] Failed to migrate database schema: %v\n", err)
-		return err
-	}
-	fmt.Println("[INFO] Database schema migrated")
-
-	// Note: previous attempts to DROP non-existent foreign keys produced
-	// noisy warnings during startup. These explicit DROP statements were
-	// removed because migrations are managed via SQL migration files.
-
-	// Repos, usecase, controller
+	// 3. Inisialisasi Repos, Usecase, dan Controller
 	m.repo = repositories.Init(repositories.Options{
 		Config: m.cfg,
 		DB:     m.database.MySQL,
 	})
+	
 	m.usecase = usecases.Init(usecases.Options{
 		Config:     m.cfg,
 		Repository: m.repo,
 	})
+	
 	m.controller = controllers.Init(controllers.Options{
 		Config:   m.cfg,
 		UseCases: m.usecase,
 	})
 
-	// Router
+	// 4. Inisialisasi Router Echo
 	m.router = e
 	routes.ConfigureRouter(e, m.controller)
 	fmt.Println("[INFO] Router configured")
