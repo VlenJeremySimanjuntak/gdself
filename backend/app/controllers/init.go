@@ -15,7 +15,9 @@ type Main struct {
 	HasilLab    HasilLabController
 	HasilAI     HasilAIController
 	JadwalObat  JadwalObatController
-	Lab         LabController // Untuk backward compatibility dengan lab operations
+	LogKonsumsi LogKonsumsiController 
+	Lab         LabController
+	USGTiroid   USGTiroidController
 }
 
 type Options struct {
@@ -29,7 +31,6 @@ func Init(opts Options) *Main {
 		Riwayat:    NewRiwayatController(opts.UseCases.Riwayat),
 		LaporanLab: NewLaporanLabController(opts.UseCases.LaporanLab),
 		
-		// ✅ MonitoringController menerima 2 usecase
 		Monitoring: NewMonitoringController(
 			opts.UseCases.LaporanLab,
 			opts.UseCases.Lab,
@@ -39,11 +40,6 @@ func Init(opts Options) *Main {
 		Wearable: NewWearableController(opts.UseCases.Wearable),
 		HasilLab: NewHasilLabController(opts.UseCases.HasilLab),
 		
-		// ✅ PERBAIKAN: HasilAIController sekarang menerima 4 usecase
-		// - HasilAIHarian untuk AI dari wearable
-		// - HasilAILab untuk AI dari laporan lab
-		// - HasilAITren untuk AI tren
-		// - Lab untuk memproses assessment
 		HasilAI: NewHasilAIController(
 			opts.UseCases.HasilAIHarian,
 			opts.UseCases.HasilAILab,
@@ -52,6 +48,8 @@ func Init(opts Options) *Main {
 		),
 		
 		JadwalObat: NewJadwalObatController(opts.UseCases.JadwalObat),
-		Lab:        NewLabController(opts.UseCases.Lab), // Untuk backward compatibility
+		LogKonsumsi: NewLogKonsumsiController(opts.UseCases.LogKonsumsi),
+		Lab:        NewLabController(opts.UseCases.Lab),
+		USGTiroid:  NewUSGTiroidController(opts.UseCases.UsgTiroid),
 	}
 }

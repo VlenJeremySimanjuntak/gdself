@@ -18,6 +18,7 @@ type Main struct {
 	HasilLab   HasilLabRepository
 	Parameter  ParameterRepository
 	JadwalObat JadwalObatRepository
+	LogKonsumsi LogKonsumsiRepository
 	Lab        LabRepository // Untuk backward compatibility dengan lab operations
 
 	// ✅ BARU: Repository AI yang sudah dipecah dan USG Tiroid
@@ -44,6 +45,7 @@ func Init(opts Options) *Main {
 		HasilLab:   NewHasilLabRepository(opts.DB),
 		Parameter:  NewParameterRepository(opts.DB),
 		JadwalObat: NewJadwalObatRepository(opts.DB),
+		LogKonsumsi: NewLogKonsumsiRepository(opts.DB),
 		Lab:        NewLabRepository(opts.DB), // Untuk backward compatibility
 
 		// ✅ BARU: Inisialisasi instance repository baru

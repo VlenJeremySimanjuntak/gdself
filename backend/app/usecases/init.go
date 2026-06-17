@@ -13,6 +13,7 @@ type Main struct {
 	Wearable   WearableUsecase
 	HasilLab   HasilLabUsecase
 	JadwalObat JadwalObatUsecase
+	LogKonsumsi LogKonsumsiUsecase
 	Lab        LabUsecase // Untuk backward compatibility dengan lab operations
 
 	// ✅ BARU: Usecase AI yang sudah dipecah dan USG Tiroid
@@ -36,10 +37,13 @@ func Init(opts Options) *Main {
 	return &Main{
 		User:       NewUserUsecase(opts.Repository.User),
 		Riwayat:    NewRiwayatUsecase(opts.Repository.Riwayat),
-		LaporanLab: NewLaporanLabUsecase(opts.Repository.LaporanLab),
+		LaporanLab: NewLaporanLabUsecase(opts.Repository.LaporanLab, opts.Repository.Riwayat),
 		Obat:       NewObatUsecase(opts.Repository.Obat),
 		Wearable:   NewWearableUsecase(opts.Repository.Wearable),
 		JadwalObat: NewJadwalObatUsecase(opts.Repository.JadwalObat),
+		LogKonsumsi: NewLogKonsumsiUsecase(opts.Repository.LogKonsumsi),
+
+
 
 		// 2. Daftarkan Usecase baru ke dalam Main struct
 		HasilAIHarian: hasilAIHarian,

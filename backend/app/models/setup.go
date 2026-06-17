@@ -45,9 +45,10 @@ func seedParameter(db *gorm.DB) {
 		fmt.Println("Tabel parameter kosong. Menyuntikkan data acuan (Seeding)...")
 
 		defaultParams := []Parameter{
-			{NamaParameter: "FT3", Satuan: "pmol/L", Kategori: "Thyroid", TipeRujukan: "Standar"},
-			{NamaParameter: "FT4", Satuan: "pmol/L", Kategori: "Thyroid", TipeRujukan: "Standar"},
-			{NamaParameter: "TSH", Satuan: "mIU/L", Kategori: "Thyroid", TipeRujukan: "Standar"},
+			{NamaParameter: "FT3", Satuan: "pmol/L", Kategori: "Thyroid", TipeRujukan: "range"},
+			{NamaParameter: "FT4", Satuan: "pmol/L", Kategori: "Thyroid", TipeRujukan: "range"},
+			{NamaParameter: "TSH", Satuan: "mIU/L", Kategori: "Thyroid", TipeRujukan: "range"},
+			{NamaParameter: "TRAb", Satuan: "IU/L", Kategori: "Thyroid", TipeRujukan: "treshold"},
 		}
 
 		if err := db.Create(&defaultParams).Error; err != nil {

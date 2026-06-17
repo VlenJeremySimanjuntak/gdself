@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"monitoring-service/app/models"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -10,6 +11,7 @@ type RiwayatRepository interface {
 	Create(riwayat models.Riwayat) (models.Riwayat, error)
 	GetByID(id uint) (models.Riwayat, error)
 	GetByUserID(userID uint) ([]models.Riwayat, error)
+	GetByUserIDAndDate(userID uint, date models.CustomDate) (models.Riwayat, error)
 	GetAll() ([]models.Riwayat, error)
 	Update(id uint, riwayat models.Riwayat) (models.Riwayat, error)
 	Delete(id uint) error
@@ -25,6 +27,13 @@ func NewRiwayatRepository(db *gorm.DB) RiwayatRepository {
 
 func (r *riwayatRepository) Create(riwayat models.Riwayat) (models.Riwayat, error) {
 	err := r.db.Create(&riwayat).Error
+	return riwayat, err
+}
+
+func (r *riwayatRepository) GetByUserIDAndDate(userID uint, date models.CustomDate) (models.Riwayat, error) {
+	var riwayat models.Riwayat
+	err := r.db.Where("id_user = ? AND tanggal = ?", userID, time.Time(date).Format("2006-01-02")).
+		First(&riwayat).Error
 	return riwayat, err
 }
 

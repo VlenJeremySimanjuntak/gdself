@@ -1,14 +1,22 @@
 package models
 
 type AssessmentInput struct {
-	// Latest lab values (required when is_lab_day=true)
-	Lab HasilLab `json:"lab"`
-	// Previous lab (optional) — used to compute trend factor Y
-	PrevLab *HasilLab `json:"prev_lab,omitempty"`
-	// Wearable metrics to compute Z
-	Wearable WearableData `json:"wearable"`
-	// Whether this assessment is done on lab day
-	IsLabDay bool `json:"is_lab_day"`
+	Lab      AssessmentLabInput `json:"lab"`
+	PrevLab  *AssessmentLabInput `json:"prev_lab,omitempty"`
+	Wearable WearableData        `json:"wearable"`
+	IsLabDay bool                `json:"is_lab_day"`
+}
+
+type AssessmentLabInput struct {
+	IDLaporanLab uint                     `json:"id_laporan_lab"`
+	Parameters   []AssessmentParamInput   `json:"parameters"`
+}
+
+type AssessmentParamInput struct {
+	NamaParameter   string  `json:"nama_parameter"`
+	NilaiHasil      float64 `json:"nilai_hasil"`
+	NilaiBatasBawah float64 `json:"nilai_batas_bawah"`
+	NilaiBatasAtas  float64 `json:"nilai_batas_atas"`
 }
 
 type AssessmentResult struct {

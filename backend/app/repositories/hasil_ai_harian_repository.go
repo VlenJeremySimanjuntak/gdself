@@ -27,15 +27,20 @@ func (r *hasilAIHarianRepository) Create(harian models.HasilAIHarian) (models.Ha
 
 func (r *hasilAIHarianRepository) GetByID(id uint) (models.HasilAIHarian, error) {
 	var harian models.HasilAIHarian
-	err := r.db.Preload("Wearable").Preload("Riwayat").First(&harian, id).Error
+	err := r.db.Preload("Wearable").First(&harian, id).Error
 	return harian, err
 }
 
 func (r *hasilAIHarianRepository) GetByRiwayatID(riwayatID uint) ([]models.HasilAIHarian, error) {
 	var harian []models.HasilAIHarian
-	err := r.db.Where("id_riwayat = ?", riwayatID).Order("created_at DESC").Find(&harian).Error
+	err := r.db.
+		Joins("JOIN wearable ON wearable.id_wearable = hasil_ai_harian.id_wearable").
+		Where("wearable.id_riwayat = ?", riwayatID).
+		Order("hasil_ai_harian.created_at DESC").
+		Find(&harian).Error
 	return harian, err
 }
+
 
 func (r *hasilAIHarianRepository) GetByWearableID(wearableID uint) (models.HasilAIHarian, error) {
 	var harian models.HasilAIHarian

@@ -240,8 +240,10 @@ func (ctrl *hasilAIController) GetTrenByLaporanLabID(c echo.Context) error {
 
 	hasil, err := ctrl.trenUsecase.GetHasilAITrenByLaporanLabID(uint(laporanLabID))
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": err.Error(),
+		// Tren hanya ada kalau sudah pernah ada data sebelumnya (Mesin 3)
+		// Jadi not found adalah kondisi normal
+		return c.JSON(http.StatusNotFound, map[string]string{
+			"error": "data tren belum tersedia untuk laporan ini",
 		})
 	}
 

@@ -39,9 +39,9 @@ func (ctrl *laporanLabController) Create(c echo.Context) error {
 	}
 
 	// Validasi field wajib
-	if input.IDUser == 0 {
+	if input.IDUser == 0 && input.IDRiwayat == 0 {
 		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "id_user harus diisi",
+			"error": "id_user atau id_riwayat harus diisi",
 		})
 	}
 
@@ -59,7 +59,7 @@ func (ctrl *laporanLabController) Create(c echo.Context) error {
 		NamaLab:    input.NamaLab,
 	}
 
-	result, err := ctrl.usecase.CreateLaporanLab(laporan)
+	result, err := ctrl.usecase.CreateLaporanLab(laporan, input.IDUser)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": err.Error(),
@@ -96,40 +96,30 @@ func (ctrl *laporanLabController) GetByID(c echo.Context) error {
 }
 
 func (ctrl *laporanLabController) GetByUserID(c echo.Context) error {
-	userID, err := strconv.ParseUint(c.Param("user_id"), 10, 32)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "user_id tidak valid",
-		})
-	}
+    userID, err := strconv.ParseUint(c.Param("user_id"), 10, 32)
+    if err != nil {
+        return c.JSON(http.StatusBadRequest, map[string]string{
+            "error": "user_id tidak valid",
+        })
+    }
 
-	// Karena LaporanLabUsecase belum memiliki method GetLaporanLabByUserID,
-	// kita gunakan GetAllLaporanLab lalu filter berdasarkan Riwayat.IDUser
-	allLaporan, err := ctrl.usecase.GetAllLaporanLab()
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": err.Error(),
-		})
-	}
+    // ✅ Langsung pakai method dedicated, bukan filter di memory
+    laporanList, err := ctrl.usecase.GetLaporanLabByUserID(uint(userID))
+    if err != nil {
+        return c.JSON(http.StatusInternalServerError, map[string]string{
+            "error": err.Error(),
+        })
+    }
 
-	// Filter laporan yang memiliki Riwayat dengan IDUser yang sesuai
-	var filteredLaporan []models.LaporanLab
-	for _, laporan := range allLaporan {
-		if laporan.Riwayat != nil && laporan.Riwayat.IDUser == uint(userID) {
-			filteredLaporan = append(filteredLaporan, laporan)
-		}
-	}
+    if laporanList == nil {
+        laporanList = []models.LaporanLab{}
+    }
 
-	// Jika tidak ada laporan, kembalikan array kosong
-	if filteredLaporan == nil {
-		filteredLaporan = []models.LaporanLab{}
-	}
-
-	return c.JSON(http.StatusOK, models.Response{
-		StatusCode: http.StatusOK,
-		Message:    "Daftar laporan lab user",
-		Data:       filteredLaporan,
-	})
+    return c.JSON(http.StatusOK, models.Response{
+        StatusCode: http.StatusOK,
+        Message:    "Daftar laporan lab user",
+        Data:       laporanList,
+    })
 }
 
 func (ctrl *laporanLabController) GetAll(c echo.Context) error {

@@ -46,10 +46,6 @@ func (ctrl *labController) Create(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ID Riwayat is required"})
 	}
 
-	if input.NilaiHasil == 0 {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Nilai Hasil is required"})
-	}
-
 	if len(input.Parameters) == 0 {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Minimal 1 parameter harus ada"})
 	}
