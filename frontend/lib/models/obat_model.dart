@@ -2,27 +2,21 @@ class ObatModel {
   final int idObat;
   final int idUser;
   final String namaObat;
+  final String? tipeObat;
   final String? dosis;
   final String? frekuensi;
-  final String? hariKonsumsi; // Tambahan baru
-  final bool statusAktif;
-  final String? deskripsi;
-  final DateTime? tanggalMulai;
-  final DateTime? createdAt;
-  final DateTime? updatedAt;
+  final DateTime? tglMulai;
+  final DateTime? tglSelesai;
 
   ObatModel({
     required this.idObat,
     required this.idUser,
     required this.namaObat,
+    this.tipeObat,
     this.dosis,
     this.frekuensi,
-    this.hariKonsumsi,
-    required this.statusAktif,
-    this.deskripsi,
-    this.tanggalMulai,
-    this.createdAt,
-    this.updatedAt,
+    this.tglMulai,
+    this.tglSelesai,
   });
 
   factory ObatModel.fromJson(Map<String, dynamic> json) {
@@ -30,71 +24,50 @@ class ObatModel {
       idObat: _toInt(json['id_obat']) ?? 0,
       idUser: _toInt(json['id_user']) ?? 0,
       namaObat: json['nama_obat'] as String? ?? '-',
+      tipeObat: json['tipe_obat'] as String?,
       dosis: json['dosis'] as String?,
       frekuensi: json['frekuensi'] as String?,
-      hariKonsumsi: json['hari_konsumsi'] as String?, // Parse dari DB
-      statusAktif: json['status_aktif'] == true || json['status_aktif'] == 1,
-      deskripsi: json['deskripsi'] as String?,
-      tanggalMulai: _parseDateTime(json['tanggal_mulai']),
-      createdAt: _parseDateTime(json['created_at']),
-      updatedAt: _parseDateTime(json['updated_at']),
+      tglMulai: _parseDateTime(json['tgl_mulai']),
+      tglSelesai: _parseDateTime(json['tgl_selesai']),
     );
   }
 }
 
 class JadwalObatModel {
-  final int idJadwal;
-  final int idUser;
+  final int idJadwalObat;
   final int idObat;
+  final String? hari;
   final String? waktuMinumObat;
-  final DateTime? tanggalMulai;
-  final DateTime? tanggalSelesai;
-  final bool statusAktif;
   final ObatModel obat;
 
   JadwalObatModel({
-    required this.idJadwal,
-    required this.idUser,
+    required this.idJadwalObat,
     required this.idObat,
+    this.hari,
     this.waktuMinumObat,
-    this.tanggalMulai,
-    this.tanggalSelesai,
-    required this.statusAktif,
     required this.obat,
   });
 
   factory JadwalObatModel.fromJson(Map<String, dynamic> json) {
-    // Parse nested obat object
-    ObatModel obat;
+    ObatModel obatData;
     final dynamic obatRaw = json['obat'];
     if (obatRaw is Map<String, dynamic>) {
-      obat = ObatModel.fromJson(obatRaw);
-    } else if (obatRaw is Map) {
-      obat = ObatModel.fromJson(Map<String, dynamic>.from(obatRaw));
+      obatData = ObatModel.fromJson(obatRaw);
     } else {
-      // Default obat jika tidak ada data
-      obat = ObatModel(
-        idObat: _toInt(json['id_obat']) ?? 0,
-        idUser: _toInt(json['id_user']) ?? 0,
-        namaObat: '-',
-        statusAktif: false,
-      );
+      obatData = ObatModel(idObat: _toInt(json['id_obat']) ?? 0, idUser: 0, namaObat: '-');
     }
 
     return JadwalObatModel(
-      idJadwal: _toInt(json['id_jadwal']) ?? _toInt(json['id_jadwal_obat']) ?? 0,
-      idUser: _toInt(json['id_user']) ?? 0,
+      idJadwalObat: _toInt(json['id_jadwal_obat']) ?? 0,
       idObat: _toInt(json['id_obat']) ?? 0,
+      hari: json['hari'] as String?,
       waktuMinumObat: json['waktu_minum_obat'] as String?,
-      tanggalMulai: _parseDateTime(json['tanggal_mulai']),
-      tanggalSelesai: _parseDateTime(json['tanggal_selesai']),
-      statusAktif: json['status_aktif'] == true || json['status_aktif'] == 1,
-      obat: obat,
+      obat: obatData,
     );
   }
 }
 
-// Helper functions
+// Helper functions (Tetap Biarkan di bawah file)
 int? _toInt(dynamic value) {
   if (value == null) return null;
   if (value is int) return value;
@@ -102,20 +75,37 @@ int? _toInt(dynamic value) {
   return int.tryParse(value.toString());
 }
 
-double? _toDouble(dynamic value) {
-  if (value == null) return null;
-  if (value is double) return value;
-  if (value is num) return value.toDouble();
-  return double.tryParse(value.toString());
-}
-
 DateTime? _parseDateTime(dynamic value) {
   if (value == null) return null;
-  if (value is DateTime) return value.toLocal(); // 👈 Tambahkan .toLocal()
+  if (value is DateTime) return value.toLocal();
   try {
-    // 👇 Tambahkan .toLocal() di bagian ujungnya
     return DateTime.parse(value.toString()).toLocal();
   } catch (e) {
     return null;
+  }
+}
+
+class LogKonsumsiObatModel {
+  final int idLog;
+  final int idJadwalObat;
+  final DateTime? tglKonsumsi;
+  final String status; // "Diminum" atau "Terlewat"
+
+  LogKonsumsiObatModel({
+    required this.idLog,
+    required this.idJadwalObat,
+    this.tglKonsumsi,
+    required this.status,
+  });
+
+  factory LogKonsumsiObatModel.fromJson(Map<String, dynamic> json) {
+    return LogKonsumsiObatModel(
+      idLog: json['id_log'] ?? 0,
+      idJadwalObat: json['id_jadwal_obat'] ?? 0,
+      tglKonsumsi: json['tgl_konsumsi'] != null
+          ? DateTime.tryParse(json['tgl_konsumsi'])
+          : null,
+      status: json['status'] ?? '',
+    );
   }
 }

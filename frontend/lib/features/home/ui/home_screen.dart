@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gdself/features/home/ui/tambah_obat_screen.dart';
 import 'package:gdself/features/home/ui/wearable_summary_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
-import 'package:health/health.dart'; // 👇 TAMBAHAN: Import library health
+import 'package:health/health.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../models/hasil_ai_harian_model.dart';
@@ -36,7 +37,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this); // ✅ Daftarkan observer
+    WidgetsBinding.instance.addObserver(this);
     _cekStatusKoneksi();
     final userId = ref.read(userProvider).user?.idUser;
     if (userId != null) {
@@ -46,22 +47,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this); // ✅ Bersihkan observer
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState lifecycleState) {
-    // ✅ Setiap kali user kembali ke app (misal dari Settings),
-    // cek ulang status izin Health Connect secara otomatis
     if (lifecycleState == AppLifecycleState.resumed) {
       _cekStatusKoneksi();
     }
   }
 
-  // ========================================================
-  // 👇 PERBAIKAN: Fungsi mengecek status memori DAN sistem HP
-  // ========================================================
   Future<void> _cekStatusKoneksi() async {
     final Health health = Health();
     health.configure();
@@ -69,23 +65,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     final types = [HealthDataType.HEART_RATE, HealthDataType.SLEEP_SESSION];
     final permissions = [HealthDataAccess.READ, HealthDataAccess.READ];
 
-    // ✅ Sumber kebenaran utama: tanya langsung ke sistem Android
     bool hasRealPermissions = false;
     try {
       hasRealPermissions =
           await health.hasPermissions(types, permissions: permissions) ?? false;
     } catch (_) {
-      // Device HMS/non-GMS tidak support Health Connect
       hasRealPermissions = false;
     }
 
-    // ✅ Sinkronkan flag SharedPreferences agar konsisten
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('is_wearable_disconnected', !hasRealPermissions);
 
     if (!mounted) return;
     setState(() {
-      // ✅ Logika tunggal: disconnected = tidak punya izin ATAU belum pernah sync
       _isDisconnected = !hasRealPermissions;
     });
   }
@@ -93,19 +85,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
   Future<void> _setDisconnectState(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('is_wearable_disconnected', value);
-    if (!mounted) return; // ✅ Guard
+    if (!mounted) return;
     setState(() {
       _isDisconnected = value;
     });
   }
 
-  // ========================================================
-  // 👇 PERBAIKAN: Refresh harus mengecek koneksi ulang
-  // ========================================================
   Future<void> _refresh() async {
     await _cekStatusKoneksi();
 
-    // ✅ Guard setelah await
     if (!mounted) return;
 
     final userId = ref.read(userProvider).user?.idUser;
@@ -114,13 +102,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     }
   }
 
-  // ========================================================
-  // 👇 PERBAIKAN: Fungsi Pop-up Validasi Lepas Akses
-  // ========================================================
   void _showLepasAksesDialog(BuildContext context) {
     showDialog(
       context: context,
-      barrierDismissible: false, // User wajib menyelesaikan panduan
+      barrierDismissible: false,
       builder: (BuildContext context) {
         bool isVerifying = false;
 
@@ -137,7 +122,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                     style: TextStyle(fontSize: 14, color: Colors.black54),
                   ),
                   const SizedBox(height: 16),
-                  // Langkah-langkah Panduan
                   _buildStep("1. Buka Pengaturan > Privasi > Health Connect."),
                   _buildStep("2. Pilih aplikasi GdSelf."),
                   _buildStep("3. Matikan izin Akses Data."),
@@ -153,16 +137,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                   onPressed: isVerifying ? null : () async {
                     setDialogState(() => isVerifying = true);
 
-                    // ✅ Pemicu: Buka settings agar user bisa matikan izin
                     final Health health = Health();
                     health.configure();
-                    // Panggil request agar diarahkan ke settings
                     await health.requestAuthorization([HealthDataType.HEART_RATE, HealthDataType.SLEEP_SESSION]);
 
-                    // Tunggu user kembali
                     await Future.delayed(const Duration(seconds: 2));
 
-                    // Verifikasi apakah izin sudah mati
                     bool masihAdaIzin = await health.hasPermissions(
                       [HealthDataType.HEART_RATE, HealthDataType.SLEEP_SESSION],
                       permissions: [HealthDataAccess.READ, HealthDataAccess.READ],
@@ -189,7 +169,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     );
   }
 
-  // Widget pembantu untuk list panduan
   Widget _buildStep(String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
@@ -241,15 +220,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     final String namaUser = user?.nama ?? '-';
 
     final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     final formattedDay = DateFormat('EEEE', 'id_ID').format(now);
     final formattedDate = DateFormat('dd MMMM yyyy', 'id_ID').format(now);
     final formattedTime = DateFormat('HH:mm').format(now);
 
     final semuaJadwalObat = state.jadwalObat;
+
+    final Map<String, String> dayToDbFormat = {
+      'senin': 'sen', 'selasa': 'sel', 'rabu': 'rab',
+      'kamis': 'kam', 'jumat': 'jum', 'sabtu': 'sab', 'minggu': 'min',
+    };
+    final hariIniDbStr = dayToDbFormat[formattedDay.toLowerCase()] ?? '';
+
     final jadwalObatHariIni = semuaJadwalObat.where((jadwal) {
-      final hariKonsumsi = jadwal.obat.hariKonsumsi?.toLowerCase() ?? '';
-      final hariIniStr = formattedDay.toLowerCase();
-      return hariKonsumsi.contains(hariIniStr) && jadwal.obat.statusAktif == true;
+      final hariKonsumsi = jadwal.hari?.toLowerCase() ?? '';
+
+      bool isHariIni = hariKonsumsi.contains(hariIniDbStr) ||
+          hariKonsumsi.contains(formattedDay.toLowerCase());
+
+      bool isAktif = true;
+      if (jadwal.obat.tglSelesai != null) {
+        final batasSelesai = DateTime(
+            jadwal.obat.tglSelesai!.year,
+            jadwal.obat.tglSelesai!.month,
+            jadwal.obat.tglSelesai!.day
+        );
+        isAktif = batasSelesai.isAfter(today) || batasSelesai.isAtSameMomentAs(today);
+      }
+
+      return isHariIni && isAktif;
     }).toList();
 
     void onAturJadwalObat() {
@@ -265,7 +265,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         MaterialPageRoute(builder: (_) => const WearableSyncScreen()),
       );
 
-      // ✅ Guard mounted setelah await Navigator
       if (!mounted) return;
 
       if (result == true) {
@@ -361,26 +360,60 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                       'Jadwal Obat',
                       style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: Color(0xFF263238)),
                     ),
-                    TextButton(
-                      onPressed: onAturJadwalObat,
-                      child: const Text(
-                        "Atur Jadwal",
-                        style: TextStyle(color: Color(0xFF006699), fontWeight: FontWeight.bold),
-                      ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
+
+                // 👇 Kondisi Kosong / Terisi dengan Tombol Atur Jadwal di bawah
                 if (jadwalObatHariIni.isEmpty ||
                     jadwalObatHariIni.every((jadwal) =>
                     jadwal.obat.namaObat.trim().isEmpty ||
                         jadwal.obat.namaObat == '-'))
-                  _emptyMedicationCard(onAturJadwalObat)
+
+                  _emptyMedicationCard(
+                        () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const TambahObatScreen()),
+                      ).then((_) => _refresh());
+                    },
+                        () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const JadwalObatScreen()),
+                      ).then((_) => _refresh());
+                    },
+                  )
+
                 else
                   Column(
-                    children: jadwalObatHariIni.map((jadwal) {
-                      return _buildMedicationCard(jadwal);
-                    }).toList(),
+                    crossAxisAlignment: CrossAxisAlignment.end, // Agar tombol rata kanan
+                    children: [
+                      // List kartu obat
+                      ...jadwalObatHariIni.map((jadwal) {
+                        return _buildMedicationCard(jadwal);
+                      }),
+
+                      const SizedBox(height: 8),
+
+                      // Tombol Atur Jadwal Obat
+                      ElevatedButton(
+                        onPressed: onAturJadwalObat,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF006699),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'Atur Jadwal Obat',
+                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                        ),
+                      ),
+                    ],
                   ),
                 const SizedBox(height: 34),
 
@@ -398,7 +431,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                         color: Colors.white,
                         onSelected: (value) {
                           if (value == 'lepaskan') {
-                            // 👇 PERBAIKAN: Menjalankan Pop-up edukasi lepas akses
                             _showLepasAksesDialog(context);
                           }
                         },
@@ -416,19 +448,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                 ),
                 const SizedBox(height: 18),
 
-                // if (wearable == null || _isDisconnected)
-                //   _emptyWearableCard(() {
-                //     onHubungkanPerangkat();
-                //   })
-                // else
-                //   _buildWearablesSection(wearable),
                 _buildWearablesSection(
                     wearable ?? WearableModel(
                       idWearable: 0,
                       idUser: 0,
-                      heartRateRHR: 78,      // Dummy: 78 BPM
-                      sleepDuration: 26500,  // Dummy: Sekitar 7 jam 21 menit
-                      stressScore: 35,       // Dummy: Tingkat Stres Sedang
+                      heartRateRHR: 78,
+                      sleepDuration: 26500,
+                      stressScore: 35,
                       hasilAI: [],
                     )
                 ),
@@ -652,67 +678,85 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     );
   }
 
-  Widget _emptyMedicationCard(VoidCallback onAturPressed) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      margin: const EdgeInsets.only(bottom: 24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 20,
-              offset: const Offset(0, 10))
-        ],
-      ),
-      child: Column(
-        children: [
-          CircleAvatar(
-              backgroundColor: const Color(0xFFF0F2F5), // Warna abu-abu yang lebih lembut
-              radius: 40,
-              child: Icon(
-                PhosphorIcons.pill(PhosphorIconsStyle.regular),
-                color: Colors.grey.shade400,
-                size: 36,
-              )),
-          const SizedBox(height: 20),
-          const Text('Belum Ada Obat',
-              style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 17,
-                  color: Color(0xFF263238))),
-          const SizedBox(height: 8),
-          const Text(
-            'Anda belum menambahkan\njadwal konsumsi obat untuk hari ini.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                fontSize: 14, height: 1.5, color: Color(0xFF667085)),
+  Widget _emptyMedicationCard(VoidCallback onCardPressed, VoidCallback onButtonPressed) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              )
+            ],
           ),
-          const SizedBox(height: 24),
-
-          // 👇 TAMBAHAN: Tombol "Tambah Obat" di pojok kanan bawah
-          Align(
-            alignment: Alignment.centerRight,
-            child: ElevatedButton(
-              onPressed: onAturPressed, // Memanggil fungsi onAturJadwalObat
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF006699), // Warna biru tema aplikasi
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(24),
+          child: Material(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onCardPressed,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                child: Column(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: const Color(0xFFF0F2F5),
+                      radius: 40,
+                      child: Icon(
+                        PhosphorIcons.pill(PhosphorIconsStyle.regular),
+                        color: Colors.grey.shade400,
+                        size: 36,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Belum Ada Obat',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 17,
+                        color: Color(0xFF263238),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Anda belum menambahkan\njadwal konsumsi obat untuk hari ini.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        height: 1.5,
+                        color: Color(0xFF667085),
+                      ),
+                    ),
+                  ],
                 ),
-                elevation: 0,
-              ),
-              child: const Text(
-                'Tambah Obat',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
               ),
             ),
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 16),
+        ElevatedButton(
+          onPressed: onButtonPressed,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF006699),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
+            elevation: 0,
+          ),
+          child: const Text(
+            'Atur Jadwal Obat',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+          ),
+        ),
+        const SizedBox(height: 24),
+      ],
     );
   }
 
@@ -726,37 +770,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         ).then((_) => _refresh());
       },
       child: Container(
-        margin: const EdgeInsets.only(bottom: 16), // Jarak antar kartu
+        margin: const EdgeInsets.only(bottom: 16),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(40), // Bentuk melengkung kapsul penuh
+          borderRadius: BorderRadius.circular(40),
           boxShadow: [
             BoxShadow(
-                color: const Color(0xFF00695C).withOpacity(0.15), // Bayangan hijau lembut di bawah
+                color: const Color(0xFF00695C).withOpacity(0.15),
                 blurRadius: 15,
-                offset: const Offset(0, 8)) // Offset ke bawah
+                offset: const Offset(0, 8))
           ],
         ),
         child: Row(
           children: [
-            // Lingkaran Ikon Obat
             Container(
               width: 56,
               height: 56,
               decoration: const BoxDecoration(
-                  color: Color(0xFFE8F5E9), // Latar belakang hijau sangat muda
+                  color: Color(0xFFE8F5E9),
                   shape: BoxShape.circle),
               child: Center(
                 child: Icon(
                     PhosphorIcons.pill(PhosphorIconsStyle.regular),
-                    color: const Color(0xFF00695C), // Warna ikon hijau tua
+                    color: const Color(0xFF00695C),
                     size: 28),
               ),
             ),
             const SizedBox(width: 16),
-
-            // Detail Teks Obat
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -773,7 +814,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
-                  // Menampilkan dosis & frekuensi (Misal: "5 gr   2x Sehari")
                   Text(
                     jadwal.obat.dosis ?? '-',
                     style: const TextStyle(
@@ -782,8 +822,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                         fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 10),
-
-                  // Label Waktu (Chip)
                   if (jadwal.waktuMinumObat != null)
                     Wrap(
                       spacing: 8,
@@ -794,7 +832,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                            color: const Color(0xFFF0F2F5), // Abu-abu muda
+                            color: const Color(0xFFF0F2F5),
                             borderRadius:
                             BorderRadius.circular(12)),
                         child: Text(
@@ -1016,7 +1054,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     );
   }
 
-  // 👇 PERBAIKAN: Fungsi Wearables Section (Ubah Stres -> Tekanan Darah & Tambah Navigasi)
   Widget _buildWearablesSection(WearableModel wearable) {
     int sleepPercentInt = 0;
     String sleepTime = '-';
@@ -1073,11 +1110,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       hrBadgeText = const Color(0xFFC0392B);
     }
 
-    // 👇 PERBAIKAN: Ubah Stres menjadi Tekanan Darah (Data Dummy)
     final String bpStatus = 'Normal';
     final Color bpBadgeBg = const Color(0xFF8DF0A8);
     final Color bpBadgeText = const Color(0xFF064E3B);
-    final String bpValue = "120/80"; // Angka Sistolik/Diastolik Dummy
+    final String bpValue = "120/80";
 
     final aiData = wearable.hasilAI.isNotEmpty ? wearable.hasilAI.last : null;
 
@@ -1085,7 +1121,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       children: [
         _buildAIInsightCard(aiData),
 
-        // KARTU DETAK JANTUNG
         _buildActivityBaseCard(
           title: 'Detak Jantung',
           icon: PhosphorIcons.heart(PhosphorIconsStyle.regular),
@@ -1105,7 +1140,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         ),
         const SizedBox(height: 16),
 
-        // KARTU TIDUR
         _buildActivityBaseCard(
           title: 'Tidur',
           icon: PhosphorIcons.moon(PhosphorIconsStyle.regular),
@@ -1138,7 +1172,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         ),
         const SizedBox(height: 16),
 
-        // KARTU TEKANAN DARAH
         _buildActivityBaseCard(
           title: 'Tekanan Darah',
           icon: Icons.bloodtype_outlined,
@@ -1160,7 +1193,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     );
   }
 
-  // 👇 PERBAIKAN: Tambahkan parameter onTap dan bungkus dengan GestureDetector
   Widget _buildActivityBaseCard({
     required IconData icon,
     required Color iconBgColor,
@@ -1197,7 +1229,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                 ),
                 statusTag,
                 const SizedBox(width: 8),
-                const Icon(Icons.chevron_right_rounded, color: Colors.grey), // Tambahan panah agar user tahu ini bisa diklik
+                const Icon(Icons.chevron_right_rounded, color: Colors.grey),
               ],
             ),
             const SizedBox(height: 20),
@@ -1226,7 +1258,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
 
   Widget _buildBottomNav() {
     return Container(
-      // Padding dipindahkan ke dalam SafeArea agar background putih tetap mentok ke bawah
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
@@ -1237,9 +1268,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
               offset: Offset(0, -2))
         ],
       ),
-      // 👇 BUNGKUS DENGAN SafeArea DI SINI
       child: SafeArea(
-        bottom: true, // Hanya amankan bagian bawah layar
+        bottom: true,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: Row(

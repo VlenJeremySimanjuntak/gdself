@@ -92,27 +92,42 @@ class HomeNotifier extends Notifier<HomeState> {
         final nestedSchedule = obatMap['jadwal_obat'];
 
         if (nestedSchedule is List && nestedSchedule.isNotEmpty) {
-          final waktuList = <String>[];
-          Map<String, dynamic>? firstSchedule;
+          // 👇 KELOMPOKKAN WAKTU BERDASARKAN HARI
+          final Map<String, List<String>> timesByDay = {};
+          final Map<String, int> idJadwalByDay = {};
 
           for (final item in nestedSchedule) {
             if (item is Map) {
               final scheduleMap = Map<String, dynamic>.from(item);
-              firstSchedule ??= scheduleMap;
+              final hari = scheduleMap['hari']?.toString().trim() ?? '';
               final rawTime = scheduleMap['waktu_minum_obat']?.toString();
-              if (rawTime != null && rawTime.isNotEmpty) {
-                waktuList.add(_normalizeTime(rawTime));
+              final idJadwal = _toInt(scheduleMap['id_jadwal_obat']) ?? _toInt(scheduleMap['id_jadwal']) ?? 0;
+
+              if (hari.isNotEmpty && rawTime != null && rawTime.isNotEmpty) {
+                // Masukkan jam ke kelompok harinya masing-masing
+                timesByDay.putIfAbsent(hari, () => []).add(_normalizeTime(rawTime));
+                idJadwalByDay.putIfAbsent(hari, () => idJadwal);
               }
             }
           }
 
-          final merged = Map<String, dynamic>.from(obatMap)
-            ..['id_jadwal'] = _toInt(firstSchedule?['id_jadwal_obat']) ?? 0
-            ..['waktu_minum_obat'] = waktuList.join(', ')
-            ..['obat'] = obatMap;
+          if (timesByDay.isNotEmpty) {
+            // 👇 BUAT MODEL JADWAL PER HARI
+            for (final entry in timesByDay.entries) {
+              final hari = entry.key;
+              final times = entry.value..sort(); // Urutkan jam dari pagi ke malam
 
-          jadwalObatList.add(JadwalObatModel.fromJson(merged));
-          continue;
+              final merged = Map<String, dynamic>.from(obatMap)
+                ..['id_jadwal_obat'] = idJadwalByDay[hari]
+                ..['id_jadwal'] = idJadwalByDay[hari]
+                ..['hari'] = hari
+                ..['waktu_minum_obat'] = times.join(', ') // Gabungkan jam dengan koma (Contoh: "08:00, 12:00")
+                ..['obat'] = obatMap;
+
+              jadwalObatList.add(JadwalObatModel.fromJson(merged));
+            }
+            continue; // Lanjut ke obat berikutnya
+          }
         }
 
         jadwalObatList.add(JadwalObatModel.fromJson(obatMap));
