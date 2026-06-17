@@ -15,8 +15,9 @@ type Main struct {
 	HasilLab    HasilLabController
 	HasilAI     HasilAIController
 	JadwalObat  JadwalObatController
+	LogKonsumsi LogKonsumsiController 
 	Lab         LabController
-	USGTiroid   USGTiroidController // ✅ USG Tiroid Controller
+	USGTiroid   USGTiroidController
 }
 
 type Options struct {
@@ -47,7 +48,8 @@ func Init(opts Options) *Main {
 		),
 		
 		JadwalObat: NewJadwalObatController(opts.UseCases.JadwalObat),
+		LogKonsumsi: NewLogKonsumsiController(opts.UseCases.LogKonsumsi),
 		Lab:        NewLabController(opts.UseCases.Lab),
-		USGTiroid:  NewUSGTiroidController(opts.UseCases.UsgTiroid), // ✅ Inisialisasi USG Tiroid
+		USGTiroid:  NewUSGTiroidController(opts.UseCases.UsgTiroid),
 	}
 }

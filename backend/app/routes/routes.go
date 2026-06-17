@@ -76,6 +76,13 @@ func ConfigureRouter(e *echo.Echo, controller *controllers.Main) {
 	api.DELETE("/obat/:id", controller.Obat.Delete)
 
 	// ========================
+	// Rekapan Obat
+	// ========================
+	api.POST("/log-konsumsi", controller.LogKonsumsi.CatatKonsumsi)
+	api.GET("/log-konsumsi/jadwal/:jadwal_id", controller.LogKonsumsi.GetByJadwalID)
+
+
+	// ========================
 	// Wearable Endpoints
 	// ========================
 	api.POST("/wearable", controller.Wearable.Create)

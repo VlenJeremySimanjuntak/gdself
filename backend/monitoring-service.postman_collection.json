@@ -556,7 +556,7 @@
       ]
     },
     {
-      "name": "8. Obat & Jadwal",
+      "name": "8. Obat, Jadwal & Log Konsumsi",
       "item": [
         {
           "name": "Create Obat",
@@ -568,9 +568,10 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"id_user\": 1,\n  \"nama_obat\": \"Methimazole\",\n  \"tipe_obat\": \"Anti-tiroid\",\n  \"dosis\": \"10mg\",\n  \"frekuensi\": \"2x sehari\",\n  \"tgl_mulai\": \"2024-01-01\",\n  \"tgl_selesai\": \"2024-06-01\"\n}"
+              "raw": "{\n  \"id_user\": 1,\n  \"nama_obat\": \"Methimazole\",\n  \"tipe_obat\": \"Anti-tiroid\",\n  \"dosis\": \"10mg\",\n  \"frekuensi\": \"2x Sehari\",\n  \"tgl_mulai\": \"2024-05-17\",\n  \"tgl_selesai\": \"2024-06-16\"\n}"
             },
-            "url": { "raw": "{{base_url}}/obat" }
+            "url": { "raw": "{{base_url}}/obat" },
+            "description": "Buat obat baru. tgl_mulai dan tgl_selesai menentukan rentang rekapan."
           }
         },
         {
@@ -579,6 +580,14 @@
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{auth_token}}" }],
             "url": { "raw": "{{base_url}}/obat" }
+          }
+        },
+        {
+          "name": "Get Obat by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/obat/1" }
           }
         },
         {
@@ -599,7 +608,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"dosis\": \"15mg\",\n  \"frekuensi\": \"3x sehari\"\n}"
+              "raw": "{\n  \"dosis\": \"15mg\",\n  \"frekuensi\": \"3x Sehari\"\n}"
             },
             "url": { "raw": "{{base_url}}/obat/1" }
           }
@@ -613,6 +622,10 @@
           }
         },
         {
+          "name": "── JADWAL OBAT ──",
+          "item": []
+        },
+        {
           "name": "Create Jadwal Obat",
           "request": {
             "method": "POST",
@@ -624,7 +637,39 @@
               "mode": "raw",
               "raw": "{\n  \"id_obat\": 1,\n  \"hari\": \"Senin\",\n  \"waktu_minum_obat\": \"08:00:00\"\n}"
             },
+            "url": { "raw": "{{base_url}}/jadwal-obat" },
+            "description": "Tambah jadwal minum untuk obat. Bisa banyak jadwal per obat (per hari × per jam)."
+          }
+        },
+        {
+          "name": "Create Jadwal Obat (jam ke-2)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_obat\": 1,\n  \"hari\": \"Senin\",\n  \"waktu_minum_obat\": \"20:00:00\"\n}"
+            },
             "url": { "raw": "{{base_url}}/jadwal-obat" }
+          }
+        },
+        {
+          "name": "Get All Jadwal Obat",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/jadwal-obat" }
+          }
+        },
+        {
+          "name": "Get Jadwal by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/jadwal-obat/1" }
           }
         },
         {
@@ -632,7 +677,8 @@
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{auth_token}}" }],
-            "url": { "raw": "{{base_url}}/jadwal-obat/obat/1" }
+            "url": { "raw": "{{base_url}}/jadwal-obat/obat/1" },
+            "description": "Ambil semua jadwal milik obat tertentu. Dipakai Flutter untuk schedule notifikasi."
           }
         },
         {
@@ -656,6 +702,67 @@
             "method": "DELETE",
             "header": [{ "key": "Authorization", "value": "Bearer {{auth_token}}" }],
             "url": { "raw": "{{base_url}}/jadwal-obat/1" }
+          }
+        },
+        {
+          "name": "── LOG KONSUMSI OBAT ──",
+          "item": []
+        },
+        {
+          "name": "✅ Catat Diminum (hari ini)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_jadwal_obat\": 1,\n  \"status\": \"Diminum\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/log-konsumsi" },
+            "description": "Dipanggil saat user tap 'Sudah Diminum' di notifikasi. tgl_konsumsi opsional — kalau tidak dikirim backend pakai hari ini."
+          }
+        },
+        {
+          "name": "✅ Catat Diminum (tanggal spesifik)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_jadwal_obat\": 1,\n  \"tgl_konsumsi\": \"2024-05-20\",\n  \"status\": \"Diminum\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/log-konsumsi" },
+            "description": "Untuk testing — catat Diminum di tanggal tertentu. Di kalender rekap tanggal ini akan menjadi hijau."
+          }
+        },
+        {
+          "name": "❌ Catat Terlewat (tanggal spesifik)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_jadwal_obat\": 1,\n  \"tgl_konsumsi\": \"2024-05-25\",\n  \"status\": \"Terlewat\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/log-konsumsi" },
+            "description": "Dipanggil sistem otomatis setelah user tap 'Batal' dua kali. Di kalender rekap tanggal ini akan menjadi merah."
+          }
+        },
+        {
+          "name": "GET Log by Jadwal ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/log-konsumsi/jadwal/1" },
+            "description": "Ambil semua riwayat konsumsi untuk jadwal tertentu. Dipakai RekapObatScreen untuk bangun kalender kepatuhan."
           }
         }
       ]

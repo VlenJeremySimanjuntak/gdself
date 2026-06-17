@@ -68,7 +68,9 @@ func (u *jadwalObatUsecase) UpdateJadwalObat(id uint, input models.UpdateJadwalO
 		return models.JadwalObat{}, fmt.Errorf("jadwal obat tidak ditemukan")
 	}
 
-	// Update only non-empty fields
+	if input.Hari != "" {
+		jadwalObat.Hari = input.Hari // ✅ Ini yang kurang
+	}
 	if input.WaktuMinumObat != nil {
 		jadwalObat.WaktuMinumObat = input.WaktuMinumObat
 	}
