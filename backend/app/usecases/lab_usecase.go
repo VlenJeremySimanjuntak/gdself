@@ -96,30 +96,73 @@ func (u *labUsecase) GetLabResultsByUserID(userID uint) ([]models.HasilLab, erro
 func (u *labUsecase) Assess(input models.AssessmentInput) (models.AssessmentResult, error) {
 	var res models.AssessmentResult
 
-	// 1. Panggil rule-based logic dari lab_rules.go
-	aiLabResult := AnalyzeLabResults(input.Lab.Parameters)
-
-	// 2. Simpan Hasil AI Lab ke database dengan penamaan field PascalCase sesuai model Anda
-	if u.hasilAILab != nil && input.Lab.IDLaporanLab != 0 {
-		_, err := u.hasilAILab.CreateHasilAILab(models.HasilAILab{
-			IDLaporanLab: input.Lab.IDLaporanLab,
-			
-			// ✅ Sesuai dengan struct HasilAILab milik Anda (StatusTsh, ReminderTsh, dll.)
-			StatusTsh:    aiLabResult.StatusTSH,
-			ReminderTsh:  aiLabResult.ReminderTSH,
-			StatusFt3:    aiLabResult.StatusFT3,
-			ReminderFt3:  aiLabResult.ReminderFT3,
-			StatusFt4:    aiLabResult.StatusFT4,
-			ReminderFt4:  aiLabResult.ReminderFT4,
-			StatusTrab:   aiLabResult.StatusTRAb,
-			ReminderTrab: aiLabResult.ReminderTRAb,
-			Interpretasi: aiLabResult.Interpretasi,
-		})
-		if err != nil {
-			fmt.Printf("Warning: failed to save AI Lab assessment result: %v\n", err)
+	if input.IsLabDay {
+		// ✅ Mesin 1 atau 3 — proses lab parameters
+		if len(input.Lab.Parameters) == 0 {
+			return res, fmt.Errorf("parameters lab tidak boleh kosong untuk lab day")
 		}
+
+		aiLabResult := AnalyzeLabResults(input.Lab.Parameters)
+
+		// Simpan ke hasil_ai_lab
+		if u.hasilAILab != nil && input.Lab.IDLaporanLab != 0 {
+			_, err := u.hasilAILab.CreateHasilAILab(models.HasilAILab{
+				IDLaporanLab: input.Lab.IDLaporanLab,
+				StatusTsh:    aiLabResult.StatusTSH,
+				ReminderTsh:  aiLabResult.ReminderTSH,
+				StatusFt3:    aiLabResult.StatusFT3,
+				ReminderFt3:  aiLabResult.ReminderFT3,
+				StatusFt4:    aiLabResult.StatusFT4,
+				ReminderFt4:  aiLabResult.ReminderFT4,
+				StatusTrab:   aiLabResult.StatusTRAb,
+				ReminderTrab: aiLabResult.ReminderTRAb,
+				Interpretasi: aiLabResult.Interpretasi,
+			})
+			if err != nil {
+				fmt.Printf("Warning: gagal simpan hasil AI Lab: %v\n", err)
+			}
+		}
+
+		// ✅ Simpan tren jika ada prev_lab (Mesin 3)
+		if input.PrevLab != nil && len(input.PrevLab.Parameters) > 0 && u.hasilAITren != nil && input.Lab.IDLaporanLab != 0 {
+			prevResult := AnalyzeLabResults(input.PrevLab.Parameters)
+			_, err := u.hasilAITren.CreateHasilAITren(models.HasilAITren{
+				IDLaporanLab:     input.Lab.IDLaporanLab,
+				TrenTsh:          compareTren(prevResult.StatusTSH, aiLabResult.StatusTSH),
+				ReminderTrenTsh:  fmt.Sprintf("TSH: %s → %s", prevResult.StatusTSH, aiLabResult.StatusTSH),
+				TrenFt3:          compareTren(prevResult.StatusFT3, aiLabResult.StatusFT3),
+				ReminderTrenFt3:  fmt.Sprintf("FT3: %s → %s", prevResult.StatusFT3, aiLabResult.StatusFT3),
+				TrenFt4:          compareTren(prevResult.StatusFT4, aiLabResult.StatusFT4),
+				ReminderTrenFt4:  fmt.Sprintf("FT4: %s → %s", prevResult.StatusFT4, aiLabResult.StatusFT4),
+				TrenTrab:         compareTren(prevResult.StatusTRAb, aiLabResult.StatusTRAb),
+				ReminderTrenTrab: fmt.Sprintf("TRAb: %s → %s", prevResult.StatusTRAb, aiLabResult.StatusTRAb),
+			})
+			if err != nil {
+				fmt.Printf("Warning: gagal simpan hasil AI Tren: %v\n", err)
+			}
+		}
+
+		res.Interpretation = aiLabResult.Interpretasi
+
+	} else {
+		// Mesin 2 — wearable only, tidak diproses di sini
+		// Wearable diproses otomatis saat POST /wearable
+		res.Interpretation = "Assessment harian diproses saat sync wearable."
 	}
 
-	res.Interpretation = aiLabResult.Interpretasi
 	return res, nil
+}
+
+// Helper untuk bandingkan tren antar dua status
+func compareTren(prev, curr string) string {
+	if prev == curr {
+		return "Stabil"
+	}
+	if curr == "Normal" {
+		return "Membaik"
+	}
+	if prev == "Normal" {
+		return "Memburuk"
+	}
+	return "Berubah"
 }

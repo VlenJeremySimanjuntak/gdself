@@ -37,15 +37,16 @@ func (r *laporanLabRepository) GetByID(id uint) (models.LaporanLab, error) {
 }
 
 func (r *laporanLabRepository) GetByUserID(userID uint) ([]models.LaporanLab, error) {
-	var laporan []models.LaporanLab
-	// ✅ PERBAIKAN: Join dengan Riwayat untuk mendapatkan id_user
-	err := r.db.Joins("JOIN riwayat ON riwayat.id_riwayat = laporan_lab.id_riwayat").
-		Where("riwayat.id_user = ?", userID).
-		Preload("HasilLab.Parameter").Preload("HasilAILab").Preload("HasilAITren").
-		Order("laporan_lab.tgl_periksa DESC").
-		Find(&laporan).Error
-	return laporan, err
+    var laporanList []models.LaporanLab
+    err := r.db.
+        Joins("JOIN riwayat ON riwayat.id_riwayat = laporan_lab.id_riwayat").
+        Where("riwayat.id_user = ?", userID).
+        Preload("Riwayat").
+        Order("laporan_lab.id_laporan_lab DESC").
+        Find(&laporanList).Error
+    return laporanList, err
 }
+
 
 func (r *laporanLabRepository) GetByUserIDAndDate(userID uint, date string) (models.LaporanLab, error) {
 	var laporan models.LaporanLab

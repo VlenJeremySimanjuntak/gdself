@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"monitoring-service/app/helpers"
 	"monitoring-service/app/models"
@@ -36,12 +37,13 @@ func (u *userUsecase) CreateUser(user models.User) (models.User, error) {
 		return models.User{}, fmt.Errorf("email, nama, dan password tidak boleh kosong")
 	}
 
-	// Check if email already exists
+	// ✅ Cek existing user dengan GetByEmail (tanpa Preload)
 	existingUser, err := u.repo.GetByEmail(user.Email)
 	if err == nil && existingUser.IDUser != 0 {
 		return models.User{}, fmt.Errorf("email sudah terdaftar")
 	}
 
+	// Hash password dengan timeout
 	hashedPassword, err := helpers.HashPassword(user.Password)
 	if err != nil {
 		return models.User{}, fmt.Errorf("gagal mengenkripsi password: %w", err)
@@ -56,15 +58,17 @@ func (u *userUsecase) Authenticate(email, password string) (models.User, error) 
 		return models.User{}, fmt.Errorf("email dan password wajib diisi")
 	}
 
+	// ✅ GetByEmail tanpa Preload
 	user, err := u.repo.GetByEmail(email)
 	if err != nil || user.IDUser == 0 {
 		return models.User{}, fmt.Errorf("email atau password salah")
 	}
 
 	if user.Password == "" {
-		return models.User{}, fmt.Errorf("akun ini terdaftar menggunakan Google. Silakan klik 'Masuk dengan Google'")
+		return models.User{}, fmt.Errorf("akun ini terdaftar menggunakan Google")
 	}
 
+	// Verify password dengan timeout
 	if err := helpers.VerifyPassword(user.Password, password); err == nil {
 		return user, nil
 	}
@@ -78,34 +82,34 @@ func (u *userUsecase) GoogleLogin(idToken string) (models.User, error) {
 		return models.User{}, fmt.Errorf("server error: GOOGLE_CLIENT_ID tidak disetting")
 	}
 
-	// 1. Verifikasi token ke Google
-	payload, err := idtoken.Validate(context.Background(), idToken, clientID)
+	// ✅ Tambahkan timeout context
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	payload, err := idtoken.Validate(ctx, idToken, clientID)
 	if err != nil {
 		return models.User{}, fmt.Errorf("token google tidak valid: %w", err)
 	}
 
-	// 2. Ambil data email, nama, dan foto dari payload Google
 	email, _ := payload.Claims["email"].(string)
 	name, _ := payload.Claims["name"].(string)
-	
-	// ✅ BARU: Menarik URL Foto Profil langsung dari akun Google pengguna
+
 	var picture string
 	if picClaim, ok := payload.Claims["picture"]; ok {
 		picture = picClaim.(string)
 	}
 
-	// 3. Cek apakah user sudah ada di database
+	// ✅ GetByEmail tanpa Preload
 	user, err := u.repo.GetByEmail(email)
 	if err != nil || user.IDUser == 0 {
-		// 4. Jika belum ada, buatkan user baru secara otomatis
 		newUser := models.User{
 			Nama:         name,
 			Email:        email,
-			Password:     "",      // Dikosongkan karena login via Google
-			JenisKelamin: "L",     // Default
-			FotoProfil:   picture, // ✅ Menyimpan URL Foto Google ke database
+			Password:     "",
+			JenisKelamin: "L",
+			FotoProfil:   picture,
 		}
-		
+
 		createdUser, createErr := u.repo.Create(newUser)
 		if createErr != nil {
 			return models.User{}, fmt.Errorf("gagal membuat user baru: %w", createErr)
@@ -113,22 +117,21 @@ func (u *userUsecase) GoogleLogin(idToken string) (models.User, error) {
 		return createdUser, nil
 	}
 
-	// ✅ BARU (Opsional): Jika user login lagi via Google tapi fotonya di DB masih kosong, kita update
 	if user.FotoProfil == "" && picture != "" {
 		user.FotoProfil = picture
-		u.repo.Update(user.IDUser, user) // Mengabaikan error update demi kelancaran login
+		u.repo.Update(user.IDUser, user)
 	}
 
-	// Jika user sudah ada, kembalikan user tersebut
 	return user, nil
 }
 
+// ✅ GUNAKAN GetByIDSimple
 func (u *userUsecase) GetUserByID(id uint) (models.User, error) {
 	if id == 0 {
 		return models.User{}, fmt.Errorf("id tidak valid")
 	}
 
-	user, err := u.repo.GetByID(id)
+	user, err := u.repo.GetByIDSimple(id)
 	if err != nil || user.IDUser == 0 {
 		return models.User{}, fmt.Errorf("user tidak ditemukan")
 	}
@@ -149,22 +152,22 @@ func (u *userUsecase) GetUserByEmail(email string) (models.User, error) {
 	return user, nil
 }
 
+// ✅ GUNAKAN GetAllSimple (CEPAT)
 func (u *userUsecase) GetAllUsers() ([]models.User, error) {
-	return u.repo.GetAll()
+	return u.repo.GetAllSimple()
 }
 
+// ✅ GUNAKAN GetByIDSimple
 func (u *userUsecase) UpdateUser(id uint, input models.UpdateUserRequest) (models.User, error) {
 	if id == 0 {
 		return models.User{}, fmt.Errorf("id tidak valid")
 	}
 
-	// Get existing user
-	user, err := u.repo.GetByID(id)
+	user, err := u.repo.GetByIDSimple(id)
 	if err != nil || user.IDUser == 0 {
 		return models.User{}, fmt.Errorf("user tidak ditemukan")
 	}
 
-	// Update only non-empty fields
 	if input.Nama != "" {
 		user.Nama = input.Nama
 	}
@@ -180,23 +183,17 @@ func (u *userUsecase) UpdateUser(id uint, input models.UpdateUserRequest) (model
 	if input.TglTerdiagnosis != nil {
 		user.TglTerdiagnosis = input.TglTerdiagnosis
 	}
-	
-	// Jika nanti Anda menambahkan FotoProfil ke dalam struct UpdateUserRequest di models/user.go
-	// Silakan uncomment kode di bawah ini:
-	// if input.FotoProfil != "" {
-	// 	user.FotoProfil = input.FotoProfil
-	// }
 
 	return u.repo.Update(id, user)
 }
 
+// ✅ GUNAKAN GetByIDSimple
 func (u *userUsecase) DeleteUser(id uint) error {
 	if id == 0 {
 		return fmt.Errorf("id tidak valid")
 	}
 
-	// Check if user exists
-	user, err := u.repo.GetByID(id)
+	user, err := u.repo.GetByIDSimple(id)
 	if err != nil || user.IDUser == 0 {
 		return fmt.Errorf("user tidak ditemukan")
 	}

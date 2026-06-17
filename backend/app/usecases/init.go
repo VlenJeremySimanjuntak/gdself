@@ -36,7 +36,7 @@ func Init(opts Options) *Main {
 	return &Main{
 		User:       NewUserUsecase(opts.Repository.User),
 		Riwayat:    NewRiwayatUsecase(opts.Repository.Riwayat),
-		LaporanLab: NewLaporanLabUsecase(opts.Repository.LaporanLab),
+		LaporanLab: NewLaporanLabUsecase(opts.Repository.LaporanLab, opts.Repository.Riwayat),
 		Obat:       NewObatUsecase(opts.Repository.Obat),
 		Wearable:   NewWearableUsecase(opts.Repository.Wearable),
 		JadwalObat: NewJadwalObatUsecase(opts.Repository.JadwalObat),

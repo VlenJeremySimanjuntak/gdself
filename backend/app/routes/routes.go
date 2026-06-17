@@ -1,20 +1,30 @@
 package routes
 
 import (
-	"monitoring-service/app/controllers"
-
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"monitoring-service/app/controllers"
+	"time"
 )
 
 func ConfigureRouter(e *echo.Echo, controller *controllers.Main) {
+	e.Use(middleware.TimeoutWithConfig(middleware.TimeoutConfig{
+		Timeout: 30 * time.Second, // ✅ Benar
+	}))
+
+	debugCtrl := controllers.NewDebugController()
+	e.GET("/ping", debugCtrl.Ping)
+	e.GET("/test-json", debugCtrl.TestJSON)
 	api := e.Group("/api")
 
 	api.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"*"},
 		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders: []string{"Content-Type", "Authorization"},
+		MaxAge:       86400, // Cache preflight request 24 jam
 	}))
+
+	api.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(20)))
 
 	// ========================
 	// User Endpoints
@@ -92,7 +102,7 @@ func ConfigureRouter(e *echo.Echo, controller *controllers.Main) {
 	// ========================
 	// Hasil AI Endpoints (DIPERBAIKI)
 	// ========================
-	
+
 	// Hasil AI Harian (dari Wearable)
 	api.POST("/hasil-ai/harian", controller.HasilAI.CreateHarian)
 	api.GET("/hasil-ai/harian/:id", controller.HasilAI.GetHarianByID)
@@ -127,4 +137,15 @@ func ConfigureRouter(e *echo.Echo, controller *controllers.Main) {
 	api.GET("/lab", controller.Lab.GetAll)
 	api.GET("/lab/user/:user_id", controller.Lab.GetByUserID)
 	api.POST("/assess", controller.Lab.Assess)
+
+	// ========================
+	// USG Tiroid Endpoints
+	// ========================
+	api.POST("/usg-tiroid", controller.USGTiroid.Create)
+	api.GET("/usg-tiroid", controller.USGTiroid.GetAll)
+	api.GET("/usg-tiroid/:id", controller.USGTiroid.GetByID)
+	api.GET("/usg-tiroid/riwayat/:riwayat_id", controller.USGTiroid.GetByRiwayatID)
+	api.GET("/usg-tiroid/user/:user_id", controller.USGTiroid.GetByUserID) // ✅ Tambahan GetByUserID
+	api.PUT("/usg-tiroid/:id", controller.USGTiroid.Update)
+	api.DELETE("/usg-tiroid/:id", controller.USGTiroid.Delete)
 }
