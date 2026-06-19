@@ -75,46 +75,55 @@ func (u *wearableUsecase) CreateWearable(userID uint, wearable models.Wearable) 
 		TglHasilAi: wearable.TglData,
 	}
 
-	// Klasifikasi Detak Jantung
+	// ==================================================
+	// 1. ATURAN ANALISIS DETAK JANTUNG
+	// ==================================================
 	if wearable.HeartRateHr > 0 {
 		if wearable.HeartRateHr < 60 {
 			hasilAI.StatusHr = "Rendah"
-			hasilAI.ReminderHr = "Detak jantung Anda berada di bawah batas normal. Pastikan Anda cukup istirahat dan konsultasikan dengan dokter jika merasa pusing atau lemas."
+			hasilAI.ReminderHr = "Detak jantung berada di bawah kondisi normal. Disarankan istirahat cukup dan pemantauan ulang."
 		} else if wearable.HeartRateHr <= 100 {
 			hasilAI.StatusHr = "Normal"
-			hasilAI.ReminderHr = "Detak jantung Anda dalam kondisi baik. Pertahankan aktivitas fisik yang teratur."
+			hasilAI.ReminderHr = "Detak jantung berada dalam kondisi normal. Pertahankan aktivitas dan pola hidup sehat."
 		} else {
 			hasilAI.StatusHr = "Tinggi"
-			hasilAI.ReminderHr = "Detak jantung Anda cukup tinggi. Kurangi aktivitas berat sementara waktu dan cobalah untuk rileks."
+			hasilAI.ReminderHr = "Detak jantung berada di atas kondisi normal. Disarankan mengurangi aktivitas berat dan melakukan pemantauan berkala."
 		}
 	} else {
 		hasilAI.StatusHr = "Tidak Ada Data"
+		hasilAI.ReminderHr = "-"
 	}
 
-	// Klasifikasi Tidur
+	// ==================================================
+	// 2. ATURAN ANALISIS DURASI TIDUR
+	// Catatan: 420 menit = 7 jam, 540 menit = 9 jam
+	// ==================================================
 	if wearable.SleepDuration > 0 {
-		if wearable.SleepDuration < 420 { // < 7 jam
+		if wearable.SleepDuration < 420 {
 			hasilAI.StatusTidur = "Kurang"
-			hasilAI.ReminderTidur = "Total waktu tidur Anda kurang dari 7 jam. Kurang tidur dapat menurunkan kekebalan tubuh. Usahakan tidur lebih awal malam ini."
-		} else if wearable.SleepDuration <= 540 { // 7-9 jam
+			hasilAI.ReminderTidur = "Durasi tidur kurang dari kondisi ideal. Disarankan menambah waktu istirahat."
+		} else if wearable.SleepDuration <= 540 {
 			hasilAI.StatusTidur = "Normal"
-			hasilAI.ReminderTidur = "Pola tidur Anda sudah sangat baik (7-9 jam). Kualitas tidur yang baik membantu pemulihan tubuh."
-		} else { // > 9 jam
+			hasilAI.ReminderTidur = "Durasi tidur berada dalam kondisi ideal. Pertahankan pola tidur yang teratur."
+		} else {
 			hasilAI.StatusTidur = "Berlebih"
-			hasilAI.ReminderTidur = "Anda tidur lebih dari 9 jam. Pastikan Anda tidak terlalu lelah dan jaga rutinitas agar tubuh tetap bugar."
+			hasilAI.ReminderTidur = "Durasi tidur melebihi kondisi ideal. Disarankan menjaga keseimbangan pola tidur."
 		}
 	} else {
 		hasilAI.StatusTidur = "Tidak Ada Data"
+		hasilAI.ReminderTidur = "-"
 	}
 
-	// Klasifikasi Tekanan Darah
+	// ==================================================
+	// 3. ATURAN ANALISIS TEKANAN DARAH
+	// ==================================================
 	if wearable.Sistolik > 0 && wearable.Diastolik > 0 {
 		if wearable.Sistolik < 120 && wearable.Diastolik < 80 {
 			hasilAI.StatusTd = "Normal"
-			hasilAI.ReminderTd = "Tekanan darah Anda berada pada batas normal. Pertahankan pola makan sehat dan asupan cairan yang cukup."
+			hasilAI.ReminderTd = "Tekanan darah berada dalam kondisi normal. Pertahankan pola hidup sehat."
 		} else {
 			hasilAI.StatusTd = "Tinggi"
-			hasilAI.ReminderTd = "Tekanan darah Anda menunjukkan angka tinggi. Kurangi asupan garam, kelola stres, dan periksakan ke dokter jika berlanjut."
+			hasilAI.ReminderTd = "Tekanan darah berada di atas batas normal. Disarankan pengurangan asupan garam dan pemantauan berkala."
 		}
 	} else {
 		hasilAI.StatusTd = "Tidak Ada Data"
