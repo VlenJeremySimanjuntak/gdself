@@ -1,40 +1,79 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../utils/design_system.dart';
+import '../../home/providers/user_provider.dart';
+import '../../riwayat/provider/riwayat_provider.dart';
+import '../providers/monitoring_provider.dart';
 import 'edit_lab_screen.dart';
 
-class LabDetailScreen extends StatelessWidget {
+class LabDetailScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic> reportData;
 
   const LabDetailScreen({super.key, required this.reportData});
 
-  // Ambil data spesifik hormon dari raw_data JSON
+  @override
+  ConsumerState<LabDetailScreen> createState() => _LabDetailScreenState();
+}
+
+class _LabDetailScreenState extends ConsumerState<LabDetailScreen> {
+  late Map<String, dynamic> _currentData;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentData = Map.from(widget.reportData);
+  }
+
+  Future<void> _refreshData() async {
+    setState(() => _isLoading = true);
+    final userId = ref.read(userProvider).user?.idUser;
+    if (userId != null) {
+      // Ambil data terbaru dari monitoringProvider
+      await ref.read(monitoringProvider.notifier).fetchMonitoringData(userId);
+      // Cari data laporan terbaru dengan id yang sama
+      final latestLaporan = ref.read(monitoringProvider).history; // atau dari arsipProvider
+      // Karena kita punya idLaporanLab, kita bisa cari di arsipProvider
+      await ref.read(riwayatProvider.notifier).fetchRiwayatData(userId);
+      final arsipList = ref.read(riwayatProvider).laporanList;
+      final updatedReport = arsipList.firstWhere(
+            (item) => item['id_laporan_lab'] == _currentData['id_laporan_lab'],
+        orElse: () => _currentData,
+      );
+      setState(() {
+        _currentData = updatedReport;
+      });
+    }
+    setState(() => _isLoading = false);
+  }
+
   Map<String, dynamic>? _getParamData(String paramName) {
-    List<dynamic> hasil = reportData['raw_data']['hasil_lab'] ?? [];
+    List<dynamic> hasil = _currentData['raw_data']['hasil_lab'] ?? [];
     for (var h in hasil) {
-      if (h['parameter']?['nama_parameter']?.toString().toUpperCase() == paramName) {
+      if (h['parameter']?['nama_parameter']?.toString().toUpperCase() == paramName.toUpperCase()) {
         return h;
       }
     }
     return null;
   }
 
-  // Format data untuk dikirim ke Layar Edit
-  Map<String, dynamic>? _formatForEdit(Map<String, dynamic>? param) {
-    if (param == null) return null;
+  Map<String, dynamic>? _formatForEdit(Map<String, dynamic>? hasil) {
+    if (hasil == null) return null;
     return {
-      'val': double.tryParse(param['nilai_hasil']?.toString() ?? "0"),
-      'min': double.tryParse(param['rujukan_min']?.toString() ?? "0"),
-      'max': double.tryParse(param['rujukan_max']?.toString() ?? "0"),
-      'satuan': param['parameter']?['satuan'] ?? "",
+      'id': hasil['id_hasil_lab'] as int?,
+      'value': hasil['nilai_hasil'] as num?,
+      'min': hasil['nilai_batas_bawah'] as num?,
+      'max': hasil['nilai_batas_atas'] as num?,
+      'satuan': hasil['parameter']?['satuan'] as String? ?? '',
     };
   }
 
   @override
   Widget build(BuildContext context) {
-    String namaLab = reportData['nama_lab'] ?? "Laboratorium Klinik";
-    DateTime dateObj = DateTime.tryParse(reportData['raw_date'] ?? "") ?? DateTime.now();
-    String tgl = DateFormat('dd/MM/yyyy').format(dateObj); // Format sesuai gambar
+    String namaLab = _currentData['nama_lab'] ?? "Laboratorium Klinik";
+    DateTime dateObj = DateTime.tryParse(_currentData['raw_date'] ?? "") ?? DateTime.now();
+    String tgl = DateFormat('dd/MM/yyyy').format(dateObj);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F8FB),
@@ -47,8 +86,18 @@ class LabDetailScreen extends StatelessWidget {
           icon: const Icon(Icons.arrow_back, color: AppColors.primaryBlue),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          if (_isLoading)
+            const Padding(
+              padding: EdgeInsets.all(12.0),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryBlue),
+              ),
+            ),
+        ],
       ),
-      // 👇 Menggunakan Stack agar Positioned bisa bekerja
       body: Stack(
         children: [
           SingleChildScrollView(
@@ -58,10 +107,7 @@ class LabDetailScreen extends StatelessWidget {
               children: [
                 const Text("Data Hormon", style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: AppColors.textDark)),
                 const SizedBox(height: 8),
-                const Text(
-                  "Silakan ubah atau lengkapi data hasil laboratorium Anda agar pemantauan kondisi tiroid tetap sesuai.",
-                  style: TextStyle(fontSize: 13, color: AppColors.textGrey, height: 1.5),
-                ),
+                const Text("Berikut adalah rincian hasil laboratorium Anda.", style: TextStyle(fontSize: 13, color: AppColors.textGrey, height: 1.5)),
                 const SizedBox(height: 24),
 
                 _buildGeneralInfoCard(namaLab, tgl),
@@ -71,33 +117,41 @@ class LabDetailScreen extends StatelessWidget {
                 const SizedBox(height: 16),
                 _buildHormoneCard("FT4", "Free Thyroxine", _getParamData("FT4")),
                 const SizedBox(height: 16),
-                _buildHormoneCard("FT3", "Free Triiodothyronine", _getParamData("FT3"), isLast: true),
+                _buildHormoneCard("FT3", "Free Triiodothyronine", _getParamData("FT3")),
+                const SizedBox(height: 16),
+                _buildHormoneCard("TRAb", "Thyroid Receptor Antibody", _getParamData("TRAb")),
 
-                const SizedBox(height: 120), // Spasi ekstra di bawah agar tidak tertutup tombol
+                const SizedBox(height: 120),
               ],
             ),
           ),
 
-          // 👇 Tombol Mengambang (Positioned) Sesuai Request Mas Vlen
           Positioned(
             bottom: 30,
             right: 24,
             child: FloatingActionButton.extended(
-              onPressed: () {
-                // Langsung meluncur ke Layar Edit dengan data lengkap!
-                Navigator.push(context, MaterialPageRoute(builder: (context) => EditLabScreen(
-                  idLaporanLab: reportData['id_laporan_lab'],
-                  tanggal: reportData['raw_date'] ?? "",
-                  namaLab: namaLab,
-                  tshData: _formatForEdit(_getParamData("TSH")),
-                  ft4Data: _formatForEdit(_getParamData("FT4")),
-                  ft3Data: _formatForEdit(_getParamData("FT3")),
-                )));
+              onPressed: () async {
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => EditLabScreen(
+                      idLaporanLab: _currentData['id_laporan_lab'] ?? 0,
+                      tanggal: _currentData['raw_date'] ?? "",
+                      namaLab: namaLab,
+                      tshData: _formatForEdit(_getParamData("TSH")),
+                      ft4Data: _formatForEdit(_getParamData("FT4")),
+                      ft3Data: _formatForEdit(_getParamData("FT3")),
+                      trabData: _formatForEdit(_getParamData("TRAb")),
+                    ),
+                  ),
+                );
+                if (result == true && mounted) {
+                  // Refresh data setelah edit berhasil
+                  await _refreshData();
+                }
               },
-              foregroundColor: Colors.white,
               backgroundColor: AppColors.primaryBlue,
-              elevation: 8, // Elevation sesuai request
-              icon: const Icon(Icons.edit_rounded, color: Colors.white), // Icon edit ditambahkan
+              icon: const Icon(Icons.edit_rounded, color: Colors.white),
               label: const Text("Edit", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
             ),
           ),
@@ -125,13 +179,11 @@ class LabDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHormoneCard(String title, String sub, Map<String, dynamic>? data, {bool isLast = false}) {
-    double val = double.tryParse(data?['nilai_hasil']?.toString() ?? "0") ?? 0;
-    double min = double.tryParse(data?['rujukan_min']?.toString() ?? "0") ?? 0;
-    double max = double.tryParse(data?['rujukan_max']?.toString() ?? "0") ?? 0;
+  Widget _buildHormoneCard(String title, String sub, Map<String, dynamic>? data) {
+    String val = data?['nilai_hasil']?.toString() ?? "-";
+    String min = data?['nilai_batas_bawah']?.toString() ?? "-";
+    String max = data?['nilai_batas_atas']?.toString() ?? "-";
     String unit = data?['parameter']?['satuan'] ?? "";
-
-    bool isNormal = (min == 0 && max == 0) ? true : (val >= min && val <= max);
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -139,86 +191,30 @@ class LabDetailScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textDark)),
-                  Text(sub, style: const TextStyle(fontSize: 10, color: AppColors.textGrey)),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(color: isNormal ? const Color(0xFFCCF1E1) : const Color(0xFFF27E6D).withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.circle, size: 6, color: isNormal ? const Color(0xFF00897B) : const Color(0xFFF27E6D)),
-                    const SizedBox(width: 4),
-                    Text(isNormal ? "STABIL" : "PERHATIAN", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: isNormal ? const Color(0xFF00897B) : const Color(0xFFF27E6D))),
-                  ],
-                ),
-              )
-            ],
-          ),
+          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textDark)),
+          Text(sub, style: const TextStyle(fontSize: 10, color: AppColors.textGrey)),
           const SizedBox(height: 20),
           const Text("HASIL PEMERIKSAAN", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textGrey)),
           const SizedBox(height: 8),
-
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             decoration: BoxDecoration(color: const Color(0xFFEEF3F6), borderRadius: BorderRadius.circular(8)),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(val.toString(), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500, color: Colors.black45)),
-                Row(
-                  children: [
-                    Text(unit, style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold)),
-                    const SizedBox(width: 4),
-                    const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Colors.grey),
-                  ],
-                )
+                Text(val, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500, color: AppColors.textDark)),
+                Text(unit, style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold)),
               ],
             ),
           ),
           const SizedBox(height: 16),
-
           Row(
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("BATAS TERENDAH", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textGrey)),
-                    const SizedBox(height: 6),
-                    _buildFakeInput(min.toString()),
-                  ],
-                ),
-              ),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text("BATAS TERENDAH", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textGrey)), const SizedBox(height: 6), _buildFakeInput(min)])),
               const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("BATAS TERTINGGI", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textGrey)),
-                    const SizedBox(height: 6),
-                    _buildFakeInput(max.toString()),
-                  ],
-                ),
-              ),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text("BATAS TERTINGGI", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textGrey)), const SizedBox(height: 6), _buildFakeInput(max)])),
             ],
           ),
-          if (isLast) ...[
-            const SizedBox(height: 16),
-            const Text(
-              "*Hasil di luar rentang akan ditandai secara otomatis setelah penyimpanan.",
-              style: TextStyle(fontSize: 9, color: Colors.grey, fontStyle: FontStyle.italic),
-            )
-          ]
         ],
       ),
     );

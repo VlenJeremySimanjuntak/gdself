@@ -274,9 +274,8 @@ class WearableNotifier extends Notifier<WearableState> {
         '/wearable',
         data: {
           'id_user': userId,
-          'heart_rate_rhr': hr,
-          'sleep_duration': sleepSeconds,
-          'stress_score': stress,
+          'heart_rate_hr': hr,
+          'sleep_duration': sleepSeconds ~/ 60,
           'tgl_data': tglDataGolang, // ✅ PERBAIKAN DI SINI
         },
       );

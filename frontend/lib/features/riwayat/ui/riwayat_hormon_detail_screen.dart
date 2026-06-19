@@ -3,24 +3,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'dart:ui' as ui;
 
-// Sesuaikan path import ini dengan struktur folder Mas Vlen
 import '../../monitoring/ui/edit_lab_screen.dart';
-import '../provider/arsip_provider.dart';
+import '../provider/riwayat_provider.dart';
 
-class ArsipHormonDetailScreen extends ConsumerStatefulWidget {
-  final int idLaporanLab; // Kunci utama untuk mencari data di Provider
+class RiwayatHormonDetailScreen extends ConsumerStatefulWidget {
+  final int idLaporanLab;
 
-  const ArsipHormonDetailScreen({super.key, required this.idLaporanLab});
+  const RiwayatHormonDetailScreen({super.key, required this.idLaporanLab});
 
   @override
-  ConsumerState<ArsipHormonDetailScreen> createState() => _ArsipHormonDetailScreenState();
+  ConsumerState<RiwayatHormonDetailScreen> createState() => _RiwayatHormonDetailScreenState();
 }
 
-class _ArsipHormonDetailScreenState extends ConsumerState<ArsipHormonDetailScreen> {
+class _RiwayatHormonDetailScreenState extends ConsumerState<RiwayatHormonDetailScreen> {
   String _activeHormone = "FT3";
   int? _visibleTooltipIndex;
 
-  // Fungsi pembantu untuk mengambil data spesifik (TSH/FT3/FT4) dari sebuah laporan
   Map<String, dynamic>? _getParamData(Map<String, dynamic>? report, String paramName) {
     if (report == null) return null;
     List<dynamic> hasil = report['hasil_lab'] ?? [];
@@ -32,7 +30,6 @@ class _ArsipHormonDetailScreenState extends ConsumerState<ArsipHormonDetailScree
     return null;
   }
 
-  // Fungsi format data untuk dikirim ke Layar Edit
   Map<String, dynamic>? _formatForEdit(Map<String, dynamic>? param) {
     if (param == null) return null;
     return {
@@ -45,10 +42,9 @@ class _ArsipHormonDetailScreenState extends ConsumerState<ArsipHormonDetailScree
 
   @override
   Widget build(BuildContext context) {
-    final arsipState = ref.watch(arsipProvider);
-    final laporanList = arsipState.laporanList;
+    final riwayatState = ref.watch(riwayatProvider);
+    final laporanList = riwayatState.laporanList;
 
-    // Cari laporan saat ini berdasarkan ID
     int currentIndex = laporanList.indexWhere((l) => l['id_laporan_lab'] == widget.idLaporanLab);
     if (currentIndex == -1) {
       return const Scaffold(body: Center(child: Text("Data tidak ditemukan")));
@@ -58,10 +54,8 @@ class _ArsipHormonDetailScreenState extends ConsumerState<ArsipHormonDetailScree
     final currentRawData = currentReport['raw_data'];
     final ringkasan = currentReport['ringkasan'] ?? "";
 
-    // Cari laporan sebelumnya (jika ada) untuk grafik perbandingan
     final previousRawData = (currentIndex + 1 < laporanList.length) ? laporanList[currentIndex + 1]['raw_data'] : null;
 
-    // Parsing Tanggal
     DateTime curDate = DateTime.tryParse(currentRawData['tgl_periksa'] ?? "") ?? DateTime.now();
     String curDateStr = DateFormat('dd MMM yyyy', 'id_ID').format(curDate);
     String curMonthStr = DateFormat('MMM', 'id_ID').format(curDate).toUpperCase();
@@ -74,7 +68,6 @@ class _ArsipHormonDetailScreenState extends ConsumerState<ArsipHormonDetailScree
       prevMonthStr = DateFormat('MMM', 'id_ID').format(pDate).toUpperCase();
     }
 
-    // SIAPKAN DATA UNTUK GRAFIK
     var currParam = _getParamData(currentRawData, _activeHormone);
     var prevParam = _getParamData(previousRawData, _activeHormone);
 
@@ -108,7 +101,7 @@ class _ArsipHormonDetailScreenState extends ConsumerState<ArsipHormonDetailScree
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
-          "Arsip Data Hormon",
+          "Riwayat Data Hormon", // ✅ Diubah dari "Arsip" menjadi "Riwayat"
           style: TextStyle(color: Color(0xFF005F82), fontWeight: FontWeight.bold, fontSize: 18),
         ),
       ),
@@ -146,7 +139,6 @@ class _ArsipHormonDetailScreenState extends ConsumerState<ArsipHormonDetailScree
   }
 
   Widget _buildAlertCard(String ringkasan) {
-    // Cek apakah ringkasannya mengandung kata stabil/normal
     bool isStabil = ringkasan.toLowerCase().contains("stabil") || ringkasan.toLowerCase().contains("normal");
 
     return Container(
@@ -168,7 +160,6 @@ class _ArsipHormonDetailScreenState extends ConsumerState<ArsipHormonDetailScree
           const SizedBox(height: 20),
           Text(isStabil ? "Hormon Terkendali" : "Lonjakan Hormon", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF2D4052))),
           const SizedBox(height: 10),
-          // 👇 INI YANG KURANG! Kita gabungkan ringkasan dinamis dengan teks Wearable
           Text(
             "$ringkasan\nTidak ada perubahan signifikan terkait detak jantung, tidur, dan stres.\nPertahankan pola hidup sehat Anda.",
             style: const TextStyle(color: Color(0xFF7D848D), fontSize: 14, height: 1.5),
@@ -194,7 +185,7 @@ class _ArsipHormonDetailScreenState extends ConsumerState<ArsipHormonDetailScree
       if (valStr.endsWith(".00")) valStr = valStr.substring(0, valStr.length - 3);
 
       if (min == 0 && max == 0) {
-        status = "Normal"; // Fallback
+        status = "Normal";
         statusColor = const Color(0xFF00897B);
         statusBg = const Color(0xFFCCF1E1);
       } else if (val < min) {
@@ -280,7 +271,6 @@ class _ArsipHormonDetailScreenState extends ConsumerState<ArsipHormonDetailScree
                 children: [
                   _badgeNormal(dataPoints.isNotEmpty ? dataPoints.last : 0, minRujukan, maxRujukan),
                   const SizedBox(width: 10),
-                  // 👇 Menu Edit Terhubung Langsung
                   Theme(
                     data: Theme.of(context).copyWith(hoverColor: Colors.transparent, splashColor: Colors.transparent),
                     child: PopupMenuButton<String>(
@@ -355,7 +345,6 @@ class _ArsipHormonDetailScreenState extends ConsumerState<ArsipHormonDetailScree
           ),
 
           const SizedBox(height: 15),
-          // Label Bulan Dinamis
           xLabels.length == 1
               ? Center(child: Text(xLabels[0], style: TextStyle(color: Colors.grey.shade400, fontSize: 11, fontWeight: FontWeight.bold)))
               : Row(

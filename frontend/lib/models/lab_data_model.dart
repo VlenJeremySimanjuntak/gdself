@@ -6,7 +6,7 @@ class ParameterLabModel {
   final String namaParameter;
   final String? satuan;
   final String? kategori;
-  final double nilai;
+  final double nilaiHasil; // ✅ sudah diubah dari 'nilai' menjadi 'nilaiHasil'
 
   ParameterLabModel({
     required this.idParameter,
@@ -14,7 +14,7 @@ class ParameterLabModel {
     required this.namaParameter,
     this.satuan,
     this.kategori,
-    required this.nilai,
+    required this.nilaiHasil,
   });
 
   factory ParameterLabModel.fromJson(Map<String, dynamic> json) {
@@ -24,16 +24,25 @@ class ParameterLabModel {
       namaParameter: json['nama_parameter'] as String? ?? '-',
       satuan: json['satuan'] as String?,
       kategori: json['kategori'] as String?,
-      nilai: _toDouble(json['nilai']) ?? _toDouble(json['nilai_hasil']) ?? 0.0,
+      nilaiHasil: _toDouble(json['nilai_hasil']) ?? 0.0,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'nama_parameter': namaParameter,
+      'nilai_hasil': nilaiHasil,
+      'satuan': satuan,
+      'kategori': kategori,
+    };
   }
 }
 
 class HasilLabModel {
   final int idHasilLab;
   final double nilaiHasil;
-  final double rujukanMin;
-  final double rujukanMax;
+  final double rujukanMin;   // ← tetap pakai nama ini di model FE
+  final double rujukanMax;   // ← tapi akan diisi dari nilai_batas_bawah/atas
   final List<ParameterLabModel> parameters;
 
   HasilLabModel({
@@ -49,16 +58,19 @@ class HasilLabModel {
     List<ParameterLabModel> params = [];
 
     if (paramObj != null && paramObj is Map<String, dynamic>) {
-      paramObj['nilai_hasil'] = json['nilai_hasil'];
-      paramObj['id_hasil_lab'] = json['id_hasil_lab'];
-      params.add(ParameterLabModel.fromJson(paramObj));
+      // Gabungkan data dari parent ke parameter
+      final merged = Map<String, dynamic>.from(paramObj);
+      merged['nilai_hasil'] = json['nilai_hasil'] ?? 0.0;
+      merged['id_hasil_lab'] = json['id_hasil_lab'] ?? 0;
+      params.add(ParameterLabModel.fromJson(merged));
     }
 
     return HasilLabModel(
       idHasilLab: _toInt(json['id_hasil_lab']) ?? 0,
       nilaiHasil: _toDouble(json['nilai_hasil']) ?? 0.0,
-      rujukanMin: _toDouble(json['rujukan_min']) ?? 0.0,
-      rujukanMax: _toDouble(json['rujukan_max']) ?? 0.0,
+      // ✅ Perbaikan: baca dari nilai_batas_bawah dan nilai_batas_atas
+      rujukanMin: _toDouble(json['nilai_batas_bawah']) ?? 0.0,
+      rujukanMax: _toDouble(json['nilai_batas_atas']) ?? 0.0,
       parameters: params,
     );
   }
@@ -71,7 +83,7 @@ class LaporanLabModel {
   final DateTime? tglPeriksa;
   final String? namaLab;
   final List<HasilLabModel> hasilLab;
-  final HasilAIGabunganModel? kesimpulanLab; // 👇 SUDAH DIUBAH KE MODEL BARU
+  final HasilAIGabunganModel? kesimpulanLab;
 
   LaporanLabModel({
     required this.idLaporanLab,
@@ -83,7 +95,7 @@ class LaporanLabModel {
     this.kesimpulanLab,
   });
 
-  LaporanLabModel copyWith({HasilAIGabunganModel? kesimpulanLab}) { // 👇 SUDAH DIUBAH
+  LaporanLabModel copyWith({HasilAIGabunganModel? kesimpulanLab}) {
     return LaporanLabModel(
       idLaporanLab: idLaporanLab,
       idUser: idUser,
@@ -126,6 +138,7 @@ class LaporanLabModel {
   }
 }
 
+// --- Helper functions ---
 int? _toInt(dynamic value) {
   if (value == null) return null;
   if (value is int) return value;

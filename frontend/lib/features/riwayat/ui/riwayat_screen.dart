@@ -1,35 +1,70 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import '../../../models/usg_tiroid_model.dart';
 import '../../../utils/design_system.dart';
 import '../../home/providers/user_provider.dart';
-import '../provider/arsip_provider.dart'; // Pastikan path ini benar
-import 'arsip_hormon_detail_screen.dart';
+import '../../monitoring/ui/lab_detail_screen.dart';
+import '../provider/riwayat_provider.dart';
+import 'riwayat_hormon_detail_screen.dart';
+import '../../monitoring/ui/usg_detail_screen.dart';
 
-class ArsipScreen extends ConsumerStatefulWidget {
-  const ArsipScreen({super.key});
+class RiwayatScreen extends ConsumerStatefulWidget {
+  const RiwayatScreen({super.key});
 
   @override
-  ConsumerState<ArsipScreen> createState() => _ArsipScreenState();
+  ConsumerState<RiwayatScreen> createState() => _RiwayatScreenState();
 }
 
-class _ArsipScreenState extends ConsumerState<ArsipScreen> {
+class _RiwayatScreenState extends ConsumerState<RiwayatScreen> {
+  String _activeFilter = 'LAB';
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
-    // Tarik data saat layar dibuka
     final userId = ref.read(userProvider).user?.idUser;
     if (userId != null) {
-      Future.microtask(() => ref.read(arsipProvider.notifier).fetchArsipData(userId));
+      Future.microtask(() {
+        ref.read(riwayatProvider.notifier).fetchRiwayatData(userId);
+      });
     }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final arsipState = ref.watch(arsipProvider);
+    final riwayatState = ref.watch(riwayatProvider);
+    final rawItems = riwayatState.items;
 
-    // 👇 INI YANG KURANG MAS! Kita tarik data usernya dari provider
-    final user = ref.watch(userProvider).user;
+    // ✅ Logika Filter yang sudah diperbarui: Pencarian HANYA berlaku untuk USG
+    final filteredItems = rawItems.where((item) {
+      if (_activeFilter == 'LAB' && item['type'] != 'lab') return false;
+      if (_activeFilter == 'USG' && item['type'] != 'usg') return false;
+
+      // Pencarian hanya dieksekusi jika tab USG aktif
+      if (_activeFilter == 'USG' && _searchQuery.isNotEmpty) {
+        final title = (item['raw_data'] as UsgTiroidModel).namaRs.toLowerCase();
+        final subtitle = (item['formatted_date'] ?? '').toString().toLowerCase();
+
+        if (!title.contains(_searchQuery) && !subtitle.contains(_searchQuery)) {
+          return false;
+        }
+      }
+      return true;
+    }).toList();
+
+    String topDate = DateFormat('dd MMMM yyyy', 'id_ID').format(DateTime.now());
+    if (rawItems.isNotEmpty) {
+      topDate = rawItems.first['formatted_date'] ?? topDate;
+    }
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -40,12 +75,12 @@ class _ArsipScreenState extends ConsumerState<ArsipScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            stops: [0.0, 0.3],
-            colors: [AppColors.bgGradientTop, AppColors.background],
+            stops: [0.0, 0.4],
+            colors: [Color(0xFFEAF5FF), AppColors.background],
           ),
         ),
         child: SafeArea(
-          child: arsipState.isLoading
+          child: riwayatState.isLoading
               ? const Center(child: CircularProgressIndicator(color: AppColors.primaryBlue))
               : SingleChildScrollView(
             physics: const BouncingScrollPhysics(),
@@ -54,36 +89,59 @@ class _ArsipScreenState extends ConsumerState<ArsipScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 20),
-                _buildHeader(user), // Sekarang 'user' sudah dikenali di sini
-                const SizedBox(height: 35),
-
-                const Text("Arsip Data Hormon",
-                    style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textDark,
-                        letterSpacing: -0.5)),
-                const SizedBox(height: 8),
-                const Text(
-                  "Tinjau riwayat pemeriksaan laboratorium Anda dan pantau tren kesehatan tiroid secara berkala.",
-                  style: TextStyle(color: AppColors.textGrey, fontSize: 14, height: 1.5),
-                ),
-
-                const SizedBox(height: 25),
-                _buildSearchBar(),
+                _buildHeaderLogo(),
                 const SizedBox(height: 40),
 
-                // 👇 Render Daftar Dinamis
-                if (arsipState.laporanList.isEmpty)
+                const Text("Riwayat\nLaboratorium",
+                    style: TextStyle(
+                        fontSize: 34,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF1E293B),
+                        height: 1.1,
+                        letterSpacing: -1.0)),
+                const SizedBox(height: 24),
+
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFDFF0FF),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.calendar_today_outlined, color: Color(0xFF005085), size: 22),
+                    ),
+                    const SizedBox(width: 16),
+                    Text(topDate, style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF475569), fontSize: 13)),
+                  ],
+                ),
+                const SizedBox(height: 32),
+
+                // ✅ Animasi menyembunyikan/memunculkan Search Bar
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  child: _activeFilter == 'USG'
+                      ? Padding(
+                    padding: const EdgeInsets.only(bottom: 24),
+                    child: _buildSearchBar(),
+                  )
+                      : const SizedBox.shrink(),
+                ),
+
+                _buildFilterChips(),
+                const SizedBox(height: 16),
+
+                if (filteredItems.isEmpty)
                   const Center(
                     child: Padding(
-                      padding: EdgeInsets.only(top: 40),
-                      child: Text("Belum ada riwayat pemeriksaan laboratorium.",
-                          style: TextStyle(color: AppColors.textGrey)),
+                      padding: EdgeInsets.only(top: 60),
+                      child: Text("Data tidak ditemukan.",
+                          style: TextStyle(color: AppColors.textGrey, fontWeight: FontWeight.w500)),
                     ),
                   )
                 else
-                  ..._buildDynamicList(arsipState.laporanList),
+                  ..._buildGroupedItems(filteredItems),
 
                 const SizedBox(height: 120),
               ],
@@ -94,56 +152,12 @@ class _ArsipScreenState extends ConsumerState<ArsipScreen> {
     );
   }
 
-  // Fungsi untuk menyusun urutan Kartu dan Header Tanggal
-  List<Widget> _buildDynamicList(List<Map<String, dynamic>> laporanList) {
-    List<Widget> widgets = [];
-    String lastDate = "";
-
-    for (var laporan in laporanList) {
-      // Cek apakah tanggalnya sama dengan kartu sebelumnya. Jika beda, buat Header Tanggal.
-      if (laporan['formatted_date'] != lastDate) {
-        widgets.add(_buildDateHeader(laporan['formatted_date']));
-        lastDate = laporan['formatted_date'];
-      }
-
-      widgets.add(_buildHormonCard(
-        namaLab: laporan['nama_lab'],
-        ringkasanStatus: laporan['ringkasan'],
-        time: laporan['time'],
-        dataLengkap: laporan['raw_data'],
-      ));
-    }
-
-    return widgets;
-  }
-
-  Widget _buildHeader(user) {
-    final String initial = (user?.nama != null && user!.nama.isNotEmpty)
-        ? user.nama[0].toUpperCase()
-        : '?';
-
+  Widget _buildHeaderLogo() {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Row(
-          children: [
-            Image.asset('assets/images/graves-logo.png', width: 28, height: 28),
-            const SizedBox(width: 10),
-            const Text("Graves disease", style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryBlue, fontSize: 18)),
-          ],
-        ),
-        CircleAvatar(
-          radius: 18,
-          backgroundColor: const Color(0xFFE3ECF7),
-          child: Text(
-            initial,
-            style: const TextStyle(
-              color: Color(0xFF334155),
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
-            ),
-          ),
-        ),
+        Image.asset('assets/images/graves-logo.png', width: 28, height: 28),
+        const SizedBox(width: 10),
+        const Text("Graves disease", style: TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF005085), fontSize: 18, letterSpacing: -0.5)),
       ],
     );
   }
@@ -151,106 +165,198 @@ class _ArsipScreenState extends ConsumerState<ArsipScreen> {
   Widget _buildSearchBar() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 5))
-        ],
+        color: const Color(0xFFE9EFEE),
+        borderRadius: BorderRadius.circular(30),
       ),
-      child: const TextField(
-        decoration: InputDecoration(
-          hintText: "Cari riwayat pemeriksaan...",
-          hintStyle: TextStyle(color: Colors.black26, fontSize: 15),
-          prefixIcon: Icon(Icons.search, color: AppColors.primaryBlue, size: 22),
+      child: TextField(
+        controller: _searchController,
+        onChanged: (value) {
+          setState(() {
+            _searchQuery = value.toLowerCase();
+          });
+        },
+        decoration: const InputDecoration(
+          hintText: "Cari nama rumah sakit...",
+          hintStyle: TextStyle(color: Color(0xFF64748B), fontSize: 14, fontWeight: FontWeight.w500),
+          prefixIcon: Icon(Icons.search, color: Color(0xFF64748B), size: 22),
           border: InputBorder.none,
-          contentPadding: EdgeInsets.symmetric(vertical: 15),
+          contentPadding: EdgeInsets.symmetric(vertical: 16),
         ),
       ),
     );
   }
 
-  Widget _buildDateHeader(String date) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
-      child: Row(
-        children: [
-          Text(date,
-              style: const TextStyle(
-                  color: Colors.black26, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
-          const SizedBox(width: 15),
-          Expanded(child: Divider(color: Colors.black.withOpacity(0.05), thickness: 1)),
-        ],
+  Widget _buildFilterChips() {
+    return Row(
+      children: [
+        _buildChip("LAB", "LAB"),
+        const SizedBox(width: 12),
+        _buildChip("USG", "USG"),
+      ],
+    );
+  }
+
+  Widget _buildChip(String label, String filterValue) {
+    bool isSelected = _activeFilter == filterValue;
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _activeFilter = filterValue;
+          // ✅ Reset pencarian saat berpindah tab
+          _searchQuery = '';
+          _searchController.clear();
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFDFF0FF) : const Color(0xFFE2E8F0),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 12,
+              color: isSelected ? const Color(0xFF005085) : const Color(0xFF475569),
+              letterSpacing: 0.5
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildHormonCard({
-    required String namaLab,
-    required String ringkasanStatus,
-    required String time,
-    required Map<String, dynamic> dataLengkap,
-  }) {
-    return GestureDetector(
+  List<Widget> _buildGroupedItems(List<Map<String, dynamic>> items) {
+    List<Widget> widgets = [];
+    String lastDate = '';
+
+    for (var item in items) {
+      final date = item['formatted_date'] ?? '-';
+      if (date != lastDate) {
+        widgets.add(_buildDateHeader(date));
+        lastDate = date;
+      }
+
+      if (item['type'] == 'lab') {
+        widgets.add(_buildLabCard(item));
+      } else if (item['type'] == 'usg') {
+        widgets.add(_buildUsgCard(item));
+      }
+    }
+    return widgets;
+  }
+
+  Widget _buildDateHeader(String date) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 24, bottom: 12, right: 10),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: Text(
+          date,
+          style: const TextStyle(
+            color: Color(0xFF334155),
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.3,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLabCard(Map<String, dynamic> item) {
+    return _buildCard(
+      icon: Icons.stacked_line_chart_rounded,
+      iconBgColor: const Color(0xFFE6F0F9),
+      iconColor: const Color(0xFF005A8C),
+      title: 'Hasil Laboratorium',
+      subtitle: item['formatted_date'] ?? '-',
       onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => ArsipHormonDetailScreen(
-              idLaporanLab: dataLengkap['id_laporan_lab'], // Diambil dari API
+            builder: (context) =>
+                LabDetailScreen(
+              reportData: item, // Kirim datanya langsung!
             ),
           ),
         );
       },
+    );
+  }
+
+  Widget _buildUsgCard(Map<String, dynamic> item) {
+    final usg = item['raw_data'] as UsgTiroidModel;
+    return _buildCard(
+      icon: Icons.description_outlined,
+      iconBgColor: const Color(0xFFE6F0F9),
+      iconColor: const Color(0xFF005A8C),
+      title: usg.namaRs.isNotEmpty ? usg.namaRs : 'Pemeriksaan USG',
+      subtitle: item['formatted_date'] ?? '-',
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => UsgDetailScreen(
+              usgId: usg.idUsg!, // ✅ tambahkan ini
+              usgData: usg,      // ✅ lempar data juga
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCard({
+    required IconData icon,
+    required Color iconBgColor,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.all(20),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 5))
-            ]),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(40),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))
+          ],
+        ),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: const BoxDecoration(
-                  color: Color(0xFFEDF4F8),
-                  shape: BoxShape.circle),
-              child: const Icon(Icons.stacked_line_chart_rounded, color: AppColors.primaryBlue, size: 26),
+              decoration: BoxDecoration(
+                color: iconBgColor,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: iconColor, size: 24),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 20),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          namaLab,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textDark),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(time,
-                          style: const TextStyle(
-                              color: Colors.black38, fontSize: 12, fontWeight: FontWeight.w600)),
-                    ],
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF1E293B), letterSpacing: -0.3),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 6),
-                  Text(ringkasanStatus,
-                      style: const TextStyle(color: AppColors.textGrey, fontSize: 13, height: 1.4)),
-                  const SizedBox(height: 12),
-                  const Text("Lihat Detail >",
-                      style: TextStyle(color: AppColors.primaryBlue, fontSize: 13, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.w600),
+                  ),
                 ],
               ),
-            )
+            ),
           ],
         ),
       ),

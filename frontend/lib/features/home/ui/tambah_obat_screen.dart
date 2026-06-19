@@ -14,7 +14,7 @@ class ObatScheduleDraft {
   final String namaObat;
   final String dosis;
   final DateTime tanggalMulai;
-  final DateTime tanggalSelesai; // Sekarang Wajib (Tidak boleh null)
+  final DateTime tanggalSelesai;
   final List<String> hariTerpilih;
   final List<TimeOfDay> waktuKonsumsi;
 
@@ -81,7 +81,6 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
     _DayOption('M', 'MIN'),
   ];
 
-  // 👇 PERUBAHAN: _tanggalMulai sekarang bisa kosong (null) dan tanpa default
   DateTime? _tanggalMulai;
   DateTime? _tanggalSelesai;
   String _tipeObat = 'Tablet';
@@ -93,7 +92,6 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
   @override
   void initState() {
     super.initState();
-    // Tanggal Mulai tidak lagi diset ke DateTime.now() di sini
     _selectedDays = List<bool>.filled(_days.length, false);
     _updateTimesList();
   }
@@ -108,6 +106,19 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
 
   void _updateTimesList() {
     _times = List<TimeOfDay?>.filled(_frekuensi, null);
+  }
+
+  // 👇 FUNGSI BARU: Untuk mengubah satuan dosis otomatis
+  String _getSatuanDosis() {
+    switch (_tipeObat) {
+      case 'Tablet':
+        return 'tablet';
+      case 'Kapsul':
+        return 'kapsul';
+      case 'Sirup':
+      default:
+        return 'mg';
+    }
   }
 
   bool _isDateOverlapping(DateTime startA, DateTime? endA, DateTime startB, DateTime? endB) {
@@ -126,7 +137,6 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
     if (_namaObatController.text.trim().isEmpty) return _showMessage('Nama obat belum diisi');
     if (_dosisController.text.trim().isEmpty) return _showMessage('Dosis belum diisi');
 
-    // 👇 PERUBAHAN: Validasi ketat Tanggal Mulai & Tanggal Selesai
     if (_tanggalMulai == null) return _showMessage('Tanggal mulai wajib diisi');
     if (_tanggalSelesai == null) return _showMessage('Tanggal selesai wajib diisi');
     if (_tanggalSelesai!.isBefore(_tanggalMulai!)) {
@@ -269,15 +279,18 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
                               child: DropdownButton<String>(
                                 value: _tipeObat,
                                 isExpanded: true,
+                                dropdownColor: Colors.white, // ✅ FIX: Pastikan dropdown menu berwarna putih bersih
                                 icon: const Icon(Icons.keyboard_arrow_down, color: Colors.grey),
-                                items: ['Tablet', 'Kapsul', 'Sirup', 'Injeksi', 'Lainnya'].map((String value) {
+                                items: ['Tablet', 'Kapsul', 'Sirup'].map((String value) {
                                   return DropdownMenuItem<String>(
                                     value: value,
                                     child: Text(value, style: const TextStyle(fontSize: 14, color: Color(0xFF334155))),
                                   );
                                 }).toList(),
                                 onChanged: (val) {
-                                  if (val != null) setState(() => _tipeObat = val);
+                                  if (val != null) {
+                                    setState(() => _tipeObat = val);
+                                  }
                                 },
                               ),
                             ),
@@ -287,7 +300,7 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      flex: 2,
+                      flex: 3, // Diperlebar sedikit agar teks satuan muat
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -298,7 +311,7 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
                             hintText: '0',
                             textAlign: TextAlign.center,
                             keyboardType: TextInputType.number,
-                            suffixText: 'mg',
+                            suffixText: _getSatuanDosis(), // ✅ FIX: Satuan berubah dinamis mengikuti _tipeObat
                           ),
                         ],
                       ),
@@ -598,7 +611,6 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
   }
 
   Future<void> _saveSchedule() async {
-    // Karena kita sudah memvalidasi di _nextStep, _tanggalMulai dan _tanggalSelesai dipastikan tidak null di sini
     if (_tanggalMulai == null || _tanggalSelesai == null) {
       return _showMessage('Tanggal mulai dan selesai wajib diisi');
     }
@@ -615,7 +627,9 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
     if (user == null || user.idUser == 0) return _showMessage('Session user tidak ditemukan.');
 
     final namaObat = _namaObatController.text.trim();
-    final dosis = _dosisController.text.trim();
+    // 👇 SATUAN DISIMPAN KE DATABASE BERSAMA ANGKA DOSIS (Contoh: "1 tablet", "5 ml")
+    final dosisDenganSatuan = "${_dosisController.text.trim()} ${_getSatuanDosis()}";
+
     final semuaJadwal = ref.read(homeProvider).jadwalObat;
 
     bool isBentrok = false;
@@ -649,11 +663,10 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
 
     final waktuKonsumsiList = _times.whereType<TimeOfDay>().map((time) => _formatTimeForApi(time)).toList();
 
-    // Call Provider
     final success = await ref.read(obatProvider.notifier).tambahObatDenganJadwal(
       userId: user.idUser,
       namaObat: namaObat,
-      dosis: dosis,
+      dosis: dosisDenganSatuan, // Menyimpan 1 tablet / 5 ml langsung ke backend
       waktuKonsumsi: waktuKonsumsiList,
       tanggalMulai: formattedMulai,
       tanggalSelesai: formattedSelesai,
@@ -674,7 +687,7 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
 
       final draft = ObatScheduleDraft(
         namaObat: namaObat,
-        dosis: dosis,
+        dosis: dosisDenganSatuan,
         tanggalMulai: _tanggalMulai!,
         tanggalSelesai: _tanggalSelesai!,
         hariTerpilih: selectedDays,
