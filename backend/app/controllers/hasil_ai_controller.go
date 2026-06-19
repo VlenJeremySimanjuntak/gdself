@@ -192,6 +192,14 @@ func (ctrl *hasilAIController) GetLabByLaporanLabID(c echo.Context) error {
 
 	hasil, err := ctrl.labUsecase.GetHasilAILabByLaporanLabID(uint(laporanLabID))
 	if err != nil {
+		if err.Error() == "record not found" {
+			return c.JSON(http.StatusOK, models.Response{
+				StatusCode: http.StatusOK,
+				Message:    "Data Hasil AI Lab belum tersedia untuk laporan ini",
+				Data:       nil,
+			})
+		}
+		
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": err.Error(),
 		})
@@ -240,8 +248,6 @@ func (ctrl *hasilAIController) GetTrenByLaporanLabID(c echo.Context) error {
 
 	hasil, err := ctrl.trenUsecase.GetHasilAITrenByLaporanLabID(uint(laporanLabID))
 	if err != nil {
-		// Tren hanya ada kalau sudah pernah ada data sebelumnya (Mesin 3)
-		// Jadi not found adalah kondisi normal
 		return c.JSON(http.StatusNotFound, map[string]string{
 			"error": "data tren belum tersedia untuk laporan ini",
 		})
@@ -276,11 +282,10 @@ func (ctrl *hasilAIController) ProcessAssessment(c echo.Context) error {
 			})
 		}
 	} else {
-		// Jika bukan lab day, wearable data harus ada
-		// Sesuaikan dengan field WearableData yang sebenarnya: HR, SleepMinutes
-		if input.Wearable.HR == 0 && input.Wearable.SleepMinutes == 0 {
+		// ✅ PERBAIKAN: Tambahkan Sys dan Dia agar Tekanan Darah juga lolos validasi
+		if input.Wearable.HR == 0 && input.Wearable.SleepMinutes == 0 && input.Wearable.Sys == 0 && input.Wearable.Dia == 0 {
 			return c.JSON(http.StatusBadRequest, map[string]string{
-				"error": "data wearable (hr dan sleep_minutes) diperlukan untuk assessment harian",
+				"error": "data wearable (hr, sleep_minutes, sys, atau dia) diperlukan untuk assessment harian",
 			})
 		}
 	}

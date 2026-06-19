@@ -44,21 +44,19 @@ func (ctrl *wearableController) Create(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id_user harus diisi"})
 	}
 
-	if input.HeartRateHr == 0 {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "heart_rate_hr harus diisi"})
+	if input.HeartRateHr == 0 && input.SleepDuration == 0 && input.Sistolik == 0 && input.Diastolik == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Minimal satu data metrik harus diisi"})
 	}
 
-	if input.SleepDuration == 0 {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "sleep_duration harus diisi"})
-	}
-
-	// Mapping ke model Wearable sesuai struktur terbaru
+	// Mapping ke model Wearable
 	wearable := models.Wearable{
 		IDRiwayat:     input.IDRiwayat,
 		TglData:       input.TglData,
 		WaktuData:     input.WaktuData,
 		HeartRateHr:   input.HeartRateHr,
 		SleepDuration: input.SleepDuration,
+		Sistolik:      input.Sistolik,  // ✅ Mapping Sistolik
+		Diastolik:     input.Diastolik, // ✅ Mapping Diastolik
 	}
 
 	result, err := ctrl.usecase.CreateWearable(input.IDUser, wearable)
@@ -155,8 +153,7 @@ func (ctrl *wearableController) Update(c echo.Context) error {
 		})
 	}
 
-	// Validasi minimal ada satu field yang diupdate
-	if input.TglData == nil && input.WaktuData == nil && input.HeartRateHr == 0 && input.SleepDuration == 0 {
+	if input.TglData == nil && input.WaktuData == nil && input.HeartRateHr == 0 && input.SleepDuration == 0 && input.Sistolik == 0 && input.Diastolik == 0 {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "Minimal satu field harus diisi untuk update",
 		})

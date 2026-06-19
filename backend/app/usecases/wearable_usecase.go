@@ -63,9 +63,68 @@ func (u *wearableUsecase) CreateWearable(userID uint, wearable models.Wearable) 
 
 	wearable.IDRiwayat = riwayat.IDRiwayat
 
+	// 1. Simpan Wearable
 	if err := tx.Create(&wearable).Error; err != nil {
 		tx.Rollback()
 		return models.Wearable{}, err
+	}
+
+	// 2. Analisis AI Harian & Simpan
+	hasilAI := models.HasilAIHarian{
+		IDWearable: wearable.IDWearable,
+		TglHasilAi: wearable.TglData,
+	}
+
+	// Klasifikasi Detak Jantung
+	if wearable.HeartRateHr > 0 {
+		if wearable.HeartRateHr < 60 {
+			hasilAI.StatusHr = "Rendah"
+			hasilAI.ReminderHr = "Detak jantung Anda berada di bawah batas normal. Pastikan Anda cukup istirahat dan konsultasikan dengan dokter jika merasa pusing atau lemas."
+		} else if wearable.HeartRateHr <= 100 {
+			hasilAI.StatusHr = "Normal"
+			hasilAI.ReminderHr = "Detak jantung Anda dalam kondisi baik. Pertahankan aktivitas fisik yang teratur."
+		} else {
+			hasilAI.StatusHr = "Tinggi"
+			hasilAI.ReminderHr = "Detak jantung Anda cukup tinggi. Kurangi aktivitas berat sementara waktu dan cobalah untuk rileks."
+		}
+	} else {
+		hasilAI.StatusHr = "Tidak Ada Data"
+	}
+
+	// Klasifikasi Tidur
+	if wearable.SleepDuration > 0 {
+		if wearable.SleepDuration < 420 { // < 7 jam
+			hasilAI.StatusTidur = "Kurang"
+			hasilAI.ReminderTidur = "Total waktu tidur Anda kurang dari 7 jam. Kurang tidur dapat menurunkan kekebalan tubuh. Usahakan tidur lebih awal malam ini."
+		} else if wearable.SleepDuration <= 540 { // 7-9 jam
+			hasilAI.StatusTidur = "Normal"
+			hasilAI.ReminderTidur = "Pola tidur Anda sudah sangat baik (7-9 jam). Kualitas tidur yang baik membantu pemulihan tubuh."
+		} else { // > 9 jam
+			hasilAI.StatusTidur = "Berlebih"
+			hasilAI.ReminderTidur = "Anda tidur lebih dari 9 jam. Pastikan Anda tidak terlalu lelah dan jaga rutinitas agar tubuh tetap bugar."
+		}
+	} else {
+		hasilAI.StatusTidur = "Tidak Ada Data"
+	}
+
+	// Klasifikasi Tekanan Darah
+	if wearable.Sistolik > 0 && wearable.Diastolik > 0 {
+		if wearable.Sistolik < 120 && wearable.Diastolik < 80 {
+			hasilAI.StatusTd = "Normal"
+			hasilAI.ReminderTd = "Tekanan darah Anda berada pada batas normal. Pertahankan pola makan sehat dan asupan cairan yang cukup."
+		} else {
+			hasilAI.StatusTd = "Tinggi"
+			hasilAI.ReminderTd = "Tekanan darah Anda menunjukkan angka tinggi. Kurangi asupan garam, kelola stres, dan periksakan ke dokter jika berlanjut."
+		}
+	} else {
+		hasilAI.StatusTd = "Tidak Ada Data"
+		hasilAI.ReminderTd = "-"
+	}
+
+	// Simpan Hasil AI Harian
+	if err := tx.Create(&hasilAI).Error; err != nil {
+		tx.Rollback()
+		return models.Wearable{}, fmt.Errorf("gagal menyimpan hasil AI: %v", err)
 	}
 
 	if err := tx.Commit().Error; err != nil {
@@ -119,7 +178,7 @@ func (u *wearableUsecase) UpdateWearable(id uint, input models.UpdateWearableReq
 		return models.Wearable{}, fmt.Errorf("data wearable tidak ditemukan")
 	}
 
-	// ✅ Update yang 100% patuh pada struktur UpdateWearableRequest
+	// ✅ Update field termasuk Sistolik & Diastolik
 	if input.TglData != nil {
 		wearable.TglData = input.TglData
 	}
@@ -131,6 +190,12 @@ func (u *wearableUsecase) UpdateWearable(id uint, input models.UpdateWearableReq
 	}
 	if input.SleepDuration != 0 {
 		wearable.SleepDuration = input.SleepDuration
+	}
+	if input.Sistolik != 0 {
+		wearable.Sistolik = input.Sistolik
+	}
+	if input.Diastolik != 0 {
+		wearable.Diastolik = input.Diastolik
 	}
 
 	return u.repo.Update(id, wearable)

@@ -11,6 +11,7 @@ type LaporanLabRepository interface {
 	GetByID(id uint) (models.LaporanLab, error)
 	GetByUserID(userID uint) ([]models.LaporanLab, error)
 	GetByUserIDAndDate(userID uint, date string) (models.LaporanLab, error)
+	GetPreviousLab(idLaporanLab uint) (models.LaporanLab, error) // ✅ FUNGSI BARU
 	GetAll() ([]models.LaporanLab, error)
 	Update(id uint, laporan models.LaporanLab) (models.LaporanLab, error)
 	Delete(id uint) error
@@ -31,31 +32,52 @@ func (r *laporanLabRepository) Create(laporan models.LaporanLab) (models.Laporan
 
 func (r *laporanLabRepository) GetByID(id uint) (models.LaporanLab, error) {
 	var laporan models.LaporanLab
-	// ✅ Tambahan Preload AI agar lengkap
+	// ✅ Tambahan Preload agar lengkap
 	err := r.db.Preload("HasilLab.Parameter").Preload("HasilAILab").Preload("HasilAITren").First(&laporan, id).Error
 	return laporan, err
 }
 
 func (r *laporanLabRepository) GetByUserID(userID uint) ([]models.LaporanLab, error) {
-    var laporanList []models.LaporanLab
-    err := r.db.
-        Joins("JOIN riwayat ON riwayat.id_riwayat = laporan_lab.id_riwayat").
-        Where("riwayat.id_user = ?", userID).
-        Preload("Riwayat").
-        Order("laporan_lab.id_laporan_lab DESC").
-        Find(&laporanList).Error
-    return laporanList, err
+	var laporanList []models.LaporanLab
+	err := r.db.
+		Joins("JOIN riwayat ON riwayat.id_riwayat = laporan_lab.id_riwayat").
+		Where("riwayat.id_user = ?", userID).
+		Preload("Riwayat").
+		Preload("HasilLab").
+		Preload("HasilLab.Parameter").
+		Order("laporan_lab.id_laporan_lab DESC").
+		Find(&laporanList).Error
+	return laporanList, err
 }
-
 
 func (r *laporanLabRepository) GetByUserIDAndDate(userID uint, date string) (models.LaporanLab, error) {
 	var laporan models.LaporanLab
-	// ✅ PERBAIKAN: Join dengan Riwayat
 	err := r.db.Joins("JOIN riwayat ON riwayat.id_riwayat = laporan_lab.id_riwayat").
 		Where("riwayat.id_user = ? AND DATE(laporan_lab.tgl_periksa) = ?", userID, date).
 		Preload("HasilLab.Parameter").Preload("HasilAILab").Preload("HasilAITren").
 		First(&laporan).Error
 	return laporan, err
+}
+
+// ✅ FUNGSI BARU: Mengambil otomatis 1 data lab terakhir milik user yang sama
+func (r *laporanLabRepository) GetPreviousLab(idLaporanLab uint) (models.LaporanLab, error) {
+	var currentLab models.LaporanLab
+	// Ambil IDUser dari laporan saat ini
+	if err := r.db.Preload("Riwayat").First(&currentLab, idLaporanLab).Error; err != nil {
+		return currentLab, err
+	}
+
+	var prevLab models.LaporanLab
+	// Cari laporan lab milik user yang sama, dengan ID lebih kecil (<), ambil 1 yang paling baru (DESC)
+	err := r.db.
+		Joins("JOIN riwayat ON riwayat.id_riwayat = laporan_lab.id_riwayat").
+		Where("riwayat.id_user = ? AND laporan_lab.id_laporan_lab < ?", currentLab.Riwayat.IDUser, idLaporanLab).
+		Preload("HasilLab").
+		Preload("HasilLab.Parameter").
+		Order("laporan_lab.id_laporan_lab DESC").
+		First(&prevLab).Error
+
+	return prevLab, err
 }
 
 func (r *laporanLabRepository) GetAll() ([]models.LaporanLab, error) {

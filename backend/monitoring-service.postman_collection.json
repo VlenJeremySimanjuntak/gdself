@@ -715,7 +715,7 @@
             "header": [
               { "key": "Content-Type", "value": "application/json" },
               { "key": "Authorization", "value": "Bearer {{auth_token}}" }
-            ],
+            ],  
             "body": {
               "mode": "raw",
               "raw": "{\n  \"id_jadwal_obat\": 1,\n  \"status\": \"Diminum\"\n}"

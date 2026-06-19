@@ -1,10 +1,13 @@
 package controllers
 
 import (
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
-
-	"monitoring-service/app/constants"
 	"monitoring-service/app/models"
 	"monitoring-service/app/usecases"
 
@@ -32,20 +35,66 @@ func NewUSGTiroidController(u usecases.UsgTiroidUsecase) USGTiroidController {
 func (ctrl *usgTiroidController) Create(c echo.Context) error {
 	var input models.USGTiroid
 
-	if err := c.Bind(&input); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]interface{}{
-			"error":  constants.MSG_INVALID_PAYLOAD,
-			"detail": err.Error(),
-		})
+	// 1. Ambil data teks secara manual (Mendukung snake_case maupun all-lowercase dari FE)
+	idRiwayatStr := c.FormValue("id_riwayat")
+	if idRiwayatStr == "" {
+		idRiwayatStr = c.FormValue("idriwayat")
+	}
+	if idRiwayatStr != "" {
+		id, _ := strconv.ParseUint(idRiwayatStr, 10, 32)
+		input.IDRiwayat = uint(id)
+	}
+
+	input.NamaRs = c.FormValue("nama_rs")
+	if input.NamaRs == "" {
+		input.NamaRs = c.FormValue("namars")
+	}
+
+	input.CatatanDokter = c.FormValue("catatan_dokter")
+	if input.CatatanDokter == "" {
+		input.CatatanDokter = c.FormValue("catatandokter")
+	}
+
+	// 2. Trik Amankan CustomDate: Lakukan unmarshal via json string agar mengikuti aturan CustomDate dari BE Mas
+	tglStr := c.FormValue("tgl_pemeriksaan")
+	if tglStr == "" {
+		tglStr = c.FormValue("tglpemeriksaan")
+	}
+	if tglStr != "" {
+		type DateBinder struct {
+			Tgl *models.CustomDate `json:"tgl"`
+		}
+		var db DateBinder
+		jsonStr := fmt.Sprintf(`{"tgl":"%s"}`, tglStr)
+		if err := json.Unmarshal([]byte(jsonStr), &db); err == nil {
+			input.TglPemeriksaan = db.Tgl
+		}
+	}
+
+	// 3. Tangani Upload File Foto
+	file, err := c.FormFile("foto")
+	if err == nil {
+		src, err := file.Open()
+		if err == nil {
+			defer src.Close()
+
+			// Buat direktori penyimpanan jika belum ada
+			uploadDir := filepath.Join("uploads", "usg")
+			_ = os.MkdirAll(uploadDir, os.ModePerm)
+
+			// Simpan file dengan nama unik bawaan file asal
+			dstPath := filepath.Join(uploadDir, file.Filename)
+			dst, err := os.Create(dstPath)
+			if err == nil {
+				defer dst.Close()
+				if _, err = io.Copy(dst, src); err == nil {
+					input.FotoPath = "/" + dstPath // Path inilah yang masuk ke database
+				}
+			}
+		}
 	}
 
 	// Validasi field wajib
-	if input.IDRiwayat == 0 {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "id_riwayat harus diisi",
-		})
-	}
-
 	if input.NamaRs == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "nama_rs harus diisi",
@@ -103,7 +152,6 @@ func (ctrl *usgTiroidController) GetByRiwayatID(c echo.Context) error {
 		})
 	}
 
-	// Jika tidak ada data, kembalikan array kosong
 	if usgList == nil {
 		usgList = []models.USGTiroid{}
 	}
@@ -130,7 +178,6 @@ func (ctrl *usgTiroidController) GetByUserID(c echo.Context) error {
 		})
 	}
 
-	// Jika tidak ada data, kembalikan array kosong
 	if usgList == nil {
 		usgList = []models.USGTiroid{}
 	}
@@ -142,6 +189,10 @@ func (ctrl *usgTiroidController) GetByUserID(c echo.Context) error {
 	})
 }
 
+func (ctrl *usgTiroidController) TemplateMethod(c echo.Context) error {
+	return nil
+}
+
 func (ctrl *usgTiroidController) GetAll(c echo.Context) error {
 	usgList, err := ctrl.usecase.GetAllUsgTiroid()
 	if err != nil {
@@ -150,7 +201,6 @@ func (ctrl *usgTiroidController) GetAll(c echo.Context) error {
 		})
 	}
 
-	// Jika tidak ada data, kembalikan array kosong
 	if usgList == nil {
 		usgList = []models.USGTiroid{}
 	}
@@ -172,19 +222,42 @@ func (ctrl *usgTiroidController) Update(c echo.Context) error {
 
 	var input models.USGTiroid
 
-	if err := c.Bind(&input); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]interface{}{
-			"error":  constants.MSG_INVALID_PAYLOAD,
-			"detail": err.Error(),
-		})
+	// Membaca input teks perubahan secara manual agar konsisten aman dari Multipart Form
+	namaRs := c.FormValue("nama_rs")
+	if namaRs == "" {
+		namaRs = c.FormValue("namars")
+	}
+	input.NamaRs = namaRs
+	input.CatatanDokter = c.FormValue("catatan_dokter")
+
+	tglStr := c.FormValue("tgl_pemeriksaan")
+	if tglStr != "" {
+		type DateBinder struct {
+			Tgl *models.CustomDate `json:"tgl"`
+		}
+		var db DateBinder
+		jsonStr := fmt.Sprintf(`{"tgl":"%s"}`, tglStr)
+		_ = json.Unmarshal([]byte(jsonStr), &db)
+		input.TglPemeriksaan = db.Tgl
 	}
 
-	// Validasi minimal ada field yang diupdate
-	if input.NamaRs == "" && input.TglPemeriksaan == nil && 
-	   input.FotoPath == "" && input.CatatanDokter == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Minimal satu field harus diisi untuk update",
-		})
+	// Tangani perubahan file foto baru saat update jika ada
+	file, err := c.FormFile("foto")
+	if err == nil {
+		src, err := file.Open()
+		if err == nil {
+			defer src.Close()
+			uploadDir := filepath.Join("uploads", "usg")
+			_ = os.MkdirAll(uploadDir, os.ModePerm)
+			dstPath := filepath.Join(uploadDir, file.Filename)
+			dst, err := os.Create(dstPath)
+			if err == nil {
+				defer dst.Close()
+				if _, err = io.Copy(dst, src); err == nil {
+					input.FotoPath = "/" + dstPath
+				}
+			}
+		}
 	}
 
 	usg, err := ctrl.usecase.UpdateUsgTiroid(uint(id), input)
