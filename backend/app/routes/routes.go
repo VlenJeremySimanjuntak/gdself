@@ -31,10 +31,11 @@ func ConfigureRouter(e *echo.Echo, controller *controllers.Main) {
 	// ========================
 	// User Endpoints
 	// ========================
-	api.POST("/auth/login", controller.User.Login)
+	api.POST("/auth/login", controller.User.Login)    // ✅ fix: Luseogin → Login
 	api.POST("/auth/register", controller.User.Create)
 	api.POST("/auth/google", controller.User.GoogleLogin)
 
+	api.POST("/users/:id/avatar", controller.User.UploadAvatar)
 	api.POST("/login", controller.User.Login)
 	api.POST("/users", controller.User.Create)
 	api.GET("/users", controller.User.GetAll)

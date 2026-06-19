@@ -7,16 +7,16 @@ type User struct {
 	Nama            string      `json:"nama" gorm:"column:nama;size:100;not null"`
 	Email           string      `json:"email" gorm:"column:email;size:100;uniqueIndex;not null"`
 	Password        string      `json:"password" gorm:"column:password;size:255;not null"`
+	Provider        string      `json:"provider" gorm:"column:provider;size:20;default:'local'"`
 	TglLahir        *CustomDate `json:"tgl_lahir" gorm:"column:tgl_lahir;type:date"`
 	JenisKelamin    string      `json:"jenis_kelamin" gorm:"column:jenis_kelamin;type:enum('L','P')"`
 	TglTerdiagnosis *CustomDate `json:"tgl_terdiagnosis" gorm:"column:tgl_terdiagnosis;type:date"`
-	FotoProfil      string      `json:"foto_profil" gorm:"column:foto_profil;type:varchar(255)"` // ✅ BARU: Tambah Foto Profil
+	FotoProfil      string      `json:"foto_profil" gorm:"column:foto_profil;type:varchar(255)"`
 	UpdateAt        time.Time   `json:"update_at" gorm:"column:update_at;autoUpdateTime:milli"`
 
 	// Relationships
 	Riwayat []Riwayat `json:"riwayat,omitempty" gorm:"foreignKey:IDUser;references:IDUser;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	Obat    []Obat    `json:"obat,omitempty" gorm:"foreignKey:IDUser;references:IDUser;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	// ❌ HAPUS: LaporanLab sudah tidak di sini, pindah ke tabel Riwayat
 }
 
 func (User) TableName() string {
@@ -61,7 +61,7 @@ type UserLoginData struct {
 	TglLahir        *CustomDate `json:"tgl_lahir"`
 	JenisKelamin    string      `json:"jenis_kelamin"`
 	TglTerdiagnosis *CustomDate `json:"tgl_terdiagnosis"`
-	FotoProfil      string      `json:"foto_profil"` // ✅ BARU: Tambah Foto Profil di Response API
+	FotoProfil      string      `json:"foto_profil"`
 	UpdateAt        time.Time   `json:"update_at"`
 }
 

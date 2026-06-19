@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"io"
+	"path/filepath"
 	"net/http"
 	"os"
 	"strconv"
@@ -22,6 +24,7 @@ type UserController interface {
 	GetAll(c echo.Context) error
 	Update(c echo.Context) error
 	Delete(c echo.Context) error
+	UploadAvatar(c echo.Context) error
 }
 
 type userController struct {
@@ -150,6 +153,12 @@ func (ctrl *userController) Login(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
 			"error": err.Error(),
+		})
+	}
+
+	if user.Provider == "google" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{
+			"error": "Akun ini terdaftar menggunakan Google. Silakan masuk dengan tombol 'Masuk dengan Google'.",
 		})
 	}
 
@@ -319,5 +328,81 @@ func (ctrl *userController) GoogleLogin(c echo.Context) error {
 			"token": token,
 			"user":  buildUserResponse(user),
 		},
+	})
+}
+
+// ✅ Fungsi baru untuk menerima file dari Flutter
+func (ctrl *userController) UploadAvatar(c echo.Context) error {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "ID tidak valid",
+		})
+	}
+
+	// 1. Ambil file dengan key "avatar" (Sesuai dengan FormData di Flutter)
+	file, err := c.FormFile("avatar")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "File avatar tidak ditemukan",
+		})
+	}
+
+	// 2. Validasi Ekstensi (Hanya gambar)
+	ext := filepath.Ext(file.Filename)
+	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Format file tidak didukung. Gunakan .jpg, .jpeg, atau .png",
+		})
+	}
+
+	// 3. Buka File
+	src, err := file.Open()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "Gagal membuka file",
+		})
+	}
+	defer src.Close()
+
+	// 4. Siapkan folder uploads/avatars di server
+	uploadDir := "./uploads/avatars"
+	os.MkdirAll(uploadDir, os.ModePerm)
+
+	// 5. Buat nama file yang unik (mencegah bentrok)
+	newFilename := "user_" + strconv.FormatUint(id, 10) + "_" + strconv.FormatInt(time.Now().Unix(), 10) + ext
+	dstPath := filepath.Join(uploadDir, newFilename)
+
+	// 6. Buat dan simpan file di server
+	dst, err := os.Create(dstPath)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "Gagal menyimpan file di server",
+		})
+	}
+	defer dst.Close()
+
+	if _, err = io.Copy(dst, src); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "Gagal menyalin isi file",
+		})
+	}
+
+	// 7. Generate URL Publik (Sesuai dengan domain Railway kamu)
+	avatarURL := "https://gdself-production.up.railway.app/uploads/avatars/" + newFilename
+
+	// 8. Simpan URL ke Database melalui Usecase
+	user, err := ctrl.usecase.UploadAvatar(uint(id), avatarURL)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	// 9. Kembalikan Response Sukses
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"status_code": http.StatusOK,
+		"message":     "Foto profil berhasil diperbarui",
+		"data":        buildUserResponse(user), // Langsung pakai buildUserResponse yang sudah ada
 	})
 }
