@@ -1,128 +1,102 @@
 package app
 
 import (
-	"fmt"
-	"monitoring-service/app/controllers"
-	"monitoring-service/app/models"
-	"monitoring-service/app/repositories"
-	"monitoring-service/app/routes"
-	"monitoring-service/app/usecases"
-	"monitoring-service/pkg/config"
-	"monitoring-service/pkg/database"
+    "fmt"
+    "monitoring-service/app/controllers"
+    "monitoring-service/app/models"
+    "monitoring-service/app/repositories"
+    "monitoring-service/app/routes"
+    "monitoring-service/app/usecases"
+    "monitoring-service/pkg/config"
+    "monitoring-service/pkg/database"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
-	"github.com/spf13/viper"
-	"gorm.io/gorm"
+    "github.com/labstack/echo/v4"
+    "github.com/labstack/echo/v4/middleware"
+    "github.com/spf13/viper"
+    "gorm.io/gorm"
 )
 
 type Main struct {
-	cfg        *config.Config
-	database   struct {
-		MySQL *gorm.DB
-	}
-	repo       *repositories.Main
-	usecase    *usecases.Main
-	controller *controllers.Main
-	router     *echo.Echo
+    cfg         *config.Config
+    database    struct {
+        MySQL *gorm.DB
+    }
+    repo        *repositories.Main
+    usecase     *usecases.Main
+    controller  *controllers.Main
+    router      *echo.Echo
 }
 
 func New() *Main {
-	return new(Main)
+    return new(Main)
 }
 
 func (m *Main) Init() error {
-	fmt.Println("[INFO] Loading .env file...")
-	viper.SetConfigFile(".env")
-	err := viper.ReadInConfig()
-	if err != nil {
-		fmt.Printf("[ERROR] Failed to read .env: %v\n", err)
-		return err
-	}
-	fmt.Println("[INFO] .env loaded successfully")
+    // 1. Load Config (TIDAK LAGI FATAL JIKA .ENV HILANG)
+    viper.SetConfigFile(".env")
+    if err := viper.ReadInConfig(); err != nil {
+        fmt.Println("[INFO] File .env tidak ditemukan, menggunakan Environment System bawaan Railway.")
+    } else {
+        fmt.Println("[INFO] .env loaded successfully")
+    }
 
-	m.cfg = config.NewConfig()
-	viper.AutomaticEnv()
-	err = viper.Unmarshal(m.cfg)
-	if err != nil {
-		fmt.Printf("[ERROR] Failed to unmarshal config: %v\n", err)
-		return err
-	}
-	fmt.Printf("[INFO] Config loaded: %+v\n", m.cfg)
+    viper.AutomaticEnv() // Penting: Mengambil dari Railway Variables
+    m.cfg = config.NewConfig()
+    if err := viper.Unmarshal(m.cfg); err != nil {
+        return fmt.Errorf("gagal memproses config: %v", err)
+    }
 
-	e := echo.New()
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
-	e.Use(middleware.CORS())
+    // 2. Setup Echo
+    e := echo.New()
+    e.Use(middleware.Logger())
+    e.Use(middleware.Recover())
+    e.Use(middleware.CORS())
 
-	// MySQL Configuration
-	mysqlCfg := m.cfg.Database.MySQL.Read
-	if mysqlCfg.Username == "" || mysqlCfg.URL == "" {
-		fmt.Println("[ERROR] MySQL config incomplete")
-		return fmt.Errorf("MySQL config incomplete")
-	}
+    // 3. MySQL Setup
+    mysqlCfg := m.cfg.Database.MySQL.Read
+    args := &database.Args{
+        Username:        mysqlCfg.Username,
+        Password:        mysqlCfg.Password,
+        Host:            mysqlCfg.URL,
+        Port:            mysqlCfg.Port,
+        Database:        mysqlCfg.Name,
+        MaxIdleConns:    mysqlCfg.MaxIdleConns,
+        MaxOpenConns:    mysqlCfg.MaxOpenConns,
+        ConnMaxLifetime: mysqlCfg.MaxLifetime,
+        Location:        mysqlCfg.Location,
+        Timeout:         mysqlCfg.Timeout,
+        DBType:          database.Mysql,
+    }
 
-	args := &database.Args{
-		Username:        mysqlCfg.Username,
-		Password:        mysqlCfg.Password,
-		Host:            mysqlCfg.URL,
-		Port:            mysqlCfg.Port,
-		Database:        mysqlCfg.Name,
-		MaxIdleConns:    mysqlCfg.MaxIdleConns,
-		MaxOpenConns:    mysqlCfg.MaxOpenConns,
-		ConnMaxLifetime: mysqlCfg.MaxLifetime,
-		Location:        mysqlCfg.Location,
-		Timeout:         mysqlCfg.Timeout,
-		DBType:          database.Mysql,
-	}
+    var err error
+    m.database.MySQL, err = database.GetConnection(args)
+    if err != nil {
+        return fmt.Errorf("gagal koneksi MySQL: %v", err)
+    }
+    fmt.Println("[INFO] MySQL connection established & AutoMigrate starting...")
 
-	fmt.Printf("[INFO] Connecting MySQL with args: %+v\n", args)
-	
-	// 1. Membuka Koneksi ke MySQL
-	m.database.MySQL, err = database.GetConnection(args)
-	if err != nil {
-		fmt.Printf("[ERROR] Failed to connect MySQL: %v\n", err)
-		return err
-	}
-	fmt.Println("[INFO] MySQL connection established")
+    // 4. Auto Migrate
+    models.SetupDatabase(m.database.MySQL)
 
-	// 2. Menjalankan Auto Migrate & Seeding dari folder models
-	// (Blok panjang AutoMigrate lama diganti jadi 1 baris ini)
-	models.SetupDatabase(m.database.MySQL)
+    // 5. Inisialisasi layer
+    m.repo = repositories.Init(repositories.Options{Config: m.cfg, DB: m.database.MySQL})
+    m.usecase = usecases.Init(usecases.Options{Config: m.cfg, Repository: m.repo})
+    m.controller = controllers.Init(controllers.Options{Config: m.cfg, UseCases: m.usecase})
 
-	// 3. Inisialisasi Repos, Usecase, dan Controller
-	m.repo = repositories.Init(repositories.Options{
-		Config: m.cfg,
-		DB:     m.database.MySQL,
-	})
-	
-	m.usecase = usecases.Init(usecases.Options{
-		Config:     m.cfg,
-		Repository: m.repo,
-	})
-	
-	m.controller = controllers.Init(controllers.Options{
-		Config:   m.cfg,
-		UseCases: m.usecase,
-	})
-
-	// 4. Inisialisasi Router Echo
-	m.router = e
-	routes.ConfigureRouter(e, m.controller)
-	fmt.Println("[INFO] Router configured")
-
-	return nil
+    m.router = e
+    routes.ConfigureRouter(e, m.controller)
+    return nil
 }
 
 func (m *Main) Run() error {
-	defer m.close()
-	return m.router.Start(":" + m.cfg.ServicePort)
+    defer m.close()
+    return m.router.Start(":" + m.cfg.ServicePort)
 }
 
 func (m *Main) close() {
-	if m.database.MySQL != nil {
-		if db, err := m.database.MySQL.DB(); err == nil {
-			db.Close()
-		}
-	}
+    if m.database.MySQL != nil {
+        if db, err := m.database.MySQL.DB(); err == nil {
+            db.Close()
+        }
+    }
 }
