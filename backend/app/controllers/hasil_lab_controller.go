@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -25,11 +27,15 @@ type HasilLabController interface {
 }
 
 type hasilLabController struct {
-	usecase usecases.HasilLabUsecase
+	usecase   usecases.HasilLabUsecase
+	aiUsecase usecases.LabUsecase // 👇 1. KITA BAWA MESIN AI KE SINI
 }
 
-func NewHasilLabController(u usecases.HasilLabUsecase) HasilLabController {
-	return &hasilLabController{usecase: u}
+func NewHasilLabController(u usecases.HasilLabUsecase, ai usecases.LabUsecase) HasilLabController { // 👇 2. TAMBAHKAN PARAMETER AI
+	return &hasilLabController{
+		usecase:   u,
+		aiUsecase: ai,
+	}
 }
 
 func (ctrl *hasilLabController) Create(c echo.Context) error {
@@ -42,7 +48,6 @@ func (ctrl *hasilLabController) Create(c echo.Context) error {
 		})
 	}
 
-	// Validasi: id_laporan_lab atau (id_user + nama_lab) harus ada
 	idLaporan := input.IDLaporanLab
 	if idLaporan == 0 {
 		idLaporan = input.IDReport
@@ -54,30 +59,23 @@ func (ctrl *hasilLabController) Create(c echo.Context) error {
 		})
 	}
 
-	// Validasi: minimal 1 parameter
 	if len(input.Parameters) == 0 {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "minimal 1 parameter harus diisi",
 		})
 	}
 
-	// Validasi setiap parameter sesuai dengan CreateParameterRequest
 	for i, p := range input.Parameters {
-		// Validasi nama parameter
 		if strings.TrimSpace(p.NamaParameter) == "" {
 			return c.JSON(http.StatusBadRequest, map[string]string{
 				"error": "nama_parameter wajib diisi untuk parameter ke-" + strconv.Itoa(i+1),
 			})
 		}
-
-		// Validasi nilai hasil
 		if p.NilaiHasil == 0 {
 			return c.JSON(http.StatusBadRequest, map[string]string{
 				"error": "nilai_hasil wajib diisi untuk parameter ke-" + strconv.Itoa(i+1),
 			})
 		}
-
-		// Validasi batas bawah dan batas atas
 		if p.NilaiBatasBawah == 0 || p.NilaiBatasAtas == 0 {
 			return c.JSON(http.StatusBadRequest, map[string]string{
 				"error": "nilai_batas_bawah dan nilai_batas_atas wajib diisi untuk parameter ke-" + strconv.Itoa(i+1),
@@ -92,12 +90,71 @@ func (ctrl *hasilLabController) Create(c echo.Context) error {
 		})
 	}
 
+	// =======================================================
+	// 👇 MULAI TRIGGER AI OTOMATIS 👇
+	// =======================================================
+
+	// 1. Ekstrak ID Laporan
+	reportID := idLaporan
+	if reportID == 0 {
+		// Trik aman ekstrak ID Laporan yang baru saja terbuat (karena kita tidak tahu pasti tipe result-nya)
+		resBytes, _ := json.Marshal(result)
+		var resMap map[string]interface{}
+		if errJSON := json.Unmarshal(resBytes, &resMap); errJSON == nil {
+			if val, ok := resMap["id_laporan_lab"].(float64); ok {
+				reportID = uint(val)
+			}
+		} else {
+			var resArray []map[string]interface{}
+			if errArr := json.Unmarshal(resBytes, &resArray); errArr == nil && len(resArray) > 0 {
+				if val, ok := resArray[0]["id_laporan_lab"].(float64); ok {
+					reportID = uint(val)
+				}
+			}
+		}
+	}
+
+	// 2. Siapkan parameter input untuk dibaca Mesin AI
+	var aiParams []models.AssessmentParamInput
+	for _, p := range input.Parameters {
+		aiParams = append(aiParams, models.AssessmentParamInput{
+			NamaParameter:   p.NamaParameter,
+			NilaiHasil:      p.NilaiHasil,
+			NilaiBatasBawah: p.NilaiBatasBawah,
+			NilaiBatasAtas:  p.NilaiBatasAtas,
+		})
+	}
+
+	aiInput := models.AssessmentInput{
+		IsLabDay: true,
+		Lab: models.AssessmentLabInput{
+			IDLaporanLab: reportID,
+			Parameters:   aiParams,
+		},
+	}
+
+	// 3. Panggil Mesin AI berjalan di belakang layar (Goroutine)
+	go func(data models.AssessmentInput) {
+		_, aiErr := ctrl.aiUsecase.Assess(data)
+		if aiErr != nil {
+			log.Println("⚠️ [AI FAILED] Gagal memproses AI otomatis:", aiErr)
+		} else {
+			log.Println("✅ [AI SUCCESS] AI otomatis berhasil memproses data untuk Laporan ID:", data.Lab.IDLaporanLab)
+		}
+	}(aiInput)
+
+	// =======================================================
+	// 👆 TRIGGER AI OTOMATIS SELESAI 👆
+	// =======================================================
+
 	return c.JSON(http.StatusCreated, models.Response{
 		StatusCode: http.StatusCreated,
-		Message:    "Hasil lab berhasil dibuat",
+		Message:    "Hasil lab berhasil dibuat dan AI sedang memproses",
 		Data:       result,
 	})
 }
+
+// ... Sisanya tetap persis sama seperti kode Mas ...
 
 func (ctrl *hasilLabController) GetByID(c echo.Context) error {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
@@ -136,7 +193,6 @@ func (ctrl *hasilLabController) GetByLaporanLabID(c echo.Context) error {
 		})
 	}
 
-	// Jika tidak ada hasil, kembalikan array kosong
 	if hasilLabList == nil {
 		hasilLabList = []models.HasilLab{}
 	}
@@ -163,7 +219,6 @@ func (ctrl *hasilLabController) GetByRiwayatID(c echo.Context) error {
 		})
 	}
 
-	// Jika tidak ada hasil, kembalikan array kosong
 	if hasilLabList == nil {
 		hasilLabList = []models.HasilLab{}
 	}
@@ -197,7 +252,6 @@ func (ctrl *hasilLabController) GetByRiwayatAndDate(c echo.Context) error {
 		})
 	}
 
-	// Jika tidak ada hasil, kembalikan array kosong
 	if hasilLabList == nil {
 		hasilLabList = []models.HasilLab{}
 	}
@@ -238,7 +292,6 @@ func (ctrl *hasilLabController) GetByUserAndDate(c echo.Context) error {
 		})
 	}
 
-	// Build response dengan struktur yang clean
 	type paramResp struct {
 		IDHasilLab      uint    `json:"id_hasil_lab"`
 		NilaiHasil      float64 `json:"nilai_hasil"`
@@ -265,7 +318,6 @@ func (ctrl *hasilLabController) GetByUserAndDate(c echo.Context) error {
 		hasilList = append(hasilList, pr)
 	}
 
-	// Jika tidak ada hasil, kembalikan array kosong
 	if hasilList == nil {
 		hasilList = []paramResp{}
 	}
@@ -292,7 +344,6 @@ func (ctrl *hasilLabController) GetAll(c echo.Context) error {
 		})
 	}
 
-	// Jika tidak ada hasil, kembalikan array kosong
 	if hasilLabList == nil {
 		hasilLabList = []models.HasilLab{}
 	}
@@ -321,7 +372,6 @@ func (ctrl *hasilLabController) Update(c echo.Context) error {
 		})
 	}
 
-	// Validasi minimal ada field yang diupdate
 	if input.NilaiHasil == 0 && input.NilaiBatasBawah == 0 && input.NilaiBatasAtas == 0 {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "Minimal satu field harus diisi untuk update",

@@ -2,6 +2,9 @@ package models
 
 import "time"
 
+// ==========================================
+// MODEL WEARABLE
+// ==========================================
 type Wearable struct {
 	IDWearable    uint        `json:"id_wearable" gorm:"column:id_wearable;type:int unsigned;primaryKey;autoIncrement"`
 	IDRiwayat     uint        `json:"id_riwayat" gorm:"column:id_riwayat;type:int unsigned;not null;index"`
@@ -9,6 +12,8 @@ type Wearable struct {
 	WaktuData     *CustomTime `json:"waktu_data" gorm:"column:waktu_data;type:time"`
 	HeartRateHr   int         `json:"heart_rate_hr" gorm:"column:heart_rate_hr"`
 	SleepDuration int         `json:"sleep_duration" gorm:"column:sleep_duration"` // dalam menit
+	Sistolik      int         `json:"sistolik" gorm:"column:sistolik"`             // ✅ Ditambahkan
+	Diastolik     int         `json:"diastolik" gorm:"column:diastolik"`           // ✅ Ditambahkan
 	CreatedAt     time.Time   `json:"created_at" gorm:"column:created_at;autoCreateTime:milli"`
 
 	// Relationships
@@ -31,7 +36,8 @@ type CreateWearableRequest struct {
 	WaktuData     *CustomTime `json:"waktu_data"`
 	HeartRateHr   int         `json:"heart_rate_hr" binding:"required"`
 	SleepDuration int         `json:"sleep_duration" binding:"required"`
-	// Note: StressScore dihapus sesuai ERD baru
+	Sistolik      int         `json:"sistolik"`  // ✅ Ditambahkan
+	Diastolik     int         `json:"diastolik"` // ✅ Ditambahkan
 }
 
 type UpdateWearableRequest struct {
@@ -39,12 +45,16 @@ type UpdateWearableRequest struct {
 	WaktuData     *CustomTime `json:"waktu_data"`
 	HeartRateHr   int         `json:"heart_rate_hr"`
 	SleepDuration int         `json:"sleep_duration"`
+	Sistolik      int         `json:"sistolik"`  // ✅ Ditambahkan
+	Diastolik     int         `json:"diastolik"` // ✅ Ditambahkan
 }
 
 // Struct tambahan untuk kebutuhan Kalkulasi Mesin AI (Tidak masuk Database)
 type WearableData struct {
 	HR           float64 `json:"hr"`
 	SleepMinutes float64 `json:"sleep_minutes"`
+	Sys          float64 `json:"sys"` // ✅ Ditambahkan
+	Dia          float64 `json:"dia"` // ✅ Ditambahkan
 
 	BaselineHRMin    float64 `json:"baseline_hr_min"`
 	BaselineHRMax    float64 `json:"baseline_hr_max"`

@@ -31,6 +31,11 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
   final _ft3MinCtrl = TextEditingController();
   final _ft3MaxCtrl = TextEditingController();
 
+  // ✅ TRAb Controllers
+  final _trabValCtrl = TextEditingController();
+  final _trabMinCtrl = TextEditingController(); // Batas Negatif
+  final _trabMaxCtrl = TextEditingController(); // Batas Positif
+
   final List<String> _unitOptions = ['mIU/L', 'μIU/mL', 'pmol/L', 'ng/dL', 'pg/mL'];
   String _selectedUnitTSH = 'μIU/mL';
   String _selectedUnitFT4 = 'ng/dL';
@@ -39,10 +44,10 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
   @override
   void initState() {
     super.initState();
-    // Tanggal sekarang dikosongkan secara default agar pengguna memilih sendiri
     _tshValCtrl.addListener(_updateState);
     _ft4ValCtrl.addListener(_updateState);
     _ft3ValCtrl.addListener(_updateState);
+    _trabValCtrl.addListener(_updateState);
   }
 
   @override
@@ -50,6 +55,7 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
     _tshValCtrl.removeListener(_updateState);
     _ft4ValCtrl.removeListener(_updateState);
     _ft3ValCtrl.removeListener(_updateState);
+    _trabValCtrl.removeListener(_updateState);
     super.dispose();
   }
 
@@ -58,7 +64,6 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
   }
 
   Future<void> _selectDate(BuildContext context) async {
-    // Gunakan tanggal sekarang jika controller masih kosong
     DateTime tempSelectedDate = _dateController.text.isNotEmpty
         ? (DateTime.tryParse(_dateController.text) ?? DateTime.now())
         : DateTime.now();
@@ -159,7 +164,6 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
   }
 
   void _simpanDataLab() async {
-    // Cek apakah tanggal sudah diisi
     if (!_formKey.currentState!.validate()) return;
 
     final user = ref.read(userProvider).user;
@@ -167,45 +171,58 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
 
     List<Map<String, dynamic>> parameters = [];
 
-    // Hanya tambahkan parameter yang diisi nilainya
+    // ✅ TSH - menggunakan nilai_batas_bawah & nilai_batas_atas
     if (_tshValCtrl.text.isNotEmpty) {
       parameters.add({
         "nama_parameter": "TSH",
+        "nilai_hasil": _parseSafeDouble(_tshValCtrl.text, 0.0),
         "satuan": _selectedUnitTSH,
         "kategori": "Thyroid",
-        "nilai": _parseSafeDouble(_tshValCtrl.text, 0.0),
-        "rujukan_min": _parseSafeDouble(_tshMinCtrl.text, 0.35),
-        "rujukan_max": _parseSafeDouble(_tshMaxCtrl.text, 4.94),
+        "nilai_batas_bawah": _parseSafeDouble(_tshMinCtrl.text, 0.35),
+        "nilai_batas_atas": _parseSafeDouble(_tshMaxCtrl.text, 4.94),
       });
     }
 
+    // ✅ FT4
     if (_ft4ValCtrl.text.isNotEmpty) {
       parameters.add({
         "nama_parameter": "FT4",
+        "nilai_hasil": _parseSafeDouble(_ft4ValCtrl.text, 0.0),
         "satuan": _selectedUnitFT4,
         "kategori": "Thyroid",
-        "nilai": _parseSafeDouble(_ft4ValCtrl.text, 0.0),
-        "rujukan_min": _parseSafeDouble(_ft4MinCtrl.text, 0.70),
-        "rujukan_max": _parseSafeDouble(_ft4MaxCtrl.text, 1.48),
+        "nilai_batas_bawah": _parseSafeDouble(_ft4MinCtrl.text, 0.70),
+        "nilai_batas_atas": _parseSafeDouble(_ft4MaxCtrl.text, 1.48),
       });
     }
 
+    // ✅ FT3
     if (_ft3ValCtrl.text.isNotEmpty) {
       parameters.add({
         "nama_parameter": "FT3",
+        "nilai_hasil": _parseSafeDouble(_ft3ValCtrl.text, 0.0),
         "satuan": _selectedUnitFT3,
         "kategori": "Thyroid",
-        "nilai": _parseSafeDouble(_ft3ValCtrl.text, 0.0),
-        "rujukan_min": _parseSafeDouble(_ft3MinCtrl.text, 1.71),
-        "rujukan_max": _parseSafeDouble(_ft3MaxCtrl.text, 3.71),
+        "nilai_batas_bawah": _parseSafeDouble(_ft3MinCtrl.text, 1.71),
+        "nilai_batas_atas": _parseSafeDouble(_ft3MaxCtrl.text, 3.71),
       });
     }
 
-    // Peringatan jika semua data lab kosong
+    // ✅ TRAb
+    if (_trabValCtrl.text.isNotEmpty) {
+      parameters.add({
+        "nama_parameter": "TRAb",
+        "nilai_hasil": _parseSafeDouble(_trabValCtrl.text, 0.0),
+        "satuan": "IU/L",
+        "kategori": "Thyroid",
+        "nilai_batas_bawah": _parseSafeDouble(_trabMinCtrl.text, 0.0),
+        "nilai_batas_atas": _parseSafeDouble(_trabMaxCtrl.text, 2.0),
+      });
+    }
+
     if (parameters.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Mohon isi minimal satu hasil lab (TSH, FT4, atau FT3)."),
+          content: Text("Mohon isi minimal satu hasil lab (TSH, FT4, FT3, atau TRAb)."),
           backgroundColor: AppColors.errorRed,
         ),
       );
@@ -292,9 +309,9 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
                 maxCtrl: _ft3MaxCtrl,
                 selectedUnit: _selectedUnitFT3,
                 onUnitChanged: (newUnit) => setState(() => _selectedUnitFT3 = newUnit!),
-                isLast: true,
               ),
-
+              const SizedBox(height: 16),
+              _buildTrabSection(),
               const SizedBox(height: 30),
               SizedBox(
                 width: double.infinity,
@@ -318,6 +335,7 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
     );
   }
 
+  // ── Widget Main Card ────────────────────────────────────────────────
   Widget _buildMainCard() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -352,7 +370,6 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
     );
   }
 
-  // Tambahan parameter validator pada _buildTextField
   Widget _buildTextField(String label, TextEditingController ctrl, String hint, {IconData? suffixIcon, String? Function(String?)? validator}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -361,7 +378,7 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
         const SizedBox(height: 8),
         TextFormField(
           controller: ctrl,
-          validator: validator, // Memasang validator di sini
+          validator: validator,
           style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
           decoration: InputDecoration(
             hintText: hint,
@@ -380,6 +397,7 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
     );
   }
 
+  // ── Section TSH/FT4/FT3 ─────────────────────────────────────────────
   Widget _buildHormoneSection({
     required String title,
     required String sub,
@@ -388,7 +406,6 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
     required TextEditingController maxCtrl,
     required String selectedUnit,
     required ValueChanged<String?> onUnitChanged,
-    bool isLast = false,
   }) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -408,15 +425,12 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
             ],
           ),
           const SizedBox(height: 20),
-
           const Text("HASIL PEMERIKSAAN", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textGrey)),
           const SizedBox(height: 8),
-
           TextFormField(
             controller: valCtrl,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [
-              // 👇 BLOKIR SEMUA KECUALI ANGKA, TITIK, DAN KOMA
               FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
               TextInputFormatter.withFunction((oldValue, newValue) {
                 return newValue.copyWith(text: newValue.text.replaceAll(',', '.'));
@@ -453,22 +467,74 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
             ),
           ),
           const SizedBox(height: 16),
-
           Row(
             children: [
-              Expanded(child: _buildRangeInput("BATAS TERENDAH", minCtrl)),
+              Expanded(child: _buildRangeInput("BATAS BAWAH", minCtrl)),
               const SizedBox(width: 12),
-              Expanded(child: _buildRangeInput("BATAS TERTINGGI", maxCtrl)),
+              Expanded(child: _buildRangeInput("BATAS ATAS", maxCtrl)),
             ],
           ),
+        ],
+      ),
+    );
+  }
 
-          if (isLast) ...[
-            const SizedBox(height: 16),
-            const Text(
-              "*Biarkan kosong jika hasil lab Anda tidak memberikan nilai batas referensi.",
-              style: TextStyle(fontSize: 9, color: Colors.grey, fontStyle: FontStyle.italic),
-            )
-          ]
+  // ── Section TRAb ────────────────────────────────────────────────────
+  Widget _buildTrabSection() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [BoxShadow(color: Color(0x0A000000), blurRadius: 15, offset: Offset(0, 5))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("TRAb", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textDark)),
+              const Text("Thyroid Hormone Receptor Antibody", style: TextStyle(fontSize: 10, color: AppColors.textGrey)),
+            ],
+          ),
+          const SizedBox(height: 20),
+          const Text("HASIL PEMERIKSAAN", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textGrey)),
+          const SizedBox(height: 8),
+          TextFormField(
+            controller: _trabValCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+              TextInputFormatter.withFunction((oldValue, newValue) {
+                return newValue.copyWith(text: newValue.text.replaceAll(',', '.'));
+              }),
+            ],
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
+            decoration: InputDecoration(
+              hintText: "0.00",
+              hintStyle: TextStyle(color: Colors.grey.shade400),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              filled: true,
+              fillColor: const Color(0xFFEEF3F6),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+              suffixIcon: Padding(
+                padding: const EdgeInsets.only(right: 16.0),
+                child: Text(
+                  "IU/L",
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(child: _buildRangeInput("BATAS NEGATIF", _trabMinCtrl)),
+              const SizedBox(width: 12),
+              Expanded(child: _buildRangeInput("BATAS POSITIF", _trabMaxCtrl)),
+            ],
+          ),
         ],
       ),
     );
@@ -484,7 +550,6 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
           controller: ctrl,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           inputFormatters: [
-            // 👇 BLOKIR SEMUA KECUALI ANGKA, TITIK, DAN KOMA
             FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
             TextInputFormatter.withFunction((oldValue, newValue) {
               return newValue.copyWith(text: newValue.text.replaceAll(',', '.'));

@@ -12,7 +12,7 @@ import '../../../models/lab_data_model.dart';
 import '../../../models/obat_model.dart';
 import '../../../models/wearable_model.dart';
 import '../../../models/hasil_ai_gabungan_model.dart';
-import '../../arsip/ui/arsip_screen.dart';
+import '../../riwayat/ui/riwayat_screen.dart';
 import '../../education/ui/education_screen.dart';
 import '../../home/providers/home_provider.dart';
 import '../../home/providers/user_provider.dart';
@@ -191,7 +191,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     final List<Widget> screens = [
       _buildHomeView(context, homeState, user),
       const MonitoringScreen(),
-      const ArsipScreen(),
+      const RiwayatScreen(),
       const EducationScreen(),
       const ProfileScreen(),
     ];
@@ -364,7 +364,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                 ),
                 const SizedBox(height: 12),
 
-                // 👇 Kondisi Kosong / Terisi dengan Tombol Atur Jadwal di bawah
                 if (jadwalObatHariIni.isEmpty ||
                     jadwalObatHariIni.every((jadwal) =>
                     jadwal.obat.namaObat.trim().isEmpty ||
@@ -387,16 +386,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
 
                 else
                   Column(
-                    crossAxisAlignment: CrossAxisAlignment.end, // Agar tombol rata kanan
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      // List kartu obat
                       ...jadwalObatHariIni.map((jadwal) {
                         return _buildMedicationCard(jadwal);
                       }),
-
                       const SizedBox(height: 8),
-
-                      // Tombol Atur Jadwal Obat
                       ElevatedButton(
                         onPressed: onAturJadwalObat,
                         style: ElevatedButton.styleFrom(
@@ -454,7 +449,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                       idUser: 0,
                       heartRateRHR: 78,
                       sleepDuration: 26500,
-                      stressScore: 35,
                       hasilAI: [],
                     )
                 ),
@@ -558,7 +552,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         idParameter: 0,
         idHasilLab: 0,
         namaParameter: name,
-        nilai: 0.0,
+        nilaiHasil: 0.0, // PERBAIKAN: nilai → nilaiHasil
         satuan: defaultSatuan,
         kategori: null,
       );
@@ -664,7 +658,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                   fontSize: 12,
                   fontWeight: FontWeight.w500)),
           const SizedBox(height: 8),
-          Text(param.nilai.toStringAsFixed(1),
+          Text(param.nilaiHasil.toStringAsFixed(1), // PERBAIKAN: nilai → nilaiHasil
               style: const TextStyle(
                   color: Colors.white,
                   fontSize: 24,
@@ -677,6 +671,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       ),
     );
   }
+
+  // --- Sisa widget (emptyMedicationCard, buildMedicationCard, wearable cards, dll.) sama persis seperti sebelumnya ---
+  // Karena tidak ada perubahan, saya singkat dengan placeholder agar tidak terlalu panjang.
+  // Namun untuk kode lengkap, saya tetap sertakan di bawah ini.
 
   Widget _emptyMedicationCard(VoidCallback onCardPressed, VoidCallback onButtonPressed) {
     return Column(
@@ -1066,11 +1064,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       sleepBadgeBg = const Color(0xFFF3F4F6);
       sleepBadgeText = const Color(0xFF6B7280);
     } else {
-      final double goalInSeconds = 8 * 3600;
-      final percent = (wearable.sleepDuration / goalInSeconds).clamp(0.0, 1.0);
-      sleepPercentInt = (percent * 100).toInt();
-      final hours = wearable.sleepDuration ~/ 3600;
-      final minutes = (wearable.sleepDuration % 3600) ~/ 60;
+      final double goalInMinutes = 8 * 60; // 480 menit
+      final percent = (wearable.sleepDuration / goalInMinutes).clamp(0.0, 1.0);
+      final hours = wearable.sleepDuration ~/ 60;
+      final minutes = wearable.sleepDuration % 60;
       sleepTime = '${hours}j ${minutes}m Deep Sleep';
 
       if (sleepPercentInt >= 85) {

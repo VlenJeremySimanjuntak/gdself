@@ -7,7 +7,6 @@ class WearableModel {
   final DateTime? tglData;
   final String? waktuData;
   final int heartRateRHR;
-  final int stressScore;
   final int sleepDuration;
   final List<HasilAIHarianModel> hasilAI; // 👇 SUDAH DIUBAH KE MODEL HARIAN
 
@@ -18,7 +17,6 @@ class WearableModel {
     this.tglData,
     this.waktuData,
     required this.heartRateRHR,
-    required this.stressScore,
     required this.sleepDuration,
     required this.hasilAI,
   });
@@ -34,8 +32,7 @@ class WearableModel {
       idUser: _toInt(json['id_user']),
       tglData: _parseDateTime(json['tgl_data']),
       waktuData: json['waktu_data']?.toString(),
-      heartRateRHR: _toInt(json['heart_rate_rhr']) ?? 0,
-      stressScore: _toInt(json['stress_score']) ?? 0,
+      heartRateRHR: _toInt(json['heart_rate_hr']) ?? 0,  // key baru
       sleepDuration: _toInt(json['sleep_duration']) ?? 0,
       hasilAI: hasilAI,
     );

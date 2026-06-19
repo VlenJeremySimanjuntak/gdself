@@ -41,7 +41,6 @@ func (r *hasilAIHarianRepository) GetByRiwayatID(riwayatID uint) ([]models.Hasil
 	return harian, err
 }
 
-
 func (r *hasilAIHarianRepository) GetByWearableID(wearableID uint) (models.HasilAIHarian, error) {
 	var harian models.HasilAIHarian
 	err := r.db.Where("id_wearable = ?", wearableID).First(&harian).Error

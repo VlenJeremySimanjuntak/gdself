@@ -31,7 +31,6 @@ func (r *wearableRepository) Create(wearable models.Wearable) (models.Wearable, 
 
 func (r *wearableRepository) GetByID(id uint) (models.Wearable, error) {
 	var wearable models.Wearable
-	// ✅ PERBAIKAN: HasilAIGabungan dihapus, sisa HasilAIHarian saja
 	err := r.db.Preload("HasilAIHarian").First(&wearable, id).Error
 	return wearable, err
 }
@@ -47,7 +46,6 @@ func (r *wearableRepository) GetByRiwayatID(riwayatID uint) ([]models.Wearable, 
 
 func (r *wearableRepository) GetByUserID(userID uint) ([]models.Wearable, error) {
 	var wearable []models.Wearable
-	// Wearable no longer stores id_user. Join via riwayat.
 	err := r.db.Model(&models.Wearable{}).
 		Joins("JOIN riwayat r ON r.id_riwayat = wearable.id_riwayat").
 		Where("r.id_user = ?", userID).

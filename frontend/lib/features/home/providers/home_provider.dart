@@ -204,41 +204,49 @@ class HomeNotifier extends Notifier<HomeState> {
       LaporanLabModel laporan,
       ) async {
 
-    if (laporan.idRiwayat == null) {
-      debugPrint("❌ [HomeProvider] Gagal fetch AI Lab: idRiwayat bernilai null!");
+    if (laporan.idLaporanLab == 0) {
+      debugPrint("❌ [HomeProvider] Gagal fetch AI Lab: idLaporanLab = 0");
       return laporan;
     }
 
     try {
-      debugPrint('🔄 [HomeProvider] Fetching AI Gabungan (Lab) untuk id_riwayat=${laporan.idRiwayat}');
+      debugPrint('🔄 [HomeProvider] Fetching AI Lab untuk id_laporan_lab=${laporan.idLaporanLab}');
 
-      final response = await api.get('/hasil-ai/riwayat/${laporan.idRiwayat}');
+      // Sesuai route: /hasil-ai/lab/laporan/:laporan_lab_id
+      final response = await api.get('/hasil-ai/lab/laporan/${laporan.idLaporanLab}');
 
-      final list = _parseResponseToList(response.data);
-      if (list.isEmpty) {
-        debugPrint('⚠️ [HomeProvider] Tidak ada AI Gabungan untuk riwayat ini');
+      if (response.statusCode != 200) {
+        debugPrint('⚠️ [HomeProvider] AI Lab belum tersedia (belum di-assess)');
         return laporan;
       }
 
-      HasilAIGabunganModel? aiLab;
-      for (final item in list) {
-        final map = Map<String, dynamic>.from(item as Map);
-        if (map['kesimpulan_lab'] != null || map['trend_report'] != null) {
-          aiLab = HasilAIGabunganModel.fromJson(map);
-          break;
+      final data = response.data['data'];
+      if (data == null || data is! Map<String, dynamic>) {
+        debugPrint('⚠️ [HomeProvider] Data AI Lab kosong');
+        return laporan;
+      }
+
+      // Parse AI Lab
+      HasilAIGabunganModel aiModel = HasilAIGabunganModel.fromLabJson(data);
+
+      // Coba fetch tren (opsional)
+      try {
+        final trenResponse = await api.get('/hasil-ai/tren/laporan/${laporan.idLaporanLab}');
+        if (trenResponse.statusCode == 200) {
+          final dataTren = trenResponse.data['data'];
+          if (dataTren != null && dataTren is Map<String, dynamic>) {
+            aiModel = aiModel.withTren(dataTren);
+          }
         }
+      } catch (e) {
+        debugPrint('⚠️ [HomeProvider] Tren belum tersedia (wajar untuk laporan pertama): $e');
       }
 
-      if (aiLab == null) {
-        debugPrint('⚠️ [HomeProvider] Data ada, tapi kolom kesimpulan_lab kosong');
-        return laporan;
-      }
-
-      debugPrint('✅ [HomeProvider] AI Gabungan Injected! Kesimpulan: ${aiLab.kesimpulanLab}');
-      return laporan.copyWith(kesimpulanLab: aiLab);
+      debugPrint('✅ [HomeProvider] AI Lab injected! Interpretasi: ${aiModel.interpretasi}');
+      return laporan.copyWith(kesimpulanLab: aiModel);
 
     } catch (e) {
-      debugPrint('⚠️ [HomeProvider] Gagal fetch AI Gabungan: $e');
+      debugPrint('⚠️ [HomeProvider] Gagal fetch AI Lab: $e');
       return laporan;
     }
   }
