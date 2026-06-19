@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"monitoring-service/app/models"
+	"fmt"
 
 	"gorm.io/gorm"
 )
@@ -42,13 +43,17 @@ func (r *usgTiroidRepository) GetByRiwayatID(riwayatID uint) ([]models.USGTiroid
 }
 
 func (r *usgTiroidRepository) GetByUserID(userID uint) ([]models.USGTiroid, error) {
-	var usgs []models.USGTiroid
-	// Menggunakan JOIN karena id_user ada di tabel riwayat
-	err := r.db.Joins("JOIN riwayat ON riwayat.id_riwayat = usg_tiroid.id_riwayat").
-		Where("riwayat.id_user = ?", userID).
-		Order("usg_tiroid.tgl_pemeriksaan DESC").
-		Find(&usgs).Error
-	return usgs, err
+    var usgs []models.USGTiroid
+    err := r.db.Raw(`
+        SELECT usg_tiroid.* 
+        FROM usg_tiroid 
+        JOIN riwayat ON riwayat.id_riwayat = usg_tiroid.id_riwayat 
+        WHERE riwayat.id_user = ?
+        ORDER BY usg_tiroid.tgl_pemeriksaan DESC
+    `, userID).Scan(&usgs).Error
+
+    fmt.Printf("DEBUG raw rows: %d, error: %v\n", len(usgs), err)
+    return usgs, err
 }
 
 func (r *usgTiroidRepository) GetAll() ([]models.USGTiroid, error) {

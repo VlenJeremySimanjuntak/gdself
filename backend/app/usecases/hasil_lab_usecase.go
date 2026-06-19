@@ -28,8 +28,8 @@ type hasilLabUsecase struct {
 	repoParameter  repositories.ParameterRepository
 	repoLaporanLab repositories.LaporanLabRepository
 	repoWearable   repositories.WearableRepository
-	hasilAILab     HasilAILabUsecase  // ✅ Ganti AI Gabungan ke AI Lab
-	hasilAITren    HasilAITrenUsecase // ✅ Tambah AI Tren
+	hasilAILab     HasilAILabUsecase
+	hasilAITren    HasilAITrenUsecase
 }
 
 func NewHasilLabUsecase(
@@ -67,27 +67,32 @@ func (u *hasilLabUsecase) CreateHasilLab(input models.CreateHasilLabRequest) (mo
 		return models.HasilLab{}, fmt.Errorf("minimal 1 parameter harus diisi")
 	}
 
-	// 1. Cek atau Buat LaporanLab (yang otomatis nge-link ke Riwayat)
+	// 1. Cek atau Buat LaporanLab
 	idLaporan := input.IDLaporanLab
-	var idRiwayatTarget uint
 
 	if idLaporan == 0 {
-		// Jika LaporanLab belum ada, kita harus buat LaporanLab DAN pastikan ada Riwayat hari ini
 		if input.IDUser == 0 {
 			tx.Rollback()
 			return models.HasilLab{}, fmt.Errorf("id_user harus diisi untuk membuat laporan baru")
 		}
 
-		now := time.Now()
-		dateOnly := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-		today := models.CustomDate(dateOnly)
+		// ✅ PERBAIKAN: Gunakan tanggal dari input Flutter jika ada!
+		var targetDate models.CustomDate
+		if input.TglPeriksa != nil {
+			targetDate = *input.TglPeriksa
+		} else {
+			// Fallback ke hari ini HANYA jika Flutter tidak mengirimkan tanggal
+			now := time.Now()
+			dateOnly := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+			targetDate = models.CustomDate(dateOnly)
+		}
 
 		var riwayat models.Riwayat
-		if err := tx.Where("id_user = ? AND tanggal = ?", input.IDUser, today).First(&riwayat).Error; err != nil {
+		if err := tx.Where("id_user = ? AND tanggal = ?", input.IDUser, targetDate).First(&riwayat).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				riwayat = models.Riwayat{
 					IDUser:  input.IDUser,
-					Tanggal: &today,
+					Tanggal: &targetDate,
 				}
 				if err := tx.Create(&riwayat).Error; err != nil {
 					tx.Rollback()
@@ -98,16 +103,16 @@ func (u *hasilLabUsecase) CreateHasilLab(input models.CreateHasilLabRequest) (mo
 				return models.HasilLab{}, err
 			}
 		}
-		idRiwayatTarget = riwayat.IDRiwayat
 
 		if input.NamaLab == "" {
 			tx.Rollback()
 			return models.HasilLab{}, fmt.Errorf("nama_lab harus diisi ketika membuat laporan baru")
 		}
+
 		laporan := models.LaporanLab{
-			IDRiwayat:  idRiwayatTarget,
+			IDRiwayat:  riwayat.IDRiwayat,
 			NamaLab:    input.NamaLab,
-			TglPeriksa: &today,
+			TglPeriksa: &targetDate, // ✅ Sekarang menyimpan 2025 sesuai pilihan user!
 		}
 		if err := tx.Create(&laporan).Error; err != nil {
 			tx.Rollback()
@@ -118,7 +123,7 @@ func (u *hasilLabUsecase) CreateHasilLab(input models.CreateHasilLabRequest) (mo
 
 	var firstCreatedID uint
 
-	// 2. Insert Hasil Lab untuk setiap Parameter
+	// 2. Insert Hasil Lab per parameter
 	for _, param := range input.Parameters {
 		paramName := strings.TrimSpace(param.NamaParameter)
 		if paramName == "" {
@@ -182,21 +187,34 @@ func (u *hasilLabUsecase) CreateHasilLab(input models.CreateHasilLabRequest) (mo
 		return models.HasilLab{}, err
 	}
 
-	// ⚠️ PENTING: Perhitungan AI akan diurus oleh LabUsecase secara terpisah.
-	// Di sini hanya mengembalikan data lab yang berhasil di-insert.
+	// 3. Konversi CreateParameterRequest ke AssessmentParamInput lalu jalankan AI async
+	assessParams := make([]models.AssessmentParamInput, 0, len(input.Parameters))
+	for _, p := range input.Parameters {
+		nilai := p.Nilai
+		if nilai == 0 {
+			nilai = p.NilaiHasil
+		}
+		assessParams = append(assessParams, models.AssessmentParamInput{
+			NamaParameter:   p.NamaParameter,
+			NilaiHasil:      nilai,
+			NilaiBatasBawah: p.NilaiBatasBawah,
+			NilaiBatasAtas:  p.NilaiBatasAtas,
+		})
+	}
+
 	return u.repoHasilLab.GetByID(firstCreatedID)
 }
+
+// ── Sisanya tidak berubah ────────────────────────────────────────────────────
 
 func (u *hasilLabUsecase) GetHasilLabByID(id uint) (models.HasilLab, error) {
 	if id == 0 {
 		return models.HasilLab{}, fmt.Errorf("id tidak valid")
 	}
-
 	hasilLab, err := u.repoHasilLab.GetByID(id)
 	if err != nil || hasilLab.IDHasilLab == 0 {
 		return models.HasilLab{}, fmt.Errorf("hasil lab tidak ditemukan")
 	}
-
 	return hasilLab, nil
 }
 
@@ -204,7 +222,6 @@ func (u *hasilLabUsecase) GetHasilLabByLaporanLabID(laporanLabID uint) ([]models
 	if laporanLabID == 0 {
 		return nil, fmt.Errorf("laporan_lab_id tidak valid")
 	}
-
 	return u.repoHasilLab.GetByLaporanLabID(laporanLabID)
 }
 
@@ -212,7 +229,6 @@ func (u *hasilLabUsecase) GetHasilLabByRiwayatID(riwayatID uint) ([]models.Hasil
 	if riwayatID == 0 {
 		return nil, fmt.Errorf("riwayat_id tidak valid")
 	}
-
 	return u.repoHasilLab.GetByRiwayatID(riwayatID)
 }
 
@@ -223,7 +239,6 @@ func (u *hasilLabUsecase) GetHasilLabByRiwayatIDAndDate(riwayatID uint, date str
 	if strings.TrimSpace(date) == "" {
 		return nil, fmt.Errorf("tanggal tidak valid")
 	}
-
 	return u.repoHasilLab.GetByRiwayatIDAndDate(riwayatID, date)
 }
 
@@ -234,7 +249,6 @@ func (u *hasilLabUsecase) GetLaporanByUserAndDate(userID uint, date string) (mod
 	if strings.TrimSpace(date) == "" {
 		return models.LaporanLab{}, fmt.Errorf("tanggal tidak valid")
 	}
-
 	laporan, err := u.repoLaporanLab.GetByUserIDAndDate(userID, date)
 	if err != nil {
 		return models.LaporanLab{}, fmt.Errorf("data tidak ditemukan")
@@ -253,12 +267,10 @@ func (u *hasilLabUsecase) UpdateHasilLab(id uint, input models.UpdateHasilLabReq
 	if id == 0 {
 		return models.HasilLab{}, fmt.Errorf("id tidak valid")
 	}
-
 	hasilLab, err := u.repoHasilLab.GetByID(id)
 	if err != nil || hasilLab.IDHasilLab == 0 {
 		return models.HasilLab{}, fmt.Errorf("hasil lab tidak ditemukan")
 	}
-
 	if input.NilaiHasil != 0 {
 		hasilLab.NilaiHasil = input.NilaiHasil
 	}
@@ -268,7 +280,6 @@ func (u *hasilLabUsecase) UpdateHasilLab(id uint, input models.UpdateHasilLabReq
 	if input.NilaiBatasAtas != 0 {
 		hasilLab.NilaiBatasAtas = input.NilaiBatasAtas
 	}
-
 	return u.repoHasilLab.Update(id, hasilLab)
 }
 
@@ -276,11 +287,9 @@ func (u *hasilLabUsecase) DeleteHasilLab(id uint) error {
 	if id == 0 {
 		return fmt.Errorf("id tidak valid")
 	}
-
 	hasilLab, err := u.repoHasilLab.GetByID(id)
 	if err != nil || hasilLab.IDHasilLab == 0 {
 		return fmt.Errorf("hasil lab tidak ditemukan")
 	}
-
 	return u.repoHasilLab.Delete(id)
 }

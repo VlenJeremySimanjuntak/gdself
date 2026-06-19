@@ -1,7 +1,6 @@
 package usecases
 
 import (
-	"fmt"
 	"monitoring-service/app/models"
 	"monitoring-service/app/repositories"
 )
@@ -25,9 +24,7 @@ func NewUsgTiroidUsecase(repo repositories.UsgTiroidRepository) UsgTiroidUsecase
 }
 
 func (u *usgTiroidUsecase) CreateUsgTiroid(usg models.USGTiroid) (models.USGTiroid, error) {
-	if usg.IDRiwayat == 0 {
-		return models.USGTiroid{}, fmt.Errorf("id_riwayat tidak boleh kosong")
-	}
+	// Langsung dilempar ke repo repository tanpa validasi penghambat
 	return u.repo.Create(usg)
 }
 

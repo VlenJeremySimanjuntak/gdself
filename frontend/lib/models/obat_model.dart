@@ -7,6 +7,7 @@ class ObatModel {
   final String? frekuensi;
   final DateTime? tglMulai;
   final DateTime? tglSelesai;
+  final List<String>? hariKonsumsi; // ✅ 1. Tambahkan variabel hariKonsumsi
 
   ObatModel({
     required this.idObat,
@@ -17,9 +18,25 @@ class ObatModel {
     this.frekuensi,
     this.tglMulai,
     this.tglSelesai,
+    this.hariKonsumsi, // ✅ 2. Masukkan ke constructor
   });
 
   factory ObatModel.fromJson(Map<String, dynamic> json) {
+    // ✅ 3. Logika aman untuk membaca data hari konsumsi dari backend
+    List<String>? parsedHari;
+    if (json['hari_konsumsi'] != null) {
+      if (json['hari_konsumsi'] is List) {
+        // Jika dari backend bentuknya Array: ["SEN", "SEL"]
+        parsedHari = List<String>.from(json['hari_konsumsi']);
+      } else if (json['hari_konsumsi'] is String) {
+        // Jika dari backend bentuknya String koma: "SEN, SEL"
+        parsedHari = (json['hari_konsumsi'] as String)
+            .split(',')
+            .map((e) => e.trim())
+            .toList();
+      }
+    }
+
     return ObatModel(
       idObat: _toInt(json['id_obat']) ?? 0,
       idUser: _toInt(json['id_user']) ?? 0,
@@ -29,6 +46,7 @@ class ObatModel {
       frekuensi: json['frekuensi'] as String?,
       tglMulai: _parseDateTime(json['tgl_mulai']),
       tglSelesai: _parseDateTime(json['tgl_selesai']),
+      hariKonsumsi: parsedHari, // ✅ 4. Masukkan hasil parsing
     );
   }
 }

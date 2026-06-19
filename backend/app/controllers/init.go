@@ -38,7 +38,7 @@ func Init(opts Options) *Main {
 		
 		Obat:     NewObatController(opts.UseCases.Obat),
 		Wearable: NewWearableController(opts.UseCases.Wearable),
-		HasilLab: NewHasilLabController(opts.UseCases.HasilLab),
+		HasilLab: NewHasilLabController(opts.UseCases.HasilLab, opts.UseCases.Lab),
 		
 		HasilAI: NewHasilAIController(
 			opts.UseCases.HasilAIHarian,

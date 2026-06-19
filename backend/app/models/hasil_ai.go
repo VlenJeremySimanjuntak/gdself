@@ -12,6 +12,8 @@ type HasilAIHarian struct {
 	ReminderHr      string      `json:"reminder_hr" gorm:"column:reminder_hr;type:text"`
 	StatusTidur     string      `json:"status_tidur" gorm:"column:status_tidur;size:100"`
 	ReminderTidur   string      `json:"reminder_tidur" gorm:"column:reminder_tidur;type:text"`
+	StatusTd        string      `json:"status_td" gorm:"column:status_td;size:100"`       // ✅ Ditambahkan
+	ReminderTd      string      `json:"reminder_td" gorm:"column:reminder_td;type:text"` // ✅ Ditambahkan
 	TglHasilAi      *CustomDate `json:"tgl_hasil_ai" gorm:"column:tgl_hasil_ai;type:date"`
 	CreatedAt       time.Time   `json:"created_at" gorm:"column:created_at;autoCreateTime:milli"`
 
