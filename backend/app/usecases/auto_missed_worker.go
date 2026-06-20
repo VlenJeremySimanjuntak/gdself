@@ -8,42 +8,42 @@ import (
 	"gorm.io/gorm"
 )
 
-// Fungsi pembantu untuk konversi waktu server ke hari bahasa Indonesia
-func getHariIndonesia(w time.Weekday) string {
-	hari := []string{"minggu", "senin", "selasa", "rabu", "kamis", "jumat", "sabtu"}
+// ✅ PERBAIKAN: Format hari disamakan dengan database Flutter (MIN, SEN, SEL, dst)
+func getHariPendek(w time.Weekday) string {
+	hari := []string{"MIN", "SEN", "SEL", "RAB", "KAM", "JUM", "SAB"}
 	return hari[w]
 }
 
 // StartMissedDoseChecker akan berjalan di background mengecek obat yang diabaikan
 func StartMissedDoseChecker(db *gorm.DB) {
-	fmt.Println("🚀 Background Worker: Auto-Missed Checker berjalan...")
+	fmt.Println("🚀 Background Worker: Auto-Missed Checker berjalan (Mode Testing)...")
 
 	go func() {
 		for {
-			// Looping berjalan setiap 5 menit sekali
-			time.Sleep(5 * time.Minute)
+			// ✅ TESTING: Looping berjalan setiap 30 Detik agar cepat merespon
+			time.Sleep(30 * time.Second)
 
 			now := time.Now()
-			hariIni := getHariIndonesia(now.Weekday())
+			hariIni := getHariPendek(now.Weekday())
 
 			var jadwalHariIni []models.JadwalObat
-			// Cari jadwal yang mengandung kata hari ini (misal "SENIN")
-			db.Where("LOWER(hari) LIKE ?", "%"+hariIni+"%").Find(&jadwalHariIni)
+			// Cari jadwal yang mengandung singkatan hari ini (misal "SEN")
+			db.Where("hari LIKE ?", "%"+hariIni+"%").Find(&jadwalHariIni)
 
 			for _, jadwal := range jadwalHariIni {
 				if jadwal.WaktuMinumObat == nil {
 					continue
 				}
 
-				// Konversi tipe CustomTime milik Mas Vlen ke time.Time bawaan Go
 				jamJadwal := time.Time(*jadwal.WaktuMinumObat)
 
-				// Bentuk jadwal target untuk hari ini (jam dan menit dari DB)
+				// Bentuk jadwal target untuk hari ini
 				targetWaktu := time.Date(now.Year(), now.Month(), now.Day(), jamJadwal.Hour(), jamJadwal.Minute(), 0, 0, now.Location())
 				
-				// 💡 Batas waktu telat adalah 15 menit setelah jadwal
-				batasToleransi := targetWaktu.Add(15 * time.Minute)
+				// ✅ TESTING: Batas toleransi jadi 3 Menit (Alarm + Snooze 2 Menit + 1 Menit)
+				batasToleransi := targetWaktu.Add(3 * time.Minute)
 
+				// Jika waktu sekarang SUDAH MELEWATI batas toleransi
 				if now.After(batasToleransi) {
 					var count int64
 					todayStr := now.Format("2006-01-02")
