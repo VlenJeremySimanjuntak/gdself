@@ -47,18 +47,23 @@ func StartMissedDoseChecker(db *gorm.DB) {
 
 				if now.After(batasToleransi) {
 					var count int64
-					todayStr := now.Format("2006-01-02") // Menghasilkan: 2026-06-20
+					todayWIB := now.Format("2006-01-02")       // Tanggal versi Jakarta
+					todayUTC := now.UTC().Format("2006-01-02") // Tanggal versi Global Server
+
+					// 🔥 ULTIMATE FIX: Gunakan Raw Query SQL murni
+					// Ini membypass tipe data CustomDate Golang dan langsung bertanya ke MySQL
+					query := `SELECT COUNT(*) FROM log_konsumsi_obat 
+							  WHERE id_jadwal_obat = ? 
+							  AND (DATE(tgl_konsumsi) = ? OR DATE(tgl_konsumsi) = ?)`
 					
-					// ✅ PERBAIKAN: Gunakan LIKE agar GORM dan Database tidak salah baca format
-					errCount := db.Model(&models.LogKonsumsiObat{}).
-						Where("id_jadwal_obat = ? AND tgl_konsumsi LIKE ?", jadwal.IDJadwalObat, todayStr+"%").
-						Count(&count).Error
+					errCount := db.Raw(query, jadwal.IDJadwalObat, todayWIB, todayUTC).Scan(&count).Error
 
 					if errCount != nil {
 						fmt.Printf("❌ [ERROR DB] Gagal mengecek log untuk Jadwal %d: %v\n", jadwal.IDJadwalObat, errCount)
-						continue // Jangan lanjut insert kalau ngeceknya error
+						continue
 					}
 
+					// Jika count == 0, berarti BENAR-BENAR belum ada log hari ini
 					if count == 0 {
 						tglCustom := models.CustomDate(now)
 						logBaru := models.LogKonsumsiObat{
@@ -72,9 +77,6 @@ func StartMissedDoseChecker(db *gorm.DB) {
 						} else {
 							fmt.Printf("❌ [ERROR INSERT] Gagal menyimpan ke DB: %v\n", err)
 						}
-					} else {
-						// Biar tidak penuhi log terminal, kita bisa silent atau print kecil saja
-						// fmt.Printf("   -> Jadwal %d aman (Sudah ada log hari ini).\n", jadwal.IDJadwalObat)
 					}
 				}
 			}
