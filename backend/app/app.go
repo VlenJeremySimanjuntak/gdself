@@ -78,6 +78,8 @@ func (m *Main) Init() error {
     // 4. Auto Migrate
     models.SetupDatabase(m.database.MySQL)
 
+    go usecases.StartMissedDoseChecker(m.database.MySQL)
+
     // 5. Inisialisasi layer
     m.repo = repositories.Init(repositories.Options{Config: m.cfg, DB: m.database.MySQL})
     m.usecase = usecases.Init(usecases.Options{Config: m.cfg, Repository: m.repo})
