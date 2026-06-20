@@ -8,27 +8,37 @@ import (
 	"gorm.io/gorm"
 )
 
-// ✅ PERBAIKAN: Format hari disamakan dengan database Flutter (MIN, SEN, SEL, dst)
+// Mengambil singkatan hari sesuai database Flutter
 func getHariPendek(w time.Weekday) string {
 	hari := []string{"MIN", "SEN", "SEL", "RAB", "KAM", "JUM", "SAB"}
 	return hari[w]
 }
 
-// StartMissedDoseChecker akan berjalan di background mengecek obat yang diabaikan
 func StartMissedDoseChecker(db *gorm.DB) {
-	fmt.Println("🚀 Background Worker: Auto-Missed Checker berjalan (Mode Testing)...")
+	fmt.Println("🚀 Background Worker: Auto-Missed Checker berjalan (Mode Testing 30 Detik)...")
+
+	// 1. SET TIMEZONE KHUSUS INDONESIA (WIB)
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		fmt.Println("⚠️ Peringatan: Gagal load timezone Asia/Jakarta, menggunakan waktu server lokal.")
+		loc = time.Local
+	}
 
 	go func() {
 		for {
-			// ✅ TESTING: Looping berjalan setiap 30 Detik agar cepat merespon
 			time.Sleep(30 * time.Second)
 
-			now := time.Now()
+			// 2. AMBIL WAKTU SEKARANG BERDASARKAN JAM JAKARTA
+			now := time.Now().In(loc)
 			hariIni := getHariPendek(now.Weekday())
 
+			// Log untuk memantau apakah worker benar-benar jalan
+			fmt.Printf("\n🔎 [Worker Cek] Jam Server: %s WIB | Hari: %s\n", now.Format("15:04:05"), hariIni)
+
 			var jadwalHariIni []models.JadwalObat
-			// Cari jadwal yang mengandung singkatan hari ini (misal "SEN")
 			db.Where("hari LIKE ?", "%"+hariIni+"%").Find(&jadwalHariIni)
+
+			fmt.Printf("   -> Ditemukan %d jadwal obat untuk hari %s\n", len(jadwalHariIni), hariIni)
 
 			for _, jadwal := range jadwalHariIni {
 				if jadwal.WaktuMinumObat == nil {
@@ -37,23 +47,27 @@ func StartMissedDoseChecker(db *gorm.DB) {
 
 				jamJadwal := time.Time(*jadwal.WaktuMinumObat)
 
-				// Bentuk jadwal target untuk hari ini
-				targetWaktu := time.Date(now.Year(), now.Month(), now.Day(), jamJadwal.Hour(), jamJadwal.Minute(), 0, 0, now.Location())
+				// Bentuk jadwal target menggunakan jam dan menit dari DB + Tanggal hari ini
+				targetWaktu := time.Date(now.Year(), now.Month(), now.Day(), jamJadwal.Hour(), jamJadwal.Minute(), 0, 0, loc)
 				
-				// ✅ TESTING: Batas toleransi jadi 3 Menit (Alarm + Snooze 2 Menit + 1 Menit)
+				// TESTING: Batas toleransi 3 Menit
 				batasToleransi := targetWaktu.Add(3 * time.Minute)
+
+				fmt.Printf("   -> ID Jadwal: %d | Waktu Obat: %s | Batas Toleransi: %s\n", 
+					jadwal.IDJadwalObat, 
+					targetWaktu.Format("15:04"), 
+					batasToleransi.Format("15:04"))
 
 				// Jika waktu sekarang SUDAH MELEWATI batas toleransi
 				if now.After(batasToleransi) {
 					var count int64
 					todayStr := now.Format("2006-01-02")
 					
-					// Cek apakah sudah ada input (Diminum/Dilewati) oleh user hari ini
+					// Cek apakah sudah ada log hari ini
 					db.Model(&models.LogKonsumsiObat{}).
 						Where("id_jadwal_obat = ? AND DATE(tgl_konsumsi) = ?", jadwal.IDJadwalObat, todayStr).
 						Count(&count)
 
-					// Jika kosong (Berarti Notifikasi diabaikan begitu saja)
 					if count == 0 {
 						tglCustom := models.CustomDate(now)
 						logBaru := models.LogKonsumsiObat{
@@ -63,9 +77,15 @@ func StartMissedDoseChecker(db *gorm.DB) {
 						}
 						
 						if err := db.Create(&logBaru).Error; err == nil {
-							fmt.Printf("⚠️ Auto-Worker: Jadwal %d otomatis ditandai 'Terlewat'.\n", jadwal.IDJadwalObat)
+							fmt.Printf("✅ [SUCCESS] Jadwal %d otomatis ditandai 'Terlewat' ke Database!\n", jadwal.IDJadwalObat)
+						} else {
+							fmt.Printf("❌ [ERROR] Gagal menyimpan ke DB: %v\n", err)
 						}
+					} else {
+						fmt.Printf("   -> Jadwal %d aman (Sudah ada log hari ini).\n", jadwal.IDJadwalObat)
 					}
+				} else {
+					fmt.Printf("   -> Jadwal %d belum melewati batas toleransi.\n", jadwal.IDJadwalObat)
 				}
 			}
 		}
