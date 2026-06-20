@@ -28,17 +28,11 @@ func StartMissedDoseChecker(db *gorm.DB) {
 		for {
 			time.Sleep(30 * time.Second)
 
-			// 2. AMBIL WAKTU SEKARANG BERDASARKAN JAM JAKARTA
 			now := time.Now().In(loc)
 			hariIni := getHariPendek(now.Weekday())
 
-			// Log untuk memantau apakah worker benar-benar jalan
-			fmt.Printf("\n🔎 [Worker Cek] Jam Server: %s WIB | Hari: %s\n", now.Format("15:04:05"), hariIni)
-
 			var jadwalHariIni []models.JadwalObat
 			db.Where("hari LIKE ?", "%"+hariIni+"%").Find(&jadwalHariIni)
-
-			fmt.Printf("   -> Ditemukan %d jadwal obat untuk hari %s\n", len(jadwalHariIni), hariIni)
 
 			for _, jadwal := range jadwalHariIni {
 				if jadwal.WaktuMinumObat == nil {
@@ -46,27 +40,24 @@ func StartMissedDoseChecker(db *gorm.DB) {
 				}
 
 				jamJadwal := time.Time(*jadwal.WaktuMinumObat)
-
-				// Bentuk jadwal target menggunakan jam dan menit dari DB + Tanggal hari ini
 				targetWaktu := time.Date(now.Year(), now.Month(), now.Day(), jamJadwal.Hour(), jamJadwal.Minute(), 0, 0, loc)
 				
 				// TESTING: Batas toleransi 3 Menit
 				batasToleransi := targetWaktu.Add(3 * time.Minute)
 
-				fmt.Printf("   -> ID Jadwal: %d | Waktu Obat: %s | Batas Toleransi: %s\n", 
-					jadwal.IDJadwalObat, 
-					targetWaktu.Format("15:04"), 
-					batasToleransi.Format("15:04"))
-
-				// Jika waktu sekarang SUDAH MELEWATI batas toleransi
 				if now.After(batasToleransi) {
 					var count int64
-					todayStr := now.Format("2006-01-02")
+					todayStr := now.Format("2006-01-02") // Menghasilkan: 2026-06-20
 					
-					// Cek apakah sudah ada log hari ini
-					db.Model(&models.LogKonsumsiObat{}).
-						Where("id_jadwal_obat = ? AND DATE(tgl_konsumsi) = ?", jadwal.IDJadwalObat, todayStr).
-						Count(&count)
+					// ✅ PERBAIKAN: Gunakan LIKE agar GORM dan Database tidak salah baca format
+					errCount := db.Model(&models.LogKonsumsiObat{}).
+						Where("id_jadwal_obat = ? AND tgl_konsumsi LIKE ?", jadwal.IDJadwalObat, todayStr+"%").
+						Count(&count).Error
+
+					if errCount != nil {
+						fmt.Printf("❌ [ERROR DB] Gagal mengecek log untuk Jadwal %d: %v\n", jadwal.IDJadwalObat, errCount)
+						continue // Jangan lanjut insert kalau ngeceknya error
+					}
 
 					if count == 0 {
 						tglCustom := models.CustomDate(now)
@@ -79,13 +70,12 @@ func StartMissedDoseChecker(db *gorm.DB) {
 						if err := db.Create(&logBaru).Error; err == nil {
 							fmt.Printf("✅ [SUCCESS] Jadwal %d otomatis ditandai 'Terlewat' ke Database!\n", jadwal.IDJadwalObat)
 						} else {
-							fmt.Printf("❌ [ERROR] Gagal menyimpan ke DB: %v\n", err)
+							fmt.Printf("❌ [ERROR INSERT] Gagal menyimpan ke DB: %v\n", err)
 						}
 					} else {
-						fmt.Printf("   -> Jadwal %d aman (Sudah ada log hari ini).\n", jadwal.IDJadwalObat)
+						// Biar tidak penuhi log terminal, kita bisa silent atau print kecil saja
+						// fmt.Printf("   -> Jadwal %d aman (Sudah ada log hari ini).\n", jadwal.IDJadwalObat)
 					}
-				} else {
-					fmt.Printf("   -> Jadwal %d belum melewati batas toleransi.\n", jadwal.IDJadwalObat)
 				}
 			}
 		}
