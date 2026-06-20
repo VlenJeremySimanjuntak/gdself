@@ -13,6 +13,6 @@ func main() {
         log.Println("Peringatan: File .env tidak ditemukan, menggunakan environment system bawaan")
         // Hapus log.Fatal agar aplikasi lanjut berjalan meski file tidak ada
     }
-
+    
     command.Execute()
 }
