@@ -167,11 +167,11 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
     // 1. Cek validasi form bawaan (untuk tanggal periksa)
     if (!_formKey.currentState!.validate()) return;
 
-    // 2. VALIDASI WAJIB: TSH dan FT4 Harus Diisi!
-    if (_tshValCtrl.text.isEmpty || _ft4ValCtrl.text.isEmpty) {
+    // 2. VALIDASI WAJIB: Hanya TSHs yang wajib diisi!
+    if (_tshValCtrl.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Gagal disimpan! Parameter TSH dan FT4 wajib diisi."),
+          content: Text("Gagal disimpan! Parameter TSHs wajib diisi."),
           backgroundColor: AppColors.errorRed,
           behavior: SnackBarBehavior.floating,
         ),
@@ -196,7 +196,7 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
       });
     }
 
-    // ✅ FT4
+    // ✅ FT4 (Sekarang Opsional)
     if (_ft4ValCtrl.text.isNotEmpty) {
       parameters.add({
         "nama_parameter": "FT4",
@@ -277,7 +277,7 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
               const Text("Tambah Data Hormon", style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: AppColors.textDark)),
               const SizedBox(height: 8),
               const Text(
-                "Masukkan hasil laboratorium terbaru Anda. (Data parameter TSH dan FT4 wajib diisi)",
+                "Masukkan hasil laboratorium terbaru Anda. (Data parameter TSHs wajib diisi)",
                 style: TextStyle(fontSize: 13, color: AppColors.textGrey, height: 1.5),
               ),
               const SizedBox(height: 24),
@@ -303,7 +303,7 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
                 maxCtrl: _ft4MaxCtrl,
                 selectedUnit: _selectedUnitFT4,
                 onUnitChanged: (newUnit) => setState(() => _selectedUnitFT4 = newUnit!),
-                isRequired: true, // 👈 Tandai sebagai wajib
+                isRequired: false, // 👈 Ubah menjadi false
               ),
               const SizedBox(height: 16),
               _buildHormoneSection(

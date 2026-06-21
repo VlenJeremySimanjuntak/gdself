@@ -551,6 +551,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     const colorTopLeft = Color(0xFF0074A3);
     const colorBottomRight = Color(0xFF36B89E);
 
+    // 1. Ambil nilai metrik untuk ditampilkan di kotak bawah
     HasilLabModel? getHasilLab(String nama) {
       if (laporan == null || laporan.hasilLab.isEmpty) return null;
       try {
@@ -566,37 +567,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     final tshLab = getHasilLab('TSH');
     final ft3Lab = getHasilLab('FT3');
     final ft4Lab = getHasilLab('FT4');
-    final trabLab = getHasilLab('TRAB');
-
-    int getStatusLevel(HasilLabModel? hasil) {
-      if (hasil == null) return -2;
-      if (hasil.nilaiHasil < hasil.rujukanMin) return -1;
-      if (hasil.nilaiHasil > hasil.rujukanMax) return 1;
-      return 0;
-    }
-
-    int tshStatus = getStatusLevel(tshLab);
-    int ft3Status = getStatusLevel(ft3Lab);
-    int ft4Status = getStatusLevel(ft4Lab);
-    int trabStatus = getStatusLevel(trabLab);
-
-    String displayStatus = 'Tidak Diketahui';
-
-    if (laporan == null || laporan.hasilLab.isEmpty) {
-      displayStatus = 'Belum Ada';
-    } else {
-      if (tshStatus == -1 || tshStatus == 1 ||
-          ft4Status == -1 || ft4Status == 1 ||
-          trabStatus == 1) {
-        displayStatus = 'Belum normal';
-      }
-      else if (tshStatus == 0 && (ft4Status == 0 || ft4Status == -2)) {
-        displayStatus = 'Normal';
-      }
-      else {
-        displayStatus = 'Diproses';
-      }
-    }
 
     ParameterLabModel getParamOrDefault(HasilLabModel? hasil, String name, String defaultSatuan) {
       if (hasil != null && hasil.parameters.isNotEmpty) {
@@ -616,8 +586,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       getParamOrDefault(tshLab, 'TSHs', 'uIU/mL'),
       getParamOrDefault(ft4Lab, 'FT4', 'ng/dL'),
       getParamOrDefault(ft3Lab, 'FT3', 'pg/mL'),
-      getParamOrDefault(trabLab, 'TRAb', 'IU/L'),
     ];
+
+    // ==========================================================
+    // 2. PENENTUAN STATUS (MENGAMBIL DARI BACKEND / AI GABUNGAN)
+    // ==========================================================
+    String displayStatus = 'Tidak Terinterpretasi';
+
+    if (laporan == null || laporan.hasilLab.isEmpty) {
+      displayStatus = 'Belum Ada';
+    } else if (laporan.kesimpulanLab != null && laporan.kesimpulanLab!.interpretasi != null) {
+      // Mengambil langsung dari kolom `interpretasi` tabel hasil_ai_lab di Backend
+      final String interpretasiBE = laporan.kesimpulanLab!.interpretasi!.trim();
+
+      if (interpretasiBE.isNotEmpty) {
+        displayStatus = interpretasiBE; // Bisa berisi "Normal" atau "Belum normal"
+      } else {
+        displayStatus = 'Diproses';
+      }
+    } else {
+      // Kasus jika data lab ada, tapi Backend/AI belum selesai memproses
+      displayStatus = 'Diproses';
+    }
 
     final lastDate = laporan?.tglPeriksa ?? DateTime.now();
 
@@ -665,15 +655,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                     ],
                   ),
                 ),
-                Text(
-                  displayStatus.replaceAll(' ', '\n'),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 26,
-                    height: 1.15,
-                    letterSpacing: -0.5,
+                Expanded(
+                  child: Text(
+                    // Membuat teks menjadi huruf kapital di awal kata (Capitalize)
+                    // dan mengganti spasi dengan Enter jika katanya terlalu panjang
+                    displayStatus.replaceAll(' ', '\n'),
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 24, // Dikecilkan sedikit agar muat jika teks panjang
+                      height: 1.15,
+                      letterSpacing: -0.5,
+                    ),
                   ),
                 ),
               ],
