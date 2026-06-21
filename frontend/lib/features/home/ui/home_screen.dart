@@ -33,7 +33,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObserver {
   int _selectedIndex = 0;
-  bool _isDisconnected = true; // Default awal terputus sebelum dicek
+  bool _isDisconnected = true;
   bool _isSyncing = false;
   final _healthChannel = const MethodChannel('com.example.gdself/health_connect');
 
@@ -66,11 +66,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     }
   }
 
-  // ===========================================================================
-  // ✅ REFACTORING LOGIKA KONEKSI (Hanya Berpatokan pada Keputusan User)
-  // ===========================================================================
   Future<void> _cekStatusKoneksi() async {
-    // Cek status dulu TANPA tunggu _isSyncing
     final Health health = Health();
     final types = [
       HealthDataType.HEART_RATE,
@@ -85,7 +81,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       HealthDataAccess.READ,
     ];
 
-    // ✅ Cek izin real ke Android
     bool hasPermissions = false;
     try {
       hasPermissions = await health.hasPermissions(types, permissions: permissions) ?? false;
@@ -93,7 +88,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       hasPermissions = false;
     }
 
-    // ✅ Simpan ke SharedPreferences dan update UI
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('is_wearable_disconnected', !hasPermissions);
 
@@ -102,7 +96,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       _isDisconnected = !hasPermissions;
     });
 
-    // Auto-sync hanya jika terhubung dan tidak sedang sync
     if (hasPermissions && !_isSyncing) {
       _isSyncing = true;
       try {
@@ -143,10 +136,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     }
   }
 
-  // ===========================================================================
-  // ✅ REFACTORING DIALOG LEPAS AKSES (Lebih Bersih)
-  // ===========================================================================
-  // ✅ Kembalikan dialog yang buka Health Connect Settings
   void _showLepasAksesDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -170,7 +159,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
               ),
               onPressed: () async {
                 Navigator.pop(context);
-                await _bukaHealthConnectSettings(); // ✅ Buka settings, biarkan resumed yang handle
+                await _bukaHealthConnectSettings();
               },
               child: const Text('Buka Pengaturan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
@@ -180,12 +169,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     );
   }
 
-// ✅ Kembalikan fungsi ini
   Future<void> _bukaHealthConnectSettings() async {
     try {
       await _healthChannel.invokeMethod('openHealthConnectSettings');
-      // Tidak perlu delay atau cek di sini
-      // didChangeAppLifecycleState(resumed) yang akan handle saat user kembali
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -276,9 +262,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       ).then((_) => _refresh());
     }
 
-    // ===========================================================================
-    // ✅ KEMBALI DARI HALAMAN SINKRONISASI (Paksa status Connected)
-    // ===========================================================================
     Future<void> onHubungkanPerangkat() async {
       final result = await Navigator.push(
         context,
@@ -287,11 +270,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
 
       if (!mounted) return;
 
-      // Jika user berhasil memberi izin (walaupun datanya kosong)
       if (result == true) {
         await _setDisconnectState(false);
-
-        // Panggil fetchAll agar kartu indikator (HR, Tidur) merender angka 0 / Kosong
         final userId = ref.read(userProvider).user?.idUser;
         if (userId != null) {
           await ref.read(homeProvider.notifier).fetchAll(userId);
@@ -472,7 +452,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                 if (_isDisconnected)
                   _emptyWearableCard(onHubungkanPerangkat)
                 else
-                // Jika terhubung tapi wearable kosong, kirim nilai default 0
                   _buildWearablesSection(
                     wearable ?? WearableModel(
                       idWearable: 0,
@@ -551,7 +530,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     const colorTopLeft = Color(0xFF0074A3);
     const colorBottomRight = Color(0xFF36B89E);
 
-    // 1. Ambil nilai metrik untuk ditampilkan di kotak bawah
     HasilLabModel? getHasilLab(String nama) {
       if (laporan == null || laporan.hasilLab.isEmpty) return null;
       try {
@@ -576,6 +554,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         idParameter: 0,
         idHasilLab: 0,
         namaParameter: name,
+        // ✅ JIKA HASIL DARI DB 0.0 MAKA JADIKAN 0.0 (TIDAK DIBULATKAN)
         nilaiHasil: 0.0,
         satuan: defaultSatuan,
         kategori: null,
@@ -588,24 +567,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       getParamOrDefault(ft3Lab, 'FT3', 'pg/mL'),
     ];
 
-    // ==========================================================
-    // 2. PENENTUAN STATUS (MENGAMBIL DARI BACKEND / AI GABUNGAN)
-    // ==========================================================
     String displayStatus = 'Tidak Terinterpretasi';
 
     if (laporan == null || laporan.hasilLab.isEmpty) {
       displayStatus = 'Belum Ada';
     } else if (laporan.kesimpulanLab != null && laporan.kesimpulanLab!.interpretasi != null) {
-      // Mengambil langsung dari kolom `interpretasi` tabel hasil_ai_lab di Backend
       final String interpretasiBE = laporan.kesimpulanLab!.interpretasi!.trim();
 
       if (interpretasiBE.isNotEmpty) {
-        displayStatus = interpretasiBE; // Bisa berisi "Normal" atau "Belum normal"
+        displayStatus = interpretasiBE;
       } else {
         displayStatus = 'Diproses';
       }
     } else {
-      // Kasus jika data lab ada, tapi Backend/AI belum selesai memproses
       displayStatus = 'Diproses';
     }
 
@@ -657,14 +631,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                 ),
                 Expanded(
                   child: Text(
-                    // Membuat teks menjadi huruf kapital di awal kata (Capitalize)
-                    // dan mengganti spasi dengan Enter jika katanya terlalu panjang
                     displayStatus.replaceAll(' ', '\n'),
                     textAlign: TextAlign.right,
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
-                      fontSize: 24, // Dikecilkan sedikit agar muat jika teks panjang
+                      fontSize: 24,
                       height: 1.15,
                       letterSpacing: -0.5,
                     ),
@@ -691,7 +663,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     );
   }
 
+  // ===========================================================================
+  // ✅ REFACTORING FORMAT ANGKA (Menampilkan nilai asli tanpa pembulatan)
+  // ===========================================================================
   Widget _buildStatusMetricCard(ParameterLabModel param) {
+    // Mengecek apakah angkanya bulat murni (misal 12.0) atau ada desimalnya (misal 12.45)
+    // Jika bulat, tampilkan tanpa ".0", jika desimal tampilkan asli sesuai database
+    String displayValue = param.nilaiHasil.toString();
+    if (displayValue.endsWith('.0')) {
+      displayValue = displayValue.substring(0, displayValue.length - 2);
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       decoration: BoxDecoration(
@@ -707,7 +689,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                   fontSize: 11,
                   fontWeight: FontWeight.w500)),
           const SizedBox(height: 8),
-          Text(param.nilaiHasil.toStringAsFixed(1),
+          Text(displayValue, // ✅ Variabel yang sudah diformat
               style: const TextStyle(
                   color: Colors.white,
                   fontSize: 20,

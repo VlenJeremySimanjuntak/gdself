@@ -36,7 +36,10 @@ func extractHormoneValues(params []models.AssessmentParamInput) map[string]model
 	return result
 }
 
-// ✅ Status "Tidak Diketahui" → "Tidak Terinterpretasi" (rule 10)
+// ==========================================
+// EVALUASI PER PARAMETER
+// ==========================================
+
 func evaluateTSH(p models.AssessmentParamInput) (status, reminder string) {
 	if p.NilaiHasil == 0 || p.NilaiBatasBawah == 0 || p.NilaiBatasAtas == 0 {
 		return "Tidak Terinterpretasi",
@@ -88,7 +91,6 @@ func evaluateFT4(p models.AssessmentParamInput) (status, reminder string) {
 		"Hasil pemeriksaan menunjukkan bahwa FT4 berada dalam rentang yang diharapkan."
 }
 
-// ✅ TRAb tetap diinterpretasikan tapi tidak mempengaruhi interpretasiKeseluruhan (rule 13)
 func evaluateTRAb(p models.AssessmentParamInput) (status, reminder string) {
 	if p.NilaiHasil == 0 || p.NilaiBatasAtas == 0 {
 		return "Tidak Terinterpretasi",
@@ -102,48 +104,42 @@ func evaluateTRAb(p models.AssessmentParamInput) (status, reminder string) {
 		"Hasil pemeriksaan menunjukkan tidak adanya penanda autoimun tiroid (TRAb negatif)."
 }
 
-// ✅ Interpretasi hanya dari TSH + FT3 + FT4, TRAb dipisah (rule 13)
-// ✅ Rule 9: TSH Rendah + FT3 Normal + FT4 Normal → Belum Normal
+// ==========================================
+// ✅ FUNGSI INTERPRETASI KESELURUHAN (Sesuai Tabel Skripsi)
+// ==========================================
 func interpretasiKeseluruhan(statusTSH, statusFT3, statusFT4 string) string {
-	// Normal: TSH Normal + FT4 Normal (FT3 Normal atau Tidak Terinterpretasi)
-	if statusTSH == "Normal" && statusFT4 == "Normal" &&
-		(statusFT3 == "Normal" || statusFT3 == "Tidak Terinterpretasi") {
+	// Catatan: Karena FT3 dan FT4 opsional (bisa tidak diisi dari Frontend), 
+	// maka nilai kosong di Backend akan terbaca sebagai "Tidak Terinterpretasi".
+	// Kita anggap "Tidak Terinterpretasi" layaknya parameter tersebut Normal/Aman.
+
+	isFT3AmanNormal := statusFT3 == "Normal" || statusFT3 == "Tidak Terinterpretasi"
+	isFT4AmanNormal := statusFT4 == "Normal" || statusFT4 == "Tidak Terinterpretasi"
+
+	isFT3TinggiAtauNormal := statusFT3 == "Tinggi" || statusFT3 == "Normal" || statusFT3 == "Tidak Terinterpretasi"
+	isFT4TinggiAtauNormal := statusFT4 == "Tinggi" || statusFT4 == "Normal" || statusFT4 == "Tidak Terinterpretasi"
+
+	// Aturan 1: TSH Normal + FT3 Normal + FT4 Normal -> Normal
+	if statusTSH == "Normal" && isFT3AmanNormal && isFT4AmanNormal {
 		return "Normal"
 	}
 
-	// Belum Normal: TSH Rendah + FT4 Tinggi (dengan atau tanpa FT3 Tinggi)
-	if statusTSH == "Rendah" && statusFT4 == "Tinggi" {
+	// Aturan 2 s/d 5: TSH Rendah + FT3 (Tinggi/Normal) + FT4 (Tinggi/Normal) -> Belum Normal
+	if statusTSH == "Rendah" && isFT3TinggiAtauNormal && isFT4TinggiAtauNormal {
 		return "Belum Normal"
 	}
 
-	// Belum Normal: TSH Rendah + FT3 Tinggi (FT4 bisa Normal)
-	if statusTSH == "Rendah" && statusFT3 == "Tinggi" {
-		return "Belum Normal"
-	}
-
-	// ✅ Rule 9 BARU: TSH Rendah + FT3 Normal + FT4 Normal → Belum Normal
-	if statusTSH == "Rendah" && statusFT3 == "Normal" && statusFT4 == "Normal" {
-		return "Belum Normal"
-	}
-
-	// ✅ Rule 9 BARU: TSH Rendah + FT3 Tidak Terinterpretasi + FT4 Normal → Belum Normal
-	if statusTSH == "Rendah" && statusFT4 == "Normal" && statusFT3 == "Tidak Terinterpretasi" {
-		return "Belum Normal"
-	}
-
+	// Aturan 6: Kondisi selain aturan di atas (Misal TSH Tinggi, FT4 Rendah, dll) -> Tidak Terinterpretasi
 	return "Tidak Terinterpretasi"
 }
-
 
 // ==========================================
 // ANALISIS TREN PER PARAMETER
 // ==========================================
 
-// Tren TSHs: status Rendah/Normal/Tinggi + perubahan nilai
 func trenTSH(prevNilai, currNilai float64, currStatus string) (tren, reminder string) {
 	switch currStatus {
 	case "Tinggi":
-		return "Tidak Terinterpretasi",  // ✅ rule 10
+		return "Tidak Terinterpretasi",
 			"Kondisi TSHs saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 	case "Normal":
 		return "Tetap Normal",
@@ -161,7 +157,7 @@ func trenTSH(prevNilai, currNilai float64, currStatus string) (tren, reminder st
 				"Nilai TSHs tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, kondisi masih berada di bawah rentang normal."
 		}
 	default:
-		return "Tidak Terinterpretasi",  // ✅ rule 10
+		return "Tidak Terinterpretasi",
 			"Kondisi TSHs saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 	}
 }
@@ -169,25 +165,25 @@ func trenTSH(prevNilai, currNilai float64, currStatus string) (tren, reminder st
 func trenFT3(prevNilai, currNilai float64, currStatus string) (tren, reminder string) {
 	switch currStatus {
 	case "Rendah":
-		return "Tidak Terinterpretasi",  // ✅ rule 10
+		return "Tidak Terinterpretasi",
 			"Kondisi FT3 saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 	case "Normal":
 		return "Tetap Normal",
 			fmt.Sprintf("FT3 saat ini berada dalam rentang normal. Terjadi %s nilai dari pemeriksaan sebelumnya, namun kondisi tetap normal.", arahPerubahan(prevNilai, currNilai))
 	case "Tinggi":
 		switch {
-		case currNilai > prevNilai:
-			return "Menjauhi Normal",
-				"Terjadi peningkatan nilai FT3 dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi rentang normal."
 		case currNilai < prevNilai:
 			return "Mendekati Normal",
 				"Terjadi penurunan nilai FT3 dari pemeriksaan sebelumnya, sehingga kondisi mulai mendekati rentang normal."
+		case currNilai > prevNilai:
+			return "Menjauhi Normal",
+				"Terjadi peningkatan nilai FT3 dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi rentang normal."
 		default:
 			return "Tidak Berubah",
 				"Nilai FT3 tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, kondisi masih berada di atas rentang normal."
 		}
 	default:
-		return "Tidak Terinterpretasi",  // ✅ rule 10
+		return "Tidak Terinterpretasi",
 			"Kondisi FT3 saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 	}
 }
@@ -195,25 +191,25 @@ func trenFT3(prevNilai, currNilai float64, currStatus string) (tren, reminder st
 func trenFT4(prevNilai, currNilai float64, currStatus string) (tren, reminder string) {
 	switch currStatus {
 	case "Rendah":
-		return "Tidak Terinterpretasi",  // ✅ rule 10
+		return "Tidak Terinterpretasi",
 			"Kondisi FT4 saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 	case "Normal":
 		return "Tetap Normal",
 			fmt.Sprintf("FT4 saat ini berada dalam rentang normal. Terjadi %s nilai dari pemeriksaan sebelumnya, namun kondisi tetap normal.", arahPerubahan(prevNilai, currNilai))
 	case "Tinggi":
 		switch {
-		case currNilai > prevNilai:
-			return "Menjauhi Normal",
-				"Terjadi peningkatan nilai FT4 dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi rentang normal."
 		case currNilai < prevNilai:
 			return "Mendekati Normal",
 				"Terjadi penurunan nilai FT4 dari pemeriksaan sebelumnya, sehingga kondisi mulai mendekati rentang normal."
+		case currNilai > prevNilai:
+			return "Menjauhi Normal",
+				"Terjadi peningkatan nilai FT4 dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi rentang normal."
 		default:
 			return "Tidak Berubah",
 				"Nilai FT4 tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, kondisi masih berada di atas rentang normal."
 		}
 	default:
-		return "Tidak Terinterpretasi",  // ✅ rule 10
+		return "Tidak Terinterpretasi",
 			"Kondisi FT4 saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 	}
 }
@@ -225,23 +221,22 @@ func trenTRAb(prevNilai, currNilai float64, currStatus string) (tren, reminder s
 			fmt.Sprintf("TRAb saat ini negatif. Terjadi %s nilai dari pemeriksaan sebelumnya, namun kondisi tetap dalam kategori negatif.", arahPerubahan(prevNilai, currNilai))
 	case "Positif":
 		switch {
-		case currNilai > prevNilai:
-			return "Menjauhi Normal",
-				"Terjadi peningkatan nilai TRAb dari pemeriksaan sebelumnya, kondisi semakin menjauhi kategori negatif."
 		case currNilai < prevNilai:
 			return "Mendekati Normal",
 				"Terjadi penurunan nilai TRAb dari pemeriksaan sebelumnya, kondisi mulai mendekati kategori negatif."
+		case currNilai > prevNilai:
+			return "Menjauhi Normal",
+				"Terjadi peningkatan nilai TRAb dari pemeriksaan sebelumnya, kondisi semakin menjauhi kategori negatif."
 		default:
 			return "Tidak Berubah",
 				"Nilai TRAb tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, kondisi masih dalam kategori positif."
 		}
 	default:
-		return "Tidak Terinterpretasi",  // ✅ rule 10
+		return "Tidak Terinterpretasi",
 			"Kondisi TRAb saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 	}
 }
 
-// Helper: arah perubahan nilai untuk teks reminder
 func arahPerubahan(prev, curr float64) string {
 	if curr > prev {
 		return "peningkatan"
@@ -283,7 +278,6 @@ func AnalyzeLabResults(params []models.AssessmentParamInput) LabAssessmentResult
 		result.ReminderFT3 = "Hasil pemeriksaan FT3 tidak dapat diinterpretasikan karena data tidak tersedia atau tidak valid."
 	}
 
-	// ✅ TRAb tetap dievaluasi tapi tidak masuk interpretasiKeseluruhan
 	if trab, ok := paramMap["TRAB"]; ok {
 		result.StatusTRAb, result.ReminderTRAb = evaluateTRAb(trab)
 		result.NilaiTRAb = trab.NilaiHasil
@@ -292,7 +286,7 @@ func AnalyzeLabResults(params []models.AssessmentParamInput) LabAssessmentResult
 		result.ReminderTRAb = "Hasil pemeriksaan TRAb tidak dapat diinterpretasikan karena data tidak tersedia atau tidak valid."
 	}
 
-	// ✅ Interpretasi hanya dari TSH + FT3 + FT4
+	// ✅ Interpretasi dieksekusi dengan logika Tabel Skripsi yang ketat
 	result.Interpretasi = interpretasiKeseluruhan(
 		result.StatusTSH,
 		result.StatusFT3,
