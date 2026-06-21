@@ -10,18 +10,19 @@ import (
 var DB *gorm.DB
 
 type Main struct {
-	User       UserRepository
-	Riwayat    RiwayatRepository
-	LaporanLab LaporanLabRepository
-	Obat       ObatRepository
-	Wearable   WearableRepository
-	HasilLab   HasilLabRepository
-	Parameter  ParameterRepository
-	JadwalObat JadwalObatRepository
-	LogKonsumsi LogKonsumsiRepository
-	Lab        LabRepository // Untuk backward compatibility dengan lab operations
+	User          UserRepository
+	OTP           OTPRepository // ✅ BARU: Repository untuk OTP
+	Riwayat       RiwayatRepository
+	LaporanLab    LaporanLabRepository
+	Obat          ObatRepository
+	Wearable      WearableRepository
+	HasilLab      HasilLabRepository
+	Parameter     ParameterRepository
+	JadwalObat    JadwalObatRepository
+	LogKonsumsi   LogKonsumsiRepository
+	Lab           LabRepository // Untuk backward compatibility dengan lab operations
 
-	// ✅ BARU: Repository AI yang sudah dipecah dan USG Tiroid
+	// Repository AI yang sudah dipecah dan USG Tiroid
 	HasilAIHarian HasilAIHarianRepository
 	HasilAILab    HasilAILabRepository
 	HasilAITren   HasilAITrenRepository
@@ -37,18 +38,19 @@ func Init(opts Options) *Main {
 	// save DB reference for package-level access (used for transactions)
 	DB = opts.DB
 	return &Main{
-		User:       NewUserRepository(opts.DB),
-		Riwayat:    NewRiwayatRepository(opts.DB),
-		LaporanLab: NewLaporanLabRepository(opts.DB),
-		Obat:       NewObatRepository(opts.DB),
-		Wearable:   NewWearableRepository(opts.DB),
-		HasilLab:   NewHasilLabRepository(opts.DB),
-		Parameter:  NewParameterRepository(opts.DB),
-		JadwalObat: NewJadwalObatRepository(opts.DB),
-		LogKonsumsi: NewLogKonsumsiRepository(opts.DB),
-		Lab:        NewLabRepository(opts.DB), // Untuk backward compatibility
+		User:          NewUserRepository(opts.DB),
+		OTP:           NewOTPRepository(opts.DB), // ✅ BARU: Inisialisasi OTP
+		Riwayat:       NewRiwayatRepository(opts.DB),
+		LaporanLab:    NewLaporanLabRepository(opts.DB),
+		Obat:          NewObatRepository(opts.DB),
+		Wearable:      NewWearableRepository(opts.DB),
+		HasilLab:      NewHasilLabRepository(opts.DB),
+		Parameter:     NewParameterRepository(opts.DB),
+		JadwalObat:    NewJadwalObatRepository(opts.DB),
+		LogKonsumsi:   NewLogKonsumsiRepository(opts.DB),
+		Lab:           NewLabRepository(opts.DB), // Untuk backward compatibility
 
-		// ✅ BARU: Inisialisasi instance repository baru
+		// Inisialisasi instance repository baru
 		HasilAIHarian: NewHasilAIHarianRepository(opts.DB),
 		HasilAILab:    NewHasilAILabRepository(opts.DB),
 		HasilAITren:   NewHasilAITrenRepository(opts.DB),

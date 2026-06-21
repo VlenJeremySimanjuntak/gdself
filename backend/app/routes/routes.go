@@ -29,9 +29,19 @@ func ConfigureRouter(e *echo.Echo, controller *controllers.Main) {
 	api.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(20)))
 
 	// ========================
+	// Auth Endpoints (Baru)
+	// ========================
+	api.POST("/auth/send-otp", controller.Auth.SendOTP)
+	api.POST("/auth/verify-otp", controller.Auth.VerifyOTP)
+	api.POST("/auth/google/check", controller.Auth.GoogleCheck)      // Gantikan /auth/google
+	api.POST("/auth/google/complete", controller.Auth.GoogleComplete) // Baru
+	api.POST("/auth/forgot-password", controller.Auth.ForgotPassword)
+	api.POST("/auth/reset-password", controller.Auth.ResetPassword)
+
+	// ========================
 	// User Endpoints
 	// ========================
-	api.POST("/auth/login", controller.User.Login)    // ✅ fix: Luseogin → Login
+	api.POST("/auth/login", controller.User.Login) // ✅ fix: Luseogin → Login
 	api.POST("/auth/register", controller.User.Create)
 	api.POST("/auth/google", controller.User.GoogleLogin)
 

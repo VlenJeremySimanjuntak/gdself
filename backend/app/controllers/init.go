@@ -7,6 +7,7 @@ import (
 
 type Main struct {
 	User        UserController
+	Auth        AuthController // ✅ INI YANG TADI TERLEWAT MAS!
 	Riwayat     RiwayatController
 	LaporanLab  LaporanLabController
 	Monitoring  MonitoringController
@@ -27,18 +28,19 @@ type Options struct {
 
 func Init(opts Options) *Main {
 	return &Main{
-		User:       NewUserController(opts.UseCases.User),
-		Riwayat:    NewRiwayatController(opts.UseCases.Riwayat),
-		LaporanLab: NewLaporanLabController(opts.UseCases.LaporanLab),
+		User:        NewUserController(opts.UseCases.User),
+		Auth:        NewAuthController(opts.UseCases.Auth, opts.UseCases.User), // ✅ DAN INI JUGA DITAMBAHKAN!
+		Riwayat:     NewRiwayatController(opts.UseCases.Riwayat),
+		LaporanLab:  NewLaporanLabController(opts.UseCases.LaporanLab),
 		
 		Monitoring: NewMonitoringController(
 			opts.UseCases.LaporanLab,
 			opts.UseCases.Lab,
 		),
 		
-		Obat:     NewObatController(opts.UseCases.Obat),
-		Wearable: NewWearableController(opts.UseCases.Wearable),
-		HasilLab: NewHasilLabController(opts.UseCases.HasilLab, opts.UseCases.Lab),
+		Obat:        NewObatController(opts.UseCases.Obat),
+		Wearable:    NewWearableController(opts.UseCases.Wearable),
+		HasilLab:    NewHasilLabController(opts.UseCases.HasilLab, opts.UseCases.Lab),
 		
 		HasilAI: NewHasilAIController(
 			opts.UseCases.HasilAIHarian,
@@ -47,9 +49,9 @@ func Init(opts Options) *Main {
 			opts.UseCases.Lab,
 		),
 		
-		JadwalObat: NewJadwalObatController(opts.UseCases.JadwalObat),
+		JadwalObat:  NewJadwalObatController(opts.UseCases.JadwalObat),
 		LogKonsumsi: NewLogKonsumsiController(opts.UseCases.LogKonsumsi),
-		Lab:        NewLabController(opts.UseCases.Lab),
-		USGTiroid:  NewUSGTiroidController(opts.UseCases.UsgTiroid),
+		Lab:         NewLabController(opts.UseCases.Lab),
+		USGTiroid:   NewUSGTiroidController(opts.UseCases.UsgTiroid),
 	}
 }
