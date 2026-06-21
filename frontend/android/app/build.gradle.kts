@@ -46,4 +46,23 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    constraints {
+        implementation("androidx.browser:browser:1.8.0") {
+            because("AGP 8.8.0 compatibility")
+        }
+        implementation("androidx.core:core-ktx:1.15.0") {
+            because("AGP 8.8.0 compatibility")
+        }
+        implementation("androidx.core:core:1.15.0") {
+            because("AGP 8.8.0 compatibility")
+        }
+    }
+}
+
+configurations.all {
+    resolutionStrategy {
+        force("androidx.browser:browser:1.8.0")
+        force("androidx.core:core-ktx:1.15.0")
+        force("androidx.core:core:1.15.0")
+    }
 }

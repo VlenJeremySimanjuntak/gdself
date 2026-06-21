@@ -1,14 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../utils/design_system.dart';
+import '../../home/providers/user_provider.dart';
 
-
-class EducationScreen extends StatelessWidget {
+// ✅ UBAH: StatelessWidget menjadi ConsumerWidget
+class EducationScreen extends ConsumerWidget {
   const EducationScreen({super.key});
 
+  // Fungsi pembantu untuk meluncurkan URL
+  Future<void> _launchUrl(String urlString) async {
+    final Uri url = Uri.parse(urlString);
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      debugPrint('Could not launch $urlString');
+    }
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
+
+    // ✅ Ambil data user
+    final user = ref.watch(userProvider).user;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -31,50 +45,73 @@ class EducationScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 20),
-                _buildHeader(),
-                const SizedBox(height: 35),
-                const Text("Edukasi",
-                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.textDark, letterSpacing: -0.5)),
-                const SizedBox(height: 8),
+                // ✅ TAMBAHKAN: Logo & Foto Profil
+                _buildTopHeader(user),
+                const SizedBox(height: 30),
+
                 const Text(
-                  "Temukan panduan terpercaya untuk perjalanan kesehatan Graves Anda.",
-                  style: TextStyle(color: AppColors.textGrey, fontSize: 14, height: 1.5),
+                  "Edukasi",
+                  style: TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textDark,
+                      letterSpacing: -0.5),
                 ),
-                const SizedBox(height: 35),
-                const Text("Direkomendasikan Untuk Anda",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textDark)),
+                const SizedBox(height: 12),
+                const Text(
+                  "Jangan lewatkan materi edukasi yang\ntelah disediakan.",
+                  style: TextStyle(
+                      color: AppColors.textGrey,
+                      fontSize: 15,
+                      height: 1.4),
+                ),
+                const SizedBox(height: 40),
+
+                const Text(
+                  "Direkomendasikan Untuk Anda",
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textDark),
+                ),
                 const SizedBox(height: 20),
-                _buildFeaturedCard(screenHeight, screenWidth),
 
-                const SizedBox(height: 35),
+                // CARD BESAR (Featured) - Pernapasan
+                _buildFeaturedCard(
+                  height: screenHeight,
+                  imagePath: "assets/images/bernapas.png",
+                  title: "Teknik Relaksasi Nafas Dalam",
+                  subtitle: "Teknik relaksasi napas dalam membantu tubuh menjadi lebih rileks dengan mengatur napas secara perlahan dan terkontrol. Teknik ini dapat membantu meningkatkan asupan oksigen dan mendukung kenyamanan tubuh.",
+                  url: "https://keslan.kemkes.go.id/view_artikel/1054/teknik-relaksasi-nafas-dalam",
+                ),
 
-                // --- SECTION TERBARU (DIUBAH SESUAI GAMBAR) ---
-                const Text("Terbaru Untuk Anda",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textDark)),
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
 
+                // CARD LIST 1 - Makanan Sehat
                 _buildArticleListItem(
-                  category: "NUTRISI",
-                  title: "Diet Rendah Iodium: Apa Saja Pilihannya?",
-                  subtitle: "Panduan praktis memilih makanan sehari-hari yang aman untuk...",
-                  imagePath: "assets/images/Healthy Food.png",
-                  readTime: "5 mnt",
+                  title: "Ketahui Makanan yang Harus Dimakan Saat Diet Graves",
+                  subtitle: "Sayuran cruciferous, seperti arugula, brokoli, kembang kol.",
+                  imagePath: "assets/images/makanan_sehat.png",
+                  url: "https://www.halodoc.com/artikel/ketahui-makanan-yang-harus-dimakan-saat-diet-graves",
                 ),
+
+                // CARD LIST 2 - Olahraga
                 _buildArticleListItem(
-                  category: "KESEHATAN MENTAL",
-                  title: "Mengatasi Gangguan Tidur Akibat Tremor",
-                  subtitle: "Tips menciptakan lingkungan tidur yang mendukung pemulihan dan...",
-                  imagePath: "assets/images/Mental Balance.png",
-                  readTime: "7 mnt",
+                  title: "5 Jenis Olahraga yang Aman untuk Pengidap Hipertiroidisme",
+                  subtitle: "Hipertiroidisme dapat melemahkan kemampuan seseorang untuk berolahraga.",
+                  imagePath: "assets/images/olahraga.png",
+                  url: "https://www.halodoc.com/artikel/5-jenis-olahraga-yang-aman-untuk-pengidap-hipertiroidisme",
                 ),
+
+                // CARD LIST 3 - Istirahat
                 _buildArticleListItem(
-                  category: "MANAJEMEN GEJALA",
-                  title: "Mengenal Gejala Tiroid Eye Disease (TED)",
-                  subtitle: "Cara mendeteksi perubahan dini pada mata dan langkah medis...",
-                  imagePath: "assets/images/eyes.png",
-                  readTime: "6 mnt",
+                  title: "Penting Tidur Berkualitas, Jaga Kesehatan Fisik dan Mental",
+                  subtitle: "Ketika sibuk dengan tugas sehari-hari dan rutinitas yang padat, tidur sering kali menjadi...",
+                  imagePath: "assets/images/istirahat.png",
+                  url: "https://keslan.kemkes.go.id/read/2539/penting-tidur-berkualitas-jaga-kesehatan-fisik-dan-mental",
                 ),
-                const SizedBox(height: 100),
+
+                const SizedBox(height: 100), // Spacing untuk bottom navigation bar
               ],
             ),
           ),
@@ -83,133 +120,188 @@ class EducationScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader() {
+  // ✅ TAMBAHKAN: Widget Logo & Foto Profil
+  Widget _buildTopHeader(dynamic user) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
+        // Logo dan teks
         Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: const BoxDecoration(color: AppColors.primaryBlue, shape: BoxShape.circle),
-              child: const Icon(Icons.eco, color: Colors.white, size: 18),
+            Image.asset(
+              'assets/images/graves-logo.png',
+              width: 28,
+              height: 28,
+              errorBuilder: (context, error, stackTrace) {
+                return const Icon(
+                  Icons.medical_services,
+                  color: AppColors.primaryBlue,
+                  size: 28,
+                );
+              },
             ),
             const SizedBox(width: 10),
-            const Text("Graves disease", style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryBlue, fontSize: 18)),
+            const Text(
+              "Graves disease",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: AppColors.primaryBlue,
+                fontSize: 18,
+              ),
+            ),
           ],
-        ),
-        const CircleAvatar(
-          radius: 22,
-          backgroundImage: NetworkImage('https://i.pravatar.cc/150?u=vlen'),
         ),
       ],
     );
   }
 
-  Widget _buildFeaturedCard(double h, double w) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(32),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 10))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-            child: Image.asset(
-              "assets/images/Yoga Session.png",
-              height: h * 0.25,
-              width: double.infinity,
-              fit: BoxFit.cover,
+  // --- FEATURED CARD (GAMBAR BESAR DI ATAS) ---
+  Widget _buildFeaturedCard({
+    required double height,
+    required String imagePath,
+    required String title,
+    required String subtitle,
+    required String url,
+  }) {
+    return GestureDetector(
+      onTap: () => _launchUrl(url),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 15,
+                offset: const Offset(0, 8))
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              child: Image.asset(
+                imagePath,
+                height: height * 0.22,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  "Menjaga Ketenangan: Teknik Pernapasan untuk Pasien Graves",
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textDark, height: 1.3),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  "Kecemasan adalah gejala umum pada hipertiroidisme. Pelajari cara mengelola...",
-                  style: TextStyle(color: AppColors.textGrey, fontSize: 14, height: 1.5),
-                ),
-                const SizedBox(height: 20),
-                const Text("Baca >", style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold, fontSize: 15)),
-              ],
-            ),
-          )
-        ],
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textDark,
+                        height: 1.3),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                        color: AppColors.textGrey, fontSize: 11, height: 1.5),
+                  ),
+                  const SizedBox(height: 16),
+                  const Row(
+                    children: [
+                      Text("Lihat Detail ",
+                          style: TextStyle(
+                              color: Color(0xFF007B99),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13)),
+                      Icon(Icons.chevron_right, size: 16, color: Color(0xFF007B99))
+                    ],
+                  ),
+                ],
+              ),
+            )
+          ],
+        ),
       ),
     );
   }
 
-  // --- ARTIKEL LIST ITEM (VERSI FINAL SESUAI GAMBAR) ---
+  // --- ARTIKEL LIST ITEM (KARTU KECIL DI BAWAH) ---
   Widget _buildArticleListItem({
-    required String category,
     required String title,
     required String subtitle,
     required String imagePath,
-    required String readTime,
+    required String url,
   }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F5), // Warna background kartu sesuai gambar
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Gambar Thumbnail
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Image.asset(
-              imagePath,
-              width: 100,
-              height: 100,
-              fit: BoxFit.cover,
+    return GestureDetector(
+      onTap: () => _launchUrl(url),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 15,
+                offset: const Offset(0, 8))
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Gambar Thumbnail
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Image.asset(
+                imagePath,
+                width: 85,
+                height: 85,
+                fit: BoxFit.cover,
+              ),
             ),
-          ),
-          const SizedBox(width: 16),
-          // Konten Teks
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(category, style: const TextStyle(color: Color(0xFF00897B), fontSize: 10, fontWeight: FontWeight.bold)),
-                    Text(readTime, style: const TextStyle(color: Colors.grey, fontSize: 10)),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textDark, height: 1.2),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  subtitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: AppColors.textGrey, fontSize: 12, height: 1.4),
-                ),
-                const SizedBox(height: 12),
-                const Text("Baca >", style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold, fontSize: 14)),
-              ],
-            ),
-          )
-        ],
+            const SizedBox(width: 16),
+            // Konten Teks
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                        color: AppColors.textDark,
+                        height: 1.3),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: AppColors.textGrey, fontSize: 11, height: 1.4),
+                  ),
+                  const SizedBox(height: 10),
+                  const Row(
+                    children: [
+                      Text("Lihat Detail ",
+                          style: TextStyle(
+                              color: Color(0xFF007B99),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12)),
+                      Icon(Icons.chevron_right, size: 14, color: Color(0xFF007B99))
+                    ],
+                  ),
+                ],
+              ),
+            )
+          ],
+        ),
       ),
     );
   }

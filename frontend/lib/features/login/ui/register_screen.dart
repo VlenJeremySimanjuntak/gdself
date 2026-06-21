@@ -6,8 +6,10 @@ import 'package:intl/intl.dart';
 
 import '../../../../../features/home/providers/user_provider.dart';
 import '../../../../../utils/design_system.dart';
+import '../../../../../services/api_service.dart';
 import 'terms_privacy_screen.dart';
 import 'login_screen.dart';
+import 'otp_verify_screen.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -26,6 +28,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   bool _obscureText = true;
   bool _obscureConfirmText = true;
   bool _isAgreed = false;
+  bool _isSendingOTP = false;
 
   DateTime? _selectedBirthday;
   DateTime? _selectedDiagnosisDate;
@@ -40,10 +43,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     super.dispose();
   }
 
-  // 👇 PERBAIKAN: Logika DatePicker agar tombol "Batal" berfungsi dengan benar
   Future<void> _showDatePicker(BuildContext context, bool isBirthday) async {
-    // Gunakan temporary date saat digeser, jangan langsung simpan ke state
-    DateTime tempDate = (isBirthday ? _selectedBirthday : _selectedDiagnosisDate) ?? DateTime.now();
+    DateTime tempDate =
+        (isBirthday ? _selectedBirthday : _selectedDiagnosisDate) ??
+            DateTime.now();
 
     await showCupertinoModalPopup(
       context: context,
@@ -53,18 +56,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         child: Column(
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               color: const Color(0xFFF8F8F8),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   TextButton(
-                    onPressed: () => Navigator.pop(context), // Batal = Abaikan tempDate
-                    child: const Text("Batal", style: TextStyle(color: AppColors.errorRed)),
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Batal',
+                        style: TextStyle(color: AppColors.errorRed)),
                   ),
                   TextButton(
                     onPressed: () {
-                      // Selesai = Simpan tempDate ke State
                       if (mounted) {
                         setState(() {
                           if (isBirthday) {
@@ -76,7 +80,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       }
                       Navigator.pop(context);
                     },
-                    child: const Text("Selesai", style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
+                    child: const Text('Selesai',
+                        style: TextStyle(
+                            color: AppColors.primaryBlue,
+                            fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
@@ -86,9 +93,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 mode: CupertinoDatePickerMode.date,
                 initialDateTime: tempDate,
                 maximumDate: DateTime.now(),
-                onDateTimeChanged: (DateTime newDate) {
-                  tempDate = newDate; // Hanya perbarui temporary date
-                },
+                onDateTimeChanged: (d) => tempDate = d,
               ),
             ),
           ],
@@ -98,31 +103,70 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 
   Future<void> _handleRegister() async {
-    // 1. Validasi teks field bawaan form
     if (!_formKey.currentState!.validate()) return;
 
-    // 👇 PERBAIKAN 2: Validasi manual untuk Tanggal (Wajib diisi)
     if (_selectedBirthday == null || _selectedDiagnosisDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Mohon lengkapi Tanggal Lahir dan Tanggal Terdiagnosis.", style: TextStyle(color: Colors.white)),
+          content: Text(
+              'Mohon lengkapi Tanggal Lahir dan Tanggal Terdiagnosis.',
+              style: TextStyle(color: Colors.white)),
           backgroundColor: AppColors.errorRed,
         ),
       );
       return;
     }
 
-    // 👇 PERBAIKAN 3: Validasi manual untuk Checkbox Persetujuan
     if (!_isAgreed) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Anda harus menyetujui Syarat & Kebijakan Privasi.", style: TextStyle(color: Colors.white)),
+          content: Text('Anda harus menyetujui Syarat & Kebijakan Privasi.',
+              style: TextStyle(color: Colors.white)),
           backgroundColor: AppColors.errorRed,
         ),
       );
       return;
     }
 
+    // ✅ Step 1: Kirim OTP ke email sebelum buat akun
+    setState(() => _isSendingOTP = true);
+    try {
+      await ApiService().sendOTP(
+          _emailController.text.trim(), 'register');
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSendingOTP = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: AppColors.errorRed,
+          ),
+        );
+      }
+      return;
+    }
+    if (mounted) setState(() => _isSendingOTP = false);
+
+    // ✅ Step 2: Buka OTP screen
+    if (!mounted) return;
+    final result = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OTPVerifyScreen(
+          email: _emailController.text.trim(),
+          type: 'register',
+          title: 'Verifikasi Email',
+          subtitle:
+          'Masukkan kode OTP yang telah dikirim ke',
+        ),
+      ),
+    );
+
+    // OTP tidak diverifikasi / user cancel
+    if (result == null || result['verified'] != true) return;
+
+    // ✅ Step 3: Buat akun
+    if (!mounted) return;
     final userNotifier = ref.read(userProvider.notifier);
     await userNotifier.register(
       nama: _namaController.text.trim(),
@@ -130,31 +174,31 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       password: _passwordController.text,
       jenisKelamin: _jenisKelamin!,
       tglLahir: _selectedBirthday!.toIso8601String().split('T')[0],
-      tglTerdiagnosis: _selectedDiagnosisDate!.toIso8601String().split('T')[0],
+      tglTerdiagnosis:
+      _selectedDiagnosisDate!.toIso8601String().split('T')[0],
     );
 
     final authState = ref.read(userProvider);
-    if (!authState.isLoading && authState.errorMessage == null && mounted) {
-      await _showSuccessDialog();  // Tampilkan popup dengan animasi
+    if (!authState.isLoading &&
+        authState.errorMessage == null &&
+        mounted) {
+      await _showSuccessDialog();
     }
   }
 
   void _navigateToLoginSmooth() {
     Navigator.of(context).pushReplacement(PageRouteBuilder(
       transitionDuration: const Duration(milliseconds: 400),
-      pageBuilder: (context, animation, secondaryAnimation) => const LoginScreen(),
+      pageBuilder: (context, animation, secondaryAnimation) =>
+      const LoginScreen(),
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        const begin = Offset(0.0, 1.0);    // Mulai dari bawah layar
-        const end = Offset.zero;           // Akhiri posisinya di layar
+        const begin = Offset(0.0, 1.0);
+        const end = Offset.zero;
         const curve = Curves.easeInOut;
-
-        final tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-        final offsetAnimation = animation.drive(tween);
-
+        final tween = Tween(begin: begin, end: end)
+            .chain(CurveTween(curve: curve));
         return SlideTransition(
-          position: offsetAnimation,
-          child: child,
-        );
+            position: animation.drive(tween), child: child);
       },
     ));
   }
@@ -163,6 +207,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final authState = ref.watch(userProvider);
+    final isLoading = authState.isLoading || _isSendingOTP;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -189,24 +234,25 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       width: 28,
                       height: 28,
                       fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) =>
-                          Icon(Icons.monitor_heart, size: 28, color: AppColors.primaryBlue),
+                      errorBuilder: (context, error, stackTrace) => const Icon(
+                          Icons.monitor_heart,
+                          size: 28,
+                          color: AppColors.primaryBlue),
                     ),
                     const SizedBox(width: 10),
-                    const Text(
-                      "Graves Disease",
-                      style: TextStyle(
-                          color: AppColors.primaryBlue,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18),
-                    ),
+                    const Text('Graves Disease',
+                        style: TextStyle(
+                            color: AppColors.primaryBlue,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18)),
                   ],
                 ),
               ),
               Expanded(
                 child: SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
-                  padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.07),
+                  padding:
+                  EdgeInsets.symmetric(horizontal: screenWidth * 0.07),
                   child: Form(
                     key: _formKey,
                     child: Column(
@@ -214,16 +260,15 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         const SizedBox(height: 40),
                         const Align(
                           alignment: Alignment.centerLeft,
-                          child: Text(
-                            "Buat Akun Baru",
-                            style: TextStyle(
-                                fontSize: 32,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.textDark,
-                                letterSpacing: -0.5),
-                          ),
+                          child: Text('Buat Akun Baru',
+                              style: TextStyle(
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.textDark,
+                                  letterSpacing: -0.5)),
                         ),
                         const SizedBox(height: 30),
+
                         Container(
                           padding: const EdgeInsets.all(24),
                           decoration: BoxDecoration(
@@ -239,12 +284,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _buildInputLabel("Nama Lengkap"),
+                              _buildInputLabel('Nama Lengkap'),
                               _buildTextField(
                                 controller: _namaController,
-                                hint: "Masukkan Nama Lengkap",
+                                hint: 'Masukkan Nama Lengkap',
                                 validator: (value) {
-                                  if (value == null || value.trim().isEmpty) {
+                                  if (value == null ||
+                                      value.trim().isEmpty) {
                                     return 'Nama lengkap wajib diisi';
                                   }
                                   if (value.trim().length < 2) {
@@ -255,16 +301,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                               ),
                               const SizedBox(height: 20),
 
-                              _buildInputLabel("Email"),
+                              _buildInputLabel('Email'),
                               _buildTextField(
                                 controller: _emailController,
-                                hint: "Masukkan Email",
+                                hint: 'Masukkan Email',
                                 keyboardType: TextInputType.emailAddress,
                                 validator: (value) {
                                   if (value == null || value.isEmpty) {
                                     return 'Email wajib diisi';
                                   }
-                                  if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
+                                  if (!RegExp(
+                                      r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
                                       .hasMatch(value)) {
                                     return 'Format email tidak valid';
                                   }
@@ -273,34 +320,34 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                               ),
                               const SizedBox(height: 20),
 
-                              _buildInputLabel("Jenis Kelamin"),
+                              _buildInputLabel('Jenis Kelamin'),
                               _buildDropdownJenisKelamin(),
                               const SizedBox(height: 20),
 
-                              _buildInputLabel("Tanggal Lahir"),
+                              _buildInputLabel('Tanggal Lahir'),
                               _buildDateTrigger(
                                 _selectedBirthday == null
-                                    ? "dd/mm/yyyy"
+                                    ? 'dd/mm/yyyy'
                                     : DateFormat('dd/MM/yyyy')
                                     .format(_selectedBirthday!),
                                     () => _showDatePicker(context, true),
                               ),
                               const SizedBox(height: 20),
 
-                              _buildInputLabel("Tanggal Terdiagnosis"),
+                              _buildInputLabel('Tanggal Terdiagnosis'),
                               _buildDateTrigger(
                                 _selectedDiagnosisDate == null
-                                    ? "dd/mm/yyyy"
+                                    ? 'dd/mm/yyyy'
                                     : DateFormat('dd/MM/yyyy')
                                     .format(_selectedDiagnosisDate!),
                                     () => _showDatePicker(context, false),
                               ),
                               const SizedBox(height: 20),
 
-                              _buildInputLabel("Kata Sandi"),
+                              _buildInputLabel('Kata Sandi'),
                               _buildTextField(
                                 controller: _passwordController,
-                                hint: "********",
+                                hint: '********',
                                 isPassword: true,
                                 obscureVariable: _obscureText,
                                 validator: (value) {
@@ -320,16 +367,16 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                                     color: Colors.black26,
                                     size: 18,
                                   ),
-                                  onPressed: () =>
-                                      setState(() => _obscureText = !_obscureText),
+                                  onPressed: () => setState(
+                                          () => _obscureText = !_obscureText),
                                 ),
                               ),
                               const SizedBox(height: 20),
 
-                              _buildInputLabel("Konfirmasi Kata Sandi"),
+                              _buildInputLabel('Konfirmasi Kata Sandi'),
                               _buildTextField(
                                 controller: _confirmPasswordController,
-                                hint: "********",
+                                hint: '********',
                                 isPassword: true,
                                 obscureVariable: _obscureConfirmText,
                                 validator: (value) {
@@ -349,25 +396,27 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                                     color: Colors.black26,
                                     size: 18,
                                   ),
-                                  onPressed: () => setState(
-                                          () => _obscureConfirmText = !_obscureConfirmText),
+                                  onPressed: () => setState(() =>
+                                  _obscureConfirmText =
+                                  !_obscureConfirmText),
                                 ),
                               ),
                               const SizedBox(height: 25),
 
-                              // 👇 PERBAIKAN 4: CrossAxisAlignment.start agar sejajar jika dua baris
                               Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                                crossAxisAlignment:
+                                CrossAxisAlignment.start,
                                 children: [
                                   SizedBox(
                                     width: 24,
                                     height: 24,
                                     child: Checkbox(
                                       value: _isAgreed,
-                                      onChanged: (val) =>
-                                          setState(() => _isAgreed = val!),
+                                      onChanged: (val) => setState(
+                                              () => _isAgreed = val!),
                                       activeColor: AppColors.primaryBlue,
-                                      side: const BorderSide(color: AppColors.primaryBlue),
+                                      side: const BorderSide(
+                                          color: AppColors.primaryBlue),
                                     ),
                                   ),
                                   const SizedBox(width: 10),
@@ -375,15 +424,21 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                                     child: RichText(
                                       text: TextSpan(
                                         style: const TextStyle(
-                                            color: AppColors.textGrey, fontSize: 13, height: 1.4),
+                                            color: AppColors.textGrey,
+                                            fontSize: 13,
+                                            height: 1.4),
                                         children: [
-                                          const TextSpan(text: "Saya setuju dengan "),
+                                          const TextSpan(
+                                              text: 'Saya setuju dengan '),
                                           TextSpan(
-                                            text: "Syarat & Kebijakan Privasi",
+                                            text:
+                                            'Syarat & Kebijakan Privasi',
                                             style: const TextStyle(
                                                 color: AppColors.primaryBlue,
-                                                fontWeight: FontWeight.bold),
-                                            recognizer: TapGestureRecognizer()
+                                                fontWeight:
+                                                FontWeight.bold),
+                                            recognizer:
+                                            TapGestureRecognizer()
                                               ..onTap = () {
                                                 Navigator.push(
                                                     context,
@@ -400,33 +455,60 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                               ),
                               const SizedBox(height: 25),
 
+                              // ✅ Label info OTP
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primaryBlue
+                                      .withOpacity(0.07),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Row(
+                                  children: [
+                                    Icon(Icons.info_outline,
+                                        color: AppColors.primaryBlue,
+                                        size: 16),
+                                    SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Setelah menekan Daftar, kode verifikasi akan dikirim ke email Anda.',
+                                        style: TextStyle(
+                                            color: AppColors.primaryBlue,
+                                            fontSize: 12,
+                                            height: 1.4),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+
                               SizedBox(
                                 height: 56,
                                 width: double.infinity,
                                 child: ElevatedButton(
-                                  onPressed: authState.isLoading ? null : _handleRegister,
+                                  onPressed:
+                                  isLoading ? null : _handleRegister,
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: AppColors.primaryBlue,
                                     foregroundColor: Colors.white,
                                     shape: const StadiumBorder(),
                                     elevation: 0,
                                   ),
-                                  child: authState.isLoading
+                                  child: isLoading
                                       ? const SizedBox(
                                     height: 20,
                                     width: 20,
                                     child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                      : const Text(
-                                    "Daftar",
-                                    style: TextStyle(
                                         color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold),
-                                  ),
+                                        strokeWidth: 2),
+                                  )
+                                      : const Text('Daftar',
+                                      style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight:
+                                          FontWeight.bold)),
                                 ),
                               ),
                             ],
@@ -434,29 +516,30 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         ),
                         const SizedBox(height: 30),
 
-                        // Error Message dari API / Backend
-                        if (authState.errorMessage != null && !authState.isLoading)
+                        if (authState.errorMessage != null &&
+                            !authState.isLoading)
                           Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(16),
                             margin: const EdgeInsets.only(bottom: 20),
                             decoration: BoxDecoration(
-                              color: AppColors.errorRed.withOpacity(0.1),
+                              color:
+                              AppColors.errorRed.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(16),
-                              border:
-                              Border.all(color: AppColors.errorRed.withOpacity(0.3)),
+                              border: Border.all(
+                                  color: AppColors.errorRed
+                                      .withOpacity(0.3)),
                             ),
                             child: Row(
                               children: [
-                                Icon(Icons.error_outline,
+                                const Icon(Icons.error_outline,
                                     color: AppColors.errorRed, size: 20),
                                 const SizedBox(width: 12),
                                 Expanded(
-                                  child: Text(
-                                    authState.errorMessage!,
-                                    style: const TextStyle(
-                                        color: AppColors.errorRed, fontSize: 14),
-                                  ),
+                                  child: Text(authState.errorMessage!,
+                                      style: const TextStyle(
+                                          color: AppColors.errorRed,
+                                          fontSize: 14)),
                                 ),
                               ],
                             ),
@@ -465,16 +548,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Text("Sudah punya akun?",
+                            const Text('Sudah punya akun?',
                                 style: TextStyle(
-                                    color: AppColors.textGrey, fontSize: 14)),
+                                    color: AppColors.textGrey,
+                                    fontSize: 14)),
                             const SizedBox(width: 4),
                             GestureDetector(
                               onTap: () => Navigator.pushReplacement(
                                   context,
                                   MaterialPageRoute(
-                                      builder: (context) => const LoginScreen())),
-                              child: const Text("Masuk",
+                                      builder: (context) =>
+                                      const LoginScreen())),
+                              child: const Text('Masuk',
                                   style: TextStyle(
                                       color: AppColors.primaryBlue,
                                       fontWeight: FontWeight.bold,
@@ -495,19 +580,15 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     );
   }
 
-  Widget _buildInputLabel(String label) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8, left: 4),
-      child: Text(
-        label,
+  Widget _buildInputLabel(String label) => Padding(
+    padding: const EdgeInsets.only(bottom: 8, left: 4),
+    child: Text(label,
         style: const TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.bold,
             color: AppColors.textGrey,
-            letterSpacing: 0.5),
-      ),
-    );
-  }
+            letterSpacing: 0.5)),
+  );
 
   Widget _buildTextField({
     required TextEditingController? controller,
@@ -517,81 +598,87 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     bool obscureVariable = false,
     String? Function(String?)? validator,
     Widget? suffixIcon,
-  }) {
-    return Container(
-      decoration:
-      BoxDecoration(color: AppColors.inputBg, borderRadius: BorderRadius.circular(16)),
-      child: TextFormField(
-        controller: controller,
-        keyboardType: keyboardType,
-        obscureText: isPassword ? obscureVariable : false,
-        validator: validator,
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: const TextStyle(color: Colors.black26, fontSize: 14),
-          suffixIcon: suffixIcon,
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          errorStyle: const TextStyle(color: AppColors.errorRed, fontSize: 12, height: 0.8),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDropdownJenisKelamin() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      decoration:
-      BoxDecoration(color: AppColors.inputBg, borderRadius: BorderRadius.circular(16)),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButtonFormField<String>(
-          value: _jenisKelamin,
-          decoration: const InputDecoration(
-            hintText: "Pilih Jenis Kelamin",
-            hintStyle: TextStyle(color: Colors.black26, fontSize: 14),
-            border: InputBorder.none,
-            contentPadding: EdgeInsets.zero,
-            errorStyle: TextStyle(color: AppColors.errorRed, fontSize: 12, height: 0.8),
-          ),
-          items: const [
-            DropdownMenuItem(value: 'L', child: Text('Laki-laki')),
-            DropdownMenuItem(value: 'P', child: Text('Perempuan')),
-          ],
-          validator: (value) =>
-          value == null ? 'Jenis kelamin wajib dipilih' : null,
-          onChanged: (value) => setState(() => _jenisKelamin = value),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDateTrigger(String value, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+  }) =>
+      Container(
         decoration: BoxDecoration(
-            color: AppColors.inputBg, borderRadius: BorderRadius.circular(16)),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              value,
-              style: TextStyle(
-                  color: value == "dd/mm/yyyy" ? Colors.black26 : AppColors.textDark,
-                  fontSize: 14),
-            ),
-            const Icon(Icons.calendar_month_outlined, color: Colors.black26, size: 20),
-          ],
+            color: AppColors.inputBg,
+            borderRadius: BorderRadius.circular(16)),
+        child: TextFormField(
+          controller: controller,
+          keyboardType: keyboardType,
+          obscureText: isPassword ? obscureVariable : false,
+          validator: validator,
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle:
+            const TextStyle(color: Colors.black26, fontSize: 14),
+            suffixIcon: suffixIcon,
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(
+                horizontal: 20, vertical: 16),
+            errorStyle: const TextStyle(
+                color: AppColors.errorRed, fontSize: 12, height: 0.8),
+          ),
         ),
+      );
+
+  Widget _buildDropdownJenisKelamin() => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+    decoration: BoxDecoration(
+        color: AppColors.inputBg,
+        borderRadius: BorderRadius.circular(16)),
+    child: DropdownButtonHideUnderline(
+      child: DropdownButtonFormField<String>(
+        value: _jenisKelamin,
+        decoration: const InputDecoration(
+          hintText: 'Pilih Jenis Kelamin',
+          hintStyle:
+          TextStyle(color: Colors.black26, fontSize: 14),
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.zero,
+          errorStyle: TextStyle(
+              color: AppColors.errorRed, fontSize: 12, height: 0.8),
+        ),
+        items: const [
+          DropdownMenuItem(value: 'L', child: Text('Laki-laki')),
+          DropdownMenuItem(value: 'P', child: Text('Perempuan')),
+        ],
+        validator: (value) =>
+        value == null ? 'Jenis kelamin wajib dipilih' : null,
+        onChanged: (value) =>
+            setState(() => _jenisKelamin = value),
       ),
-    );
-  }
+    ),
+  );
+
+  Widget _buildDateTrigger(String value, VoidCallback onTap) =>
+      GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(
+              horizontal: 20, vertical: 16),
+          decoration: BoxDecoration(
+              color: AppColors.inputBg,
+              borderRadius: BorderRadius.circular(16)),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(value,
+                  style: TextStyle(
+                      color: value == 'dd/mm/yyyy'
+                          ? Colors.black26
+                          : AppColors.textDark,
+                      fontSize: 14)),
+              const Icon(Icons.calendar_month_outlined,
+                  color: Colors.black26, size: 20),
+            ],
+          ),
+        ),
+      );
 
   Future<void> _showSuccessDialog() async {
     if (!mounted) return;
-
     await showGeneralDialog(
       context: context,
       barrierDismissible: false,
@@ -600,47 +687,37 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         return Center(
           child: Material(
             color: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24)),
             child: Container(
               width: 320,
-              padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+              padding: const EdgeInsets.symmetric(
+                  vertical: 32, horizontal: 24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Color(0xFFD9EBDC),
-                    ),
-                    child: const Icon(
-                      Icons.check,
-                      color: Color(0xFF157F4B),
-                      size: 40,
-                    ),
+                        shape: BoxShape.circle,
+                        color: Color(0xFFD9EBDC)),
+                    child: const Icon(Icons.check,
+                        color: Color(0xFF157F4B), size: 40),
                   ),
                   const SizedBox(height: 24),
-
-                  const Text(
-                    'Pendaftaran Berhasil!',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
+                  const Text('Pendaftaran Berhasil!',
+                      style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87),
+                      textAlign: TextAlign.center),
                   const SizedBox(height: 8),
                   const Text(
-                    'Mari mulai perjalanan kesehatan Anda.',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.black54,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
+                      'Mari mulai perjalanan kesehatan Anda.',
+                      style: TextStyle(
+                          fontSize: 14, color: Colors.black54),
+                      textAlign: TextAlign.center),
                   const SizedBox(height: 32),
-
                   SizedBox(
                     width: double.infinity,
                     height: 48,
@@ -652,17 +729,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primaryBlue,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(24),
-                        ),
+                            borderRadius: BorderRadius.circular(24)),
                       ),
-                      child: const Text(
-                        'Mulai',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.white, // 👇 PERBAIKAN: Memastikan warna teks putih
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      child: const Text('Mulai',
+                          style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ],
@@ -673,9 +746,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       },
       transitionBuilder: (context, anim1, anim2, child) {
         return FadeTransition(
-          opacity: CurvedAnimation(parent: anim1, curve: Curves.easeOut),
+          opacity:
+          CurvedAnimation(parent: anim1, curve: Curves.easeOut),
           child: ScaleTransition(
-            scale: CurvedAnimation(parent: anim1, curve: Curves.easeOutBack),
+            scale: CurvedAnimation(
+                parent: anim1, curve: Curves.easeOutBack),
             child: child,
           ),
         );

@@ -7,7 +7,7 @@ import '../../login/ui/login_screen.dart';
 import 'edit_profile_screen.dart';
 import '../../../utils/design_system.dart';
 import '../../home/providers/user_provider.dart';
-import '../providers/profile_provider.dart'; // Sesuaikan path ini ke file provider baru Mas
+import '../providers/profile_provider.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -21,14 +21,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    // 1. Tarik data profil dari backend saat layar pertama kali dibuka
     final userId = ref.read(userProvider).user?.idUser;
     if (userId != null) {
       Future.microtask(() => ref.read(profileProvider.notifier).fetchProfile(userId));
     }
   }
 
-  // Fungsi utilitas untuk mem-parsing tanggal ke bahasa Indonesia
   String _formatDate(String? rawDate) {
     if (rawDate == null || rawDate.isEmpty) return "-";
     try {
@@ -41,21 +39,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 2. Dengarkan state profil
     final profileState = ref.watch(profileProvider);
-    // 3. Fallback ke userProvider jika profileProvider masih kosong/loading
     final user = ref.watch(userProvider).user;
 
-    // Persiapkan data dinamis (Gabungan dari Profile API dan User State)
     final profileData = profileState.profileData ?? {};
 
-    // Ganti "nama" dan "email" dengan key JSON dari backend Mas
     String dynamicName = profileData['nama'] ?? user?.nama ?? "Pengguna";
     String dynamicEmail = profileData['email'] ?? user?.email ?? "email@domain.com";
     String dynamicBirthday = _formatDate(profileData['tgl_lahir']);
-    String dynamicDiagnosisDate = _formatDate(profileData['tgl_terdiagnosis']); // Sesuaikan key json
+    String dynamicDiagnosisDate = _formatDate(profileData['tgl_terdiagnosis']);
 
-    // Inisial untuk Avatar jika tidak ada foto
+    // ✅ Ambil URL Foto Profil secara dinamis dari backend/state
+    String? dynamicAvatarUrl = profileData['foto_profil'] ?? user?.fotoProfil;
+
     String initial = dynamicName.isNotEmpty ? dynamicName[0].toUpperCase() : '?';
 
     return Scaffold(
@@ -80,14 +76,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             child: Column(
               children: [
                 const SizedBox(height: 20),
-                _buildHeader(),
+                // ✅ GANTI: Gunakan _buildTopHeader dengan logo & foto profil
+                _buildTopHeader(user),
                 const SizedBox(height: 40),
 
-                // --- AVATAR & NAMA ---
-                _buildProfileHeader(dynamicName, dynamicEmail, dynamicBirthday, initial),
+                // --- AVATAR & NAMA (Kini menerima parameter URL foto) ---
+                _buildProfileHeader(dynamicName, dynamicEmail, dynamicBirthday, initial, dynamicAvatarUrl),
                 const SizedBox(height: 40),
 
-                // --- KARTU PROFIL ---
                 _buildInfoCard(
                   title: "Profil",
                   icon: Icons.badge_outlined,
@@ -102,7 +98,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
                 const SizedBox(height: 20),
 
-                // --- KARTU FOKUS KESEHATAN ---
                 _buildInfoCard(
                   title: "Fokus Kesehatan",
                   icon: Icons.analytics_outlined,
@@ -128,7 +123,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
                 const SizedBox(height: 60),
 
-                // --- TOMBOL KELUAR ---
                 _buildLogoutButton(),
 
                 const SizedBox(height: 100),
@@ -140,26 +134,45 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Widget _buildHeader() {
+  // ✅ TAMBAHKAN: Widget Logo & Foto Profil (sama seperti screen lain)
+  Widget _buildTopHeader(dynamic user) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
+        // Logo dan teks
         Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: const BoxDecoration(color: AppColors.primaryBlue, shape: BoxShape.circle),
-              child: const Icon(Icons.eco, color: Colors.white, size: 18),
+            Image.asset(
+              'assets/images/graves-logo.png',
+              width: 28,
+              height: 28,
+              errorBuilder: (context, error, stackTrace) {
+                return const Icon(
+                  Icons.medical_services,
+                  color: AppColors.primaryBlue,
+                  size: 28,
+                );
+              },
             ),
             const SizedBox(width: 10),
-            const Text("Graves disease", style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryBlue, fontSize: 18)),
+            const Text(
+              "Graves disease",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: AppColors.primaryBlue,
+                fontSize: 18,
+              ),
+            ),
           ],
         ),
       ],
     );
   }
 
-  Widget _buildProfileHeader(String name, String email, String birthday, String initial) {
+  // ✅ HAPUS: _buildHeader yang lama (sudah digantikan oleh _buildTopHeader)
+
+  // ✅ PERBAIKAN: Menampilkan Foto Riil dari URL atau Inisial jika Null
+  Widget _buildProfileHeader(String name, String email, String birthday, String initial, String? avatarUrl) {
     return Column(
       children: [
         Stack(
@@ -181,17 +194,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               child: CircleAvatar(
                 radius: 70,
                 backgroundColor: const Color(0xFFE3ECF7),
-                child: Text(
-                  initial,
-                  style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                ),
+                backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty
+                    ? NetworkImage(avatarUrl)
+                    : null,
+                child: avatarUrl == null || avatarUrl.isEmpty
+                    ? Text(initial, style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Color(0xFF334155)))
+                    : null,
               ),
             ),
-            // TOMBOL EDIT
             GestureDetector(
               onTap: () async {
-                // Navigasi ke EditProfileScreen
-                // Pastikan EditProfileScreen nanti juga terkoneksi dengan Provider untuk menyimpan datanya
+                // Navigasi ke EditProfileScreen dengan melempar currentAvatarUrl
                 await Navigator.push(
                   context,
                   CupertinoPageRoute(
@@ -200,12 +213,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       currentEmail: email,
                       currentBirthday: birthday,
                       currentHealthFocus: const ["Graves Disease"],
+                      currentAvatarUrl: avatarUrl, // ✅ OPER URL FOTO KE HALAMAN EDIT
                     ),
                   ),
                 );
 
-                // Setelah kembali dari layar edit, opsional kita bisa re-fetch
-                // data jika user menekan 'Simpan' di layar sana.
+                // Re-fetch data profil saat kembali dari halaman edit agar foto langsung terupdate
+                final userId = ref.read(userProvider).user?.idUser;
+                if (userId != null && mounted) {
+                  ref.read(profileProvider.notifier).fetchProfile(userId);
+                }
               },
               child: Container(
                 padding: const EdgeInsets.all(8),
@@ -300,20 +317,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return SizedBox(
       width: double.infinity,
       child: OutlinedButton.icon(
-        onPressed: () {
-          // 1. (Opsional tapi disarankan) Bersihkan data user dari state/storage
-          // ref.read(userProvider.notifier).logout(); // Hapus komentar ini jika Mas punya fungsi logout di userProvider
-
-          // 2. Arahkan ke layar awal (Login) dan hapus semua tumpukan layar sebelumnya
-          // Ganti 'LoginScreen()' dengan nama kelas layar awal/login milik Mas Vlen
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (context) => const LoginScreen()), // 👈 Sesuaikan nama Layar Awalnya
-                (Route<dynamic> route) => false, // false berarti hapus semua riwayat layar
-          );
-
-          // ATAU jika Mas menggunakan sistem Rute (Named Routes) di main.dart, gunakan ini:
-          // Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+        onPressed: () async {
+          await ref.read(userProvider.notifier).logout();
+          if (mounted) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => const LoginScreen()),
+                  (Route<dynamic> route) => false,
+            );
+          }
         },
         icon: const Icon(Icons.logout_rounded, color: AppColors.logoutText, size: 20),
         label: const Text(

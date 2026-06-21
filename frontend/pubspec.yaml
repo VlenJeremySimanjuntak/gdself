@@ -25,10 +25,10 @@ dependencies:
   flutter_local_notifications: ^21.0.0
   timezone: ^0.11.0
   health: 11.0.0
-  huawei_health: ^6.17.0+300
   google_sign_in: ^6.2.1
   font_awesome_flutter: ^11.0.0
   image_picker: ^1.2.2
+  url_launcher: ^6.2.6
 
 
 dev_dependencies:

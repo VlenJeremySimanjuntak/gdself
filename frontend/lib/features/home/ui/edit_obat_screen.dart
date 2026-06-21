@@ -110,9 +110,6 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
 
       for (var j in semuaJadwal) {
         if (j.hari != null) {
-          // Asumsi format hari misal "Senin", "Selasa", dst. Kita harus match ke longLabel kita ("SEN", "SEL")
-          // Namun di sistem Mas sebelumnya menggunakan "Senin, Selasa". Mari kita tampung apa adanya dulu,
-          // asumsikan sudah disesuaikan dengan format 'SEN', 'SEL' dsb.
           final splits = j.hari!.split(',');
           for (var h in splits) {
             loadedDays.add(h.trim().toUpperCase());
@@ -128,7 +125,6 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
 
       // Checklist Hari
       for (int i = 0; i < _days.length; i++) {
-        // Cek kecocokan (bisa disesuaikan jika data lama menggunakan "Senin" bukan "SEN")
         if (loadedDays.contains(_days[i].longLabel) || loadedDays.any((d) => d.contains(_days[i].longLabel))) {
           _selectedDays[i] = true;
         }
@@ -172,11 +168,21 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
   }
 
   void _updateTimesList() {
-    // Pertahankan jam yang sudah diisi jika mengubah frekuensi
     final currentTimes = List<TimeOfDay?>.from(_times);
     _times = List<TimeOfDay?>.filled(_frekuensi, null);
     for (int i = 0; i < _frekuensi && i < currentTimes.length; i++) {
       _times[i] = currentTimes[i];
+    }
+  }
+
+  String _getSatuanDosis() {
+    switch (_tipeObat) {
+      case 'Sirup':
+        return 'ml';
+      case 'Tablet':
+      case 'Kapsul':
+      default:
+        return 'mg';
     }
   }
 
@@ -287,9 +293,19 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
                   onTap: () async {
                     final picked = await showDialog<DateTime>(
                       context: context,
-                      builder: (context) => _CustomCalendarDialog(initialDate: _tanggalMulai),
+                      builder: (context) => _CustomCalendarDialog(
+                        initialDate: _tanggalMulai,
+                        minDate: DateTime.now(), // ✅ CEGAH: Tidak bisa pilih tanggal sebelum hari ini
+                      ),
                     );
-                    if (picked != null) setState(() => _tanggalMulai = picked);
+                    if (picked != null) {
+                      setState(() {
+                        _tanggalMulai = picked;
+                        if (_tanggalSelesai != null && _tanggalSelesai!.isBefore(_tanggalMulai)) {
+                          _tanggalSelesai = null;
+                        }
+                      });
+                    }
                   },
                 ),
                 const SizedBox(height: 16),
@@ -301,7 +317,10 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
                   onTap: () async {
                     final picked = await showDialog<DateTime>(
                       context: context,
-                      builder: (context) => _CustomCalendarDialog(initialDate: _tanggalSelesai ?? _tanggalMulai),
+                      builder: (context) => _CustomCalendarDialog(
+                        initialDate: _tanggalSelesai ?? _tanggalMulai,
+                        minDate: _tanggalMulai, // ✅ CEGAH: Tidak bisa pilih sebelum tanggal mulai
+                      ),
                     );
                     if (picked != null) setState(() => _tanggalSelesai = picked);
                   },
@@ -362,7 +381,7 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
                             hintText: '0',
                             textAlign: TextAlign.center,
                             keyboardType: TextInputType.number,
-                            suffixText: 'mg',
+                            suffixText: _getSatuanDosis(),
                           ),
                         ],
                       ),
@@ -529,6 +548,7 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
     );
   }
 
+  // ✅ PERBAIKAN BUG AUTOCOMPLETE: Merekam ketikan manual obat di luar daftar
   Widget _buildMedicineAutocomplete() {
     return Autocomplete<String>(
       optionsBuilder: (TextEditingValue textEditingValue) {
@@ -537,11 +557,18 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
       },
       onSelected: (selection) => _namaObatController.text = selection,
       fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
-        if (_namaObatController.text.isNotEmpty && controller.text.isEmpty) controller.text = _namaObatController.text;
+        // Agar nama obat awal (saat baru masuk Edit Screen) otomatis terisi di UI
+        if (_namaObatController.text.isNotEmpty && controller.text.isEmpty) {
+          controller.text = _namaObatController.text;
+        }
         return _InputField(
           controller: controller,
           focusNode: focusNode,
           hintText: 'Misal: Paracetamol',
+          // Merekam setiap huruf yang diketik user
+          onChanged: (value) {
+            _namaObatController.text = value;
+          },
         );
       },
       optionsViewBuilder: (context, onSelected, options) {
@@ -600,63 +627,92 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
   }
 
   Widget _buildTimeSlotCard(int index, TimeOfDay? time) {
+    final bool isFilled = time != null;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          )
+        ],
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: const BoxDecoration(color: Color(0xFFDDEBFA), shape: BoxShape.circle),
-            child: const Icon(Icons.access_time, color: Color(0xFF006699), size: 20),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () async {
+            TimeOfDay? minTime;
+            if (index > 0) minTime = _times[index - 1];
+            TimeOfDay? maxTime;
+            if (index < _times.length - 1) maxTime = _times[index + 1];
+
+            final picked = await showDialog<TimeOfDay>(
+              context: context,
+              barrierColor: Colors.black54,
+              builder: (context) => _CustomTimePickerDialog(
+                initialTime: time ?? const TimeOfDay(hour: 8, minute: 0),
+                minTime: minTime,
+                maxTime: maxTime,
+              ),
+            );
+
+            if (picked != null) setState(() => _times[index] = picked);
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+            child: Row(
               children: [
-                const Text('Waktu', style: TextStyle(color: Color(0xFF1F2937), fontWeight: FontWeight.bold, fontSize: 14)),
-                const SizedBox(height: 2),
-                Text('Ketuk untuk mengatur', style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFDDEBFA),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.access_time_filled, color: Color(0xFF006699), size: 24),
+                ),
+                const SizedBox(width: 16),
+
+                if (!isFilled)
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Waktu',
+                          style: TextStyle(color: Color(0xFF1F2937), fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Ketuk untuk mengatur',
+                          style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  Expanded(
+                    child: Text(
+                      '${_formatTime(time)} WIB',
+                      style: const TextStyle(
+                        color: Color(0xFF1F2937),
+                        fontWeight: FontWeight.w900,
+                        fontSize: 18,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
-          InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () async {
-              TimeOfDay? minTime;
-              if (index > 0) minTime = _times[index - 1];
-              TimeOfDay? maxTime;
-              if (index < _times.length - 1) maxTime = _times[index + 1];
-
-              final picked = await showDialog<TimeOfDay>(
-                context: context,
-                builder: (context) => _CustomTimePickerDialog(
-                  initialTime: time ?? const TimeOfDay(hour: 8, minute: 0),
-                  minTime: minTime,
-                  maxTime: maxTime,
-                ),
-              );
-
-              if (picked != null) setState(() => _times[index] = picked);
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(color: const Color(0xFFF7F9FF), borderRadius: BorderRadius.circular(10)),
-              child: Text(
-                time == null ? '--:--' : _formatTime(time),
-                style: const TextStyle(color: Color(0xFF006699), fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -674,13 +730,13 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
     if (user == null || user.idUser == 0) return _showMessage('Session user tidak ditemukan.');
 
     final namaObat = _namaObatController.text.trim();
-    final dosis = _dosisController.text.trim();
+    final dosisDenganSatuan = "${_dosisController.text.trim()} ${_getSatuanDosis()}";
+
     final semuaJadwal = ref.read(homeProvider).jadwalObat;
 
-    // VALIDASI BENTROK (Overlap) dengan pengecualian ID Obat ini
     bool isBentrok = false;
     for (var jdwl in semuaJadwal) {
-      if (jdwl.idObat == widget.jadwal.idObat) continue; // LEWATI DIRI SENDIRI
+      if (jdwl.idObat == widget.jadwal.idObat) continue;
 
       if (jdwl.obat.namaObat.toLowerCase() == namaObat.toLowerCase()) {
         final startLama = jdwl.obat.tglMulai;
@@ -710,36 +766,37 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
     final formattedSelesai = _tanggalSelesai != null ? DateFormat('yyyy-MM-dd').format(_tanggalSelesai!) : null;
     final waktuKonsumsiList = _times.whereType<TimeOfDay>().map((time) => _formatTimeForApi(time)).toList();
 
+    final int idObatAsli = widget.jadwal.idObat ?? widget.jadwal.obat.idObat ?? 0;
+
     // Call Edit API
     final success = await ref.read(obatProvider.notifier).editObatDenganJadwal(
-      idObat: widget.jadwal.idObat,
+      idObat: idObatAsli,
       userId: user.idUser,
       namaObat: namaObat,
-      dosis: dosis,
+      dosis: dosisDenganSatuan,
       waktuKonsumsi: waktuKonsumsiList,
       tanggalMulai: formattedMulai,
-      tanggalSelesai: formattedSelesai, // 👈 Tambahkan ini agar tanggal selesai masuk ke database
-      hariKonsumsi: selectedDays,       // (statusAktif dihapus dari sini)
+      tanggalSelesai: formattedSelesai,
+      hariKonsumsi: selectedDays,
     );
 
     if (success) {
       try {
-        // Hapus alarm lama (Berdasarkan ID lama/Hashcode)
         await NotificationService().batalkanAlarmObat(
-          idObat: widget.jadwal.obat.namaObat.hashCode.abs(),
-          hariKonsumsi: ['SEN', 'SEL', 'RAB', 'KAM', 'JUM', 'SAB', 'MIN'], // Hapus semua hari terkait
-          jumlahWaktu: 10, // Max arbitrary
+          idObat: idObatAsli,
+          hariKonsumsi: ['SEN', 'SEL', 'RAB', 'KAM', 'JUM', 'SAB', 'MIN'],
+          jumlahWaktu: 10,
         );
 
-        // Buat alarm baru
         await NotificationService().jadwalkanAlarmObat(
-          idObat: namaObat.hashCode.abs(),
+          idObat: idObatAsli,
           namaObat: namaObat,
           hariKonsumsi: selectedDays,
           waktuKonsumsi: _times.whereType<TimeOfDay>().toList(),
         );
+
       } catch (e) {
-        debugPrint("Gagal menyinkronkan alarm edit: $e");
+        debugPrint("❌ [EDIT] Gagal menyinkronkan alarm: $e");
       }
 
       await _showSuccessPopup();
@@ -782,7 +839,7 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
                   child: ElevatedButton(
                     onPressed: () {
                       Navigator.of(dialogContext).pop();
-                      Navigator.of(context).pop(true); // Kembali dan trigger refresh
+                      Navigator.of(context).pop(true);
                     },
                     style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF006699),
@@ -816,7 +873,7 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
 }
 
 // ============================================================================
-// WIDGET-WIDGET PENDUKUNG (Sama persis dengan Tambah Obat)
+// WIDGET-WIDGET PENDUKUNG
 // ============================================================================
 class _DayOption {
   final String shortLabel;
@@ -831,6 +888,7 @@ class _FieldLabel extends StatelessWidget {
   Widget build(BuildContext context) => Text(text, style: const TextStyle(color: Color(0xFF4B5563), fontSize: 12, fontWeight: FontWeight.w600));
 }
 
+// ✅ PERBAIKAN: Menambahkan onChanged agar ketikan manual terbaca
 class _InputField extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode? focusNode;
@@ -838,8 +896,17 @@ class _InputField extends StatelessWidget {
   final TextAlign textAlign;
   final TextInputType? keyboardType;
   final String? suffixText;
+  final ValueChanged<String>? onChanged;
 
-  const _InputField({required this.controller, required this.hintText, this.focusNode, this.textAlign = TextAlign.left, this.keyboardType, this.suffixText});
+  const _InputField({
+    required this.controller,
+    required this.hintText,
+    this.focusNode,
+    this.textAlign = TextAlign.left,
+    this.keyboardType,
+    this.suffixText,
+    this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -851,6 +918,7 @@ class _InputField extends StatelessWidget {
         focusNode: focusNode,
         keyboardType: keyboardType,
         textAlign: textAlign,
+        onChanged: onChanged,
         decoration: InputDecoration(
           hintText: hintText,
           hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
@@ -992,7 +1060,13 @@ class _CustomTimePickerDialogState extends State<_CustomTimePickerDialog> {
 
 class _CustomCalendarDialog extends StatefulWidget {
   final DateTime initialDate;
-  const _CustomCalendarDialog({required this.initialDate});
+  final DateTime? minDate;
+
+  const _CustomCalendarDialog({
+    required this.initialDate,
+    this.minDate,
+  });
+
   @override
   State<_CustomCalendarDialog> createState() => _CustomCalendarDialogState();
 }
@@ -1037,9 +1111,15 @@ class _CustomCalendarDialogState extends State<_CustomCalendarDialog> {
                 Text(DateFormat('MMMM yyyy', 'id_ID').format(_currentMonth), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF1F2937))),
                 Row(
                   children: [
-                    InkWell(onTap: () => setState(() => _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1)), child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: const Color(0xFFE5E7EB))), child: const Icon(Icons.chevron_left, size: 18, color: Color(0xFF006699)))),
+                    InkWell(
+                        onTap: () => setState(() => _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1)),
+                        child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: const Color(0xFFE5E7EB))), child: const Icon(Icons.chevron_left, size: 18, color: Color(0xFF006699)))
+                    ),
                     const SizedBox(width: 8),
-                    InkWell(onTap: () => setState(() => _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1)), child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: const Color(0xFFE5E7EB))), child: const Icon(Icons.chevron_right, size: 18, color: Color(0xFF006699)))),
+                    InkWell(
+                        onTap: () => setState(() => _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1)),
+                        child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: const Color(0xFFE5E7EB))), child: const Icon(Icons.chevron_right, size: 18, color: Color(0xFF006699)))
+                    ),
                   ],
                 ),
               ],
@@ -1054,15 +1134,32 @@ class _CustomCalendarDialogState extends State<_CustomCalendarDialog> {
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 7, mainAxisSpacing: 8, crossAxisSpacing: 8),
               itemBuilder: (context, index) {
                 if (index < firstWeekdayOffset) return const SizedBox.shrink();
+
                 int day = index - firstWeekdayOffset + 1;
                 DateTime thisDate = DateTime(_currentMonth.year, _currentMonth.month, day);
+
+                // ✅ CEK APAKAH TANGGAL INI DILARANG (PAST DATE)
+                bool isBeforeMinDate = false;
+                if (widget.minDate != null) {
+                  DateTime minNormalized = DateTime(widget.minDate!.year, widget.minDate!.month, widget.minDate!.day);
+                  isBeforeMinDate = thisDate.isBefore(minNormalized);
+                }
+
                 bool isSelected = _selectedDate.year == thisDate.year && _selectedDate.month == thisDate.month && _selectedDate.day == thisDate.day;
+
                 return InkWell(
-                  onTap: () => setState(() => _selectedDate = thisDate),
+                  onTap: isBeforeMinDate ? null : () => setState(() => _selectedDate = thisDate),
                   child: Container(
                     decoration: BoxDecoration(color: isSelected ? const Color(0xFF006699) : Colors.transparent, shape: BoxShape.circle),
                     alignment: Alignment.center,
-                    child: Text(day.toString(), style: TextStyle(color: isSelected ? Colors.white : const Color(0xFF4B5563), fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 14)),
+                    child: Text(
+                        day.toString(),
+                        style: TextStyle(
+                            color: isBeforeMinDate ? Colors.grey.shade300 : (isSelected ? Colors.white : const Color(0xFF4B5563)),
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            fontSize: 14
+                        )
+                    ),
                   ),
                 );
               },

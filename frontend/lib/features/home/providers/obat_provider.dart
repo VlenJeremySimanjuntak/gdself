@@ -280,7 +280,8 @@ class ObatNotifier extends Notifier<ObatState> {
   }
 
   /// Simpan obat + jadwal sekaligus (dipakai saat tambah obat baru)
-  Future<bool> tambahObatDenganJadwal({
+  /// ✅ RETURN TYPE DIUBAH: bool -> int? (mengembalikan ID obat)
+  Future<int?> tambahObatDenganJadwal({
     required int userId,
     required String namaObat,
     required String dosis,
@@ -310,7 +311,7 @@ class ObatNotifier extends Notifier<ObatState> {
           errorMessage:
           _extractMessage(responseObat.data) ?? 'Gagal menambah obat',
         );
-        return false;
+        return null; // ✅ Return null jika gagal
       }
 
       final idObat =
@@ -318,7 +319,11 @@ class ObatNotifier extends Notifier<ObatState> {
               _extractInt(responseObat.data, ['id_obat']);
 
       if (idObat == null || idObat == 0) {
-        throw Exception('id_obat tidak ditemukan dari server');
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: 'id_obat tidak ditemukan dari server',
+        );
+        return null; // ✅ Return null jika ID tidak ditemukan
       }
 
       // 2. Simpan jadwal (per hari × per jam)
@@ -337,16 +342,16 @@ class ObatNotifier extends Notifier<ObatState> {
 
       await fetchObat(userId);
       state = state.copyWith(isLoading: false, clearError: true);
-      return true;
+      return idObat; // ✅ Return ID obat yang baru dibuat
     } on DioException catch (e) {
       state = state.copyWith(
         isLoading: false,
         errorMessage: e.message ?? 'Gagal terhubung ke server',
       );
-      return false;
+      return null; // ✅ Return null jika error
     } catch (e) {
       state = state.copyWith(isLoading: false, errorMessage: e.toString());
-      return false;
+      return null; // ✅ Return null jika error
     }
   }
 
@@ -489,6 +494,40 @@ class ObatNotifier extends Notifier<ObatState> {
     } catch (e) {
       state = state.copyWith(errorMessage: e.toString());
       return false;
+    }
+  }
+
+  // ==========================================
+  // Ambil Semua Log Obat
+  // ==========================================
+
+  Future<void> fetchSemuaLogUntukObat(List<int> listJadwalId) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      List<LogKonsumsiObatModel> allLogs = [];
+
+      // Looping untuk menarik data dari semua ID jadwal (Senin, Selasa, dst / Pagi, Malam)
+      for (int jId in listJadwalId) {
+        final response = await _apiService.get('/log-konsumsi/jadwal/$jId');
+        final List<dynamic> dataList = _extractList(response.data);
+
+        final logList = dataList
+            .whereType<Map>()
+            .map((item) => LogKonsumsiObatModel.fromJson(Map<String, dynamic>.from(item)))
+            .toList();
+
+        allLogs.addAll(logList); // Gabungkan semua log jadi satu
+      }
+
+      state = state.copyWith(
+        isLoading: false,
+        logKonsumsiList: allLogs,
+        clearError: true,
+      );
+    } on DioException catch (e) {
+      state = state.copyWith(isLoading: false, errorMessage: e.message ?? 'Gagal memuat log konsumsi');
+    } catch (e) {
+      state = state.copyWith(isLoading: false, errorMessage: e.toString());
     }
   }
 

@@ -7,6 +7,7 @@ class UserModel {
   final String? jenisKelamin;
   final String? tglLahir;
   final String? tglTerdiagnosis;
+  final String? fotoProfil; // ✅ TAMBAH: field foto profil
   final String? updateAt;
 
   UserModel({
@@ -16,6 +17,7 @@ class UserModel {
     this.jenisKelamin,
     this.tglLahir,
     this.tglTerdiagnosis,
+    this.fotoProfil,
     this.updateAt,
   });
 
@@ -26,6 +28,7 @@ class UserModel {
     jenisKelamin:    json['jenis_kelamin'],
     tglLahir:        json['tgl_lahir'],
     tglTerdiagnosis: json['tgl_terdiagnosis'],
+    fotoProfil:      json['foto_profil'],     // ✅ TAMBAH
     updateAt:        json['update_at'],
   );
 
@@ -36,6 +39,7 @@ class UserModel {
     'jenis_kelamin':    jenisKelamin,
     'tgl_lahir':        tglLahir,
     'tgl_terdiagnosis': tglTerdiagnosis,
+    'foto_profil':      fotoProfil,           // ✅ TAMBAH
     'update_at':        updateAt,
   };
 
@@ -51,7 +55,6 @@ class AuthResponse {
 
   AuthResponse({required this.token, required this.user});
 
-  /// Response BE: { "data": { "token": "...", "user": { ... } } }
   factory AuthResponse.fromJson(Map<String, dynamic> json) => AuthResponse(
     token: json['data']['token'] ?? '',
     user:  UserModel.fromJson(json['data']['user'] as Map<String, dynamic>),

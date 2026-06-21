@@ -9,7 +9,8 @@ import 'edit_usg_screen.dart';
 
 class UsgDetailScreen extends ConsumerWidget {
   final int usgId;
-  final UsgTiroidModel? usgData; // ✅ nullable, bisa dikirim dari luar
+  // usgData masih kita terima buat jaga-jaga kalau monitoringProvider kosong
+  final UsgTiroidModel? usgData;
 
   const UsgDetailScreen({
     super.key,
@@ -34,11 +35,14 @@ class UsgDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Jika usgData dikirim, gunakan itu. Jika tidak, cari dari provider.
+    // Pantau state monitoring
     final monitorState = ref.watch(monitoringProvider);
-    final usg = usgData ?? monitorState.usgList.firstWhere(
+
+    // ✅ PERBAIKAN: Cari dulu data TERBARU di monitorState.
+    // Kalau tidak ketemu, baru pakai usgData bawaan.
+    final usg = monitorState.usgList.firstWhere(
           (item) => item.idUsg == usgId,
-      orElse: () => throw Exception('Data USG tidak ditemukan'),
+      orElse: () => usgData ?? (throw Exception('Data USG tidak ditemukan')),
     );
 
     final String tanggal = usg.tglPemeriksaan != null
@@ -137,18 +141,22 @@ class UsgDetailScreen extends ConsumerWidget {
               alignment: Alignment.centerRight,
               child: ElevatedButton.icon(
                 onPressed: () async {
-                  await Navigator.push(
+                  // Await Navigator untuk menangkap hasil kembalian dari EditScreen
+                  final isEdited = await Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => EditUsgScreen(usg: usg)),
                   );
-                  // Refresh data USG
-                  final userId = ref.read(userProvider).user?.idUser;
-                  if (userId != null) {
-                    ref.read(monitoringProvider.notifier).fetchMonitoringData(userId);
+
+                  // Jika isEdited bernilai true, kita refresh datanya
+                  if (isEdited == true) {
+                    final userId = ref.read(userProvider).user?.idUser;
+                    if (userId != null) {
+                      ref.read(monitoringProvider.notifier).fetchMonitoringData(userId);
+                    }
                   }
                 },
                 icon: const Icon(Icons.edit_outlined, color: Colors.white, size: 18),
-                label: const Text("Edit", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                label: const Text("Edit", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF006699),
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),

@@ -63,7 +63,7 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
     }
 
     try {
-      final riwayatRes = await ApiService().post('/riwayat', data: {
+      final riwayatRes = await ApiService().sendRequest.post('/riwayat', data: {
         'id_user': userId,
         'tanggal': DateFormat('yyyy-MM-dd').format(DateTime.now()),
       });
@@ -139,12 +139,61 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
   }
 
   Future<void> _pickImage() async {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Wrap(
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: ListTile(
+                  leading: const Icon(Icons.photo_library_outlined, color: Color(0xFF00618A)),
+                  title: const Text('Pilih dari Galeri', style: TextStyle(fontWeight: FontWeight.w600)),
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    await _getImage(ImageSource.gallery); // Buka galeri
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: ListTile(
+                  leading: const Icon(Icons.camera_alt_outlined, color: Color(0xFF00618A)),
+                  title: const Text('Ambil dari Kamera', style: TextStyle(fontWeight: FontWeight.w600)),
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    await _getImage(ImageSource.camera); // Buka kamera
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ✅ INI FUNGSI YANG TERTINGGAL TADI: Untuk mengeksekusi pengambilan gambarnya
+  Future<void> _getImage(ImageSource source) async {
     final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() {
-        _imageFile = File(pickedFile.path);
-      });
+    try {
+      final pickedFile = await picker.pickImage(
+        source: source,
+        imageQuality: 80, // Kompres sedikit agar API tidak jebol
+      );
+      if (pickedFile != null) {
+        setState(() {
+          _imageFile = File(pickedFile.path);
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal mengambil gambar: $e')),
+      );
     }
   }
 
@@ -201,7 +250,7 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
         elevation: 0,
         iconTheme: IconThemeData(color: _primaryBlue),
       ),
-      extendBodyBehindAppBar: true, // Agar gradient full ke atas
+      extendBodyBehindAppBar: true,
       body: Container(
         width: double.infinity,
         height: double.infinity,
@@ -210,8 +259,8 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
             begin: Alignment.topRight,
             end: Alignment.bottomLeft,
             colors: [
-              Color(0xFFE0F2F1), // Hijau/cyan muda di pojok kanan atas
-              Color(0xFFF8FBFA), // Menyatu ke background bawah
+              Color(0xFFE0F2F1),
+              Color(0xFFF8FBFA),
             ],
             stops: [0.0, 0.3],
           ),
@@ -375,7 +424,7 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
 
                 const SizedBox(height: 32),
 
-                // Tombol Simpan (Fixed typo di UI aslinya "Hail" -> "Hasil")
+                // Tombol Simpan
                 Container(
                   width: double.infinity,
                   height: 56,

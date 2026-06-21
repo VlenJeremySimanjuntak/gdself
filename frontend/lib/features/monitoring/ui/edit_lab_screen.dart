@@ -296,7 +296,7 @@ class _EditLabScreenState extends ConsumerState<EditLabScreen> {
               _buildMainCard(),
               const SizedBox(height: 16),
               _buildHormoneSection(
-                title: "TSH",
+                title: "TSHs",
                 sub: "Thyroid Stimulating Hormone",
                 valCtrl: _tshValCtrl,
                 minCtrl: _tshMinCtrl,

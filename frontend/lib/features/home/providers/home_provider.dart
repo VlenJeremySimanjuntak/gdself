@@ -142,44 +142,32 @@ class HomeNotifier extends Notifier<HomeState> {
       WearableModel? wearableTerbaru;
 
       if (wearableData.isNotEmpty) {
-        // 👇 TAMBAHAN: Sorting data wearable berdasarkan tanggal & waktu terbaru (Descending)
+        // Sorting data wearable berdasarkan tanggal & waktu terbaru (Descending)
         wearableData.sort((a, b) {
           final dateA = DateTime.tryParse(a['tgl_data']?.toString() ?? a['created_at']?.toString() ?? '') ?? DateTime(2000);
           final dateB = DateTime.tryParse(b['tgl_data']?.toString() ?? b['created_at']?.toString() ?? '') ?? DateTime(2000);
           return dateB.compareTo(dateA);
         });
 
-        // 👇 Menggunakan .first (karena yang terbaru sudah di posisi atas berkat sorting)
+        // Menggunakan .first (karena yang terbaru sudah di posisi atas berkat sorting)
         final latestRaw = Map<String, dynamic>.from(wearableData.first as Map);
         debugPrint('📡 [HomeProvider] wearable terbaru raw: $latestRaw');
 
-        // Antisipasi key baru dari Backend untuk AI Harian
+        // Antisipasi key dari Backend Golang (bisa 'hasil_ai_harian' atau 'hasil_ai')
         final hasilAiRaw = latestRaw['hasil_ai_harian'] ?? latestRaw['hasil_ai'];
-        final bool hasilAiKosong =
-            hasilAiRaw == null || (hasilAiRaw is List && hasilAiRaw.isEmpty);
 
-        if (hasilAiKosong) {
-          final wearableId = latestRaw['id_wearable'];
-          debugPrint('📡 [HomeProvider] AI Harian kosong, fetch manual id_wearable=$wearableId');
-
-          try {
-            // Jika Backend mengubah endpoint, sesuaikan URL ini
-            final aiResponse = await api.get('/hasil-ai/wearable/$wearableId');
-
-            final aiList = _parseResponseToList(aiResponse.data);
-            if (aiList.isNotEmpty) {
-              latestRaw['hasil_ai'] = aiList; // Inject ke key 'hasil_ai'
-              debugPrint('📡 [HomeProvider] Injected ${aiList.length} AI Harian ke wearable');
-            }
-          } catch (e) {
-            debugPrint('⚠️ [HomeProvider] Gagal fetch AI Harian manual: $e');
-          }
+        // Memastikan key yang benar dipakai oleh WearableModel.fromJson
+        if (hasilAiRaw != null) {
+          latestRaw['hasil_ai'] = hasilAiRaw;
         }
 
         wearableTerbaru = WearableModel.fromJson(latestRaw);
+
+        // 👇 PERBAIKAN ERROR: Menggunakan field yang baru (reminderHr) untuk debugPrint
         debugPrint('📡 [HomeProvider] AI Harian count: ${wearableTerbaru.hasilAI.length}');
         if (wearableTerbaru.hasilAI.isNotEmpty) {
-          debugPrint('📡 [HomeProvider] Pesan Harian: ${wearableTerbaru.hasilAI.last.pesanHarian}');
+          debugPrint('📡 [HomeProvider] Reminder HR: ${wearableTerbaru.hasilAI.last.reminderHr}');
+          debugPrint('📡 [HomeProvider] Reminder Tidur: ${wearableTerbaru.hasilAI.last.reminderTidur}');
         }
       }
 

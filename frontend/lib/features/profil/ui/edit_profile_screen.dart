@@ -1,9 +1,9 @@
-import 'dart:io'; // 👇 Wajib ditambahkan untuk menangani File
+import 'dart:io'; // ✅ Wajib ditambahkan untuk menangani File
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:image_picker/image_picker.dart'; // 👇 Library untuk Galeri/Kamera
+import 'package:image_picker/image_picker.dart'; // ✅ Library untuk Galeri/Kamera
 
 import '../../home/providers/user_provider.dart';
 import '../providers/profile_provider.dart';
@@ -20,8 +20,8 @@ class EditProfileScreen extends ConsumerStatefulWidget {
   final String currentName;
   final String currentEmail;
   final String currentBirthday;
+  final String? currentDiagnosisDate; // ✅ Ditambahkan agar dinamis dari DB
   final List<String> currentHealthFocus;
-  // Opsional: Jika backend sudah mengirimkan URL foto lama, bisa dilempar ke sini
   final String? currentAvatarUrl;
 
   const EditProfileScreen({
@@ -29,6 +29,7 @@ class EditProfileScreen extends ConsumerStatefulWidget {
     required this.currentName,
     required this.currentEmail,
     required this.currentBirthday,
+    this.currentDiagnosisDate, // ✅ Ditambahkan ke constructor
     required this.currentHealthFocus,
     this.currentAvatarUrl,
   });
@@ -45,7 +46,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
   bool _isSaving = false;
 
-  // 👇 Variabel untuk menyimpan file foto sementara yang dipilih user
+  // ✅ Variabel untuk menyimpan file foto sementara yang dipilih user
   File? _selectedImage;
   final ImagePicker _picker = ImagePicker();
 
@@ -55,20 +56,39 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     _nameController = TextEditingController(text: widget.currentName);
     _emailController = TextEditingController(text: widget.currentEmail);
 
+    // Parsing Tanggal Lahir
     try {
       _selectedBirthday = DateFormat('dd MMMM yyyy', 'id_ID').parse(widget.currentBirthday);
     } catch (e) {
-      _selectedBirthday = DateTime(2000, 1, 1);
+      try {
+        _selectedBirthday = DateTime.parse(widget.currentBirthday);
+      } catch (_) {
+        _selectedBirthday = DateTime(2000, 1, 1);
+      }
     }
-    _selectedDiagnosisDate = DateTime(2024, 1, 1);
+
+    // Parsing Tanggal Terdiagnosis secara dinamis
+    try {
+      if (widget.currentDiagnosisDate != null) {
+        _selectedDiagnosisDate = DateFormat('dd MMMM yyyy', 'id_ID').parse(widget.currentDiagnosisDate!);
+      } else {
+        _selectedDiagnosisDate = DateTime(2024, 1, 1);
+      }
+    } catch (e) {
+      try {
+        _selectedDiagnosisDate = DateTime.parse(widget.currentDiagnosisDate!);
+      } catch (_) {
+        _selectedDiagnosisDate = DateTime.now();
+      }
+    }
   }
 
-  // 👇 FUNGSI UNTUK MEMBUKA GALERI / KAMERA
+  // ✅ FUNGSI UNTUK MEMBUKA GALERI / KAMERA
   Future<void> _pickImage(ImageSource source) async {
     try {
       final XFile? pickedFile = await _picker.pickImage(
         source: source,
-        imageQuality: 70, // Kompres ukuran file agar server tidak berat
+        imageQuality: 65, // Kompres ukuran sedikit lebih rendah (65) agar bandwidth hemat dan upload Railway stabil
       );
 
       if (pickedFile != null) {
@@ -147,7 +167,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     );
   }
 
-  // 👇 FUNGSI UTAMA UNTUK MENYIMPAN DATA KE BACKEND
+  // ✅ FUNGSI UTAMA UNTUK MENYIMPAN DATA KE BACKEND
   Future<void> _simpanProfil() async {
     if (_nameController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Nama tidak boleh kosong")));
@@ -159,17 +179,17 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
     setState(() => _isSaving = true);
 
-    // 1. Simpan Data Teks (Nama, Tanggal Lahir)
+    // 1. Simpan Data Teks (Nama, Tanggal Lahir, Tanggal Terdiagnosis)
     final payload = {
       "nama": _nameController.text,
       "tgl_lahir": DateFormat('yyyy-MM-dd').format(_selectedBirthday),
       "tgl_terdiagnosis": DateFormat('yyyy-MM-dd').format(_selectedDiagnosisDate),
     };
+
     bool updateSuccess = await ref.read(profileProvider.notifier).updateProfile(userId, payload);
 
     // 2. Simpan Foto (HANYA JIKA USER MEMILIH FOTO BARU)
     if (_selectedImage != null && updateSuccess) {
-      // Pastikan Mas sudah membuat fungsi uploadAvatar di profileProvider seperti yang saya jelaskan sebelumnya
       updateSuccess = await ref.read(profileProvider.notifier).uploadAvatar(userId, _selectedImage!.path);
     }
 
@@ -179,7 +199,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profil berhasil diperbarui!")));
         Navigator.pop(context); // Kembali ke layar sebelumnya
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Terjadi kesalahan saat menyimpan data.")));
+        // Pesan error diambil langsung dari state manajemen provider kamu
+        final errorMsg = ref.read(profileProvider).errorMessage ?? "Terjadi kesalahan saat menyimpan data.";
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg)));
       }
     }
   }
@@ -295,8 +317,16 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     );
   }
 
-  // 👇 PERBAIKAN LOGIKA UI AVATAR
+  // ✅ PERBAIKAN LOGIKA UI AVATAR (Bebas dari runtime crash casting)
   Widget _buildAvatarSection(String initial) {
+    ImageProvider? imageProvider;
+
+    if (_selectedImage != null) {
+      imageProvider = FileImage(_selectedImage!);
+    } else if (widget.currentAvatarUrl != null && widget.currentAvatarUrl!.isNotEmpty) {
+      imageProvider = NetworkImage(widget.currentAvatarUrl!);
+    }
+
     return Stack(
       alignment: Alignment.bottomRight,
       children: [
@@ -306,12 +336,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
           child: CircleAvatar(
             radius: 65,
             backgroundColor: const Color(0xFFE3ECF7),
-            // Jika ada foto yang baru dipilih, tampilkan fotonya
-            backgroundImage: _selectedImage != null
-                ? FileImage(_selectedImage!)
-                : (widget.currentAvatarUrl != null ? NetworkImage(widget.currentAvatarUrl!) : null) as ImageProvider?,
-            // Jika tidak ada foto sama sekali, tampilkan teks Inisial
-            child: _selectedImage == null && widget.currentAvatarUrl == null
+            backgroundImage: imageProvider,
+            child: imageProvider == null
                 ? Text(initial, style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Color(0xFF334155)))
                 : null,
           ),
@@ -320,8 +346,12 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
           onTap: () => _showImagePickerOptions(context),
           child: Container(
             padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: const Color(0xFF42637D), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)),
-            child: const Icon(Icons.camera_alt, color: Colors.white, size: 18), // Icon diganti jadi kamera
+            decoration: BoxDecoration(
+              color: const Color(0xFF42637D),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+            child: const Icon(Icons.camera_alt, color: Colors.white, size: 18),
           ),
         ),
       ],

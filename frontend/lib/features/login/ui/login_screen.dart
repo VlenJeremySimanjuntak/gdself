@@ -4,8 +4,10 @@ import '../../home/providers/user_provider.dart'; // sesuaikan path
 import '../../../../../utils/design_system.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
+// ✅ IMPORT BARU DITAMBAHKAN DI SINI
+import 'forgot_password_screen.dart';
+import 'google_complete_register_screen.dart';
 
-// Ganti StatefulWidget → ConsumerStatefulWidget agar bisa akses ref
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -70,8 +72,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      // 1. HAPUS resizeToAvoidBottomInset: false (Secara default nilainya true)
-
       body: Container(
         width: double.infinity,
         height: double.infinity,
@@ -84,7 +84,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
         ),
         child: SafeArea(
-          // 2. TAMBAHKAN CustomScrollView & SliverFillRemaining
           child: CustomScrollView(
             slivers: [
               SliverFillRemaining(
@@ -175,9 +174,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                         color: AppColors.textGrey,
                                         letterSpacing: 0.5)),
                                 GestureDetector(
-                                  onTap: () {
-                                    // TODO: navigasi lupa kata sandi
-                                  },
+                                  // ✅ PERBAIKAN 1: Navigasi Lupa Kata Sandi
+                                  onTap: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(builder: (_) => const ForgotPasswordScreen())
+                                  ),
                                   child: const Text("Lupa Kata Sandi?",
                                       style: TextStyle(
                                           fontSize: 11,
@@ -258,10 +259,33 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                             // TOMBOL MASUK DENGAN GOOGLE
                             OutlinedButton.icon(
+                              // ✅ PERBAIKAN 2: Logika Google Sign-In New User
                               onPressed: authState.isLoading ? null : () async {
-                                bool success = await ref.read(userProvider.notifier).loginWithGoogle();
-                                if (success && mounted) {
+                                final result = await ref.read(userProvider.notifier).loginWithGoogle();
+                                if (!mounted) return;
+
+                                final status = result['status'];
+
+                                if (status == 'success') {
                                   Navigator.pushReplacementNamed(context, '/home');
+
+                                } else if (status == 'new_user') {
+                                  // User belum terdaftar → buka form lengkapi data
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => GoogleCompleteRegisterScreen(
+                                        idToken:      result['id_token'] ?? '',
+                                        googleEmail:  result['google_email'] ?? '',
+                                        googleName:   result['google_name'] ?? '',
+                                        googlePhoto:  result['google_photo'] ?? '',
+                                      ),
+                                    ),
+                                  );
+
+                                } else if (status == 'error') {
+                                  // Error sudah di-set ke authState.errorMessage
+                                  // tidak perlu lakukan apa-apa, UI sudah menampilkan error
                                 }
                               },
                               icon: const FaIcon(

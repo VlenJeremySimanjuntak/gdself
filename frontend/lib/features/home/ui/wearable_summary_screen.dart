@@ -1,605 +1,782 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:math';
 import 'dart:ui' as ui;
 
-// ✅ Mengambil AppColors langsung dari design_system.dart
 import '../../../utils/design_system.dart';
+import '../../home/providers/wearable_provider.dart';
+import '../../../models/wearable_model.dart';
 
-class WearableSummaryScreen extends StatefulWidget {
+class WearableSummaryScreen extends ConsumerStatefulWidget {
   final String metricType;
+  final int userId;
 
-  const WearableSummaryScreen({super.key, required this.metricType});
+  const WearableSummaryScreen({
+    super.key,
+    required this.metricType,
+    required this.userId,
+  });
 
   @override
-  State<WearableSummaryScreen> createState() => _WearableSummaryScreenState();
+  ConsumerState<WearableSummaryScreen> createState() => _WearableSummaryScreenState();
 }
 
-class _WearableSummaryScreenState extends State<WearableSummaryScreen> {
-  int _selectedTabIndex = 0; // 0 = 7 Hari/Hari, 1 = 31 Hari/Minggu, 2 = 12 Bulan/Bulan
+class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
+  // ✅ Variabel untuk melacak tab yang dipilih (0: Hari, 1: Minggu, 2: Bulan)
+  int _selectedTabIndex = 0;
 
-  // ==========================================
-  // DATA DUMMY DETAK JANTUNG
-  // ==========================================
-  List<double> _generateHeartDummyData(int length) {
-    final random = Random();
-    List<double> data = [];
-    double currentVal = 80.0;
-    for (int i = 0; i < length; i++) {
-      double change = (random.nextDouble() * 30) - 15;
-      currentVal += change;
-      if (currentVal < 60) currentVal = 60 + random.nextDouble() * 10;
-      if (currentVal > 145) currentVal = 145 - random.nextDouble() * 10;
-      data.add(currentVal);
-    }
-    return data;
+  // ✅ Variabel untuk navigasi tanggal
+  late DateTime _currentDate;
+  late DateTime _todayDate;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // ✅ Inisialisasi tanggal
+    _todayDate = DateTime.now();
+    _todayDate = DateTime(_todayDate.year, _todayDate.month, _todayDate.day);
+    _currentDate = _todayDate;
+
+    Future.microtask(() => ref.read(wearableProvider.notifier).fetchWearableData(widget.userId));
   }
 
-  // ==========================================
-  // DATA DUMMY TIDUR
-  // ==========================================
-  List<SleepSegment> _generateSleepDummyData() {
-    return [
-      SleepSegment(start: 0.00, end: 0.10, type: SleepType.light),
-      SleepSegment(start: 0.10, end: 0.12, type: SleepType.awake),
-      SleepSegment(start: 0.12, end: 0.25, type: SleepType.deep),
-      SleepSegment(start: 0.25, end: 0.40, type: SleepType.light),
-      SleepSegment(start: 0.40, end: 0.55, type: SleepType.deep),
-      SleepSegment(start: 0.55, end: 0.65, type: SleepType.light),
-      SleepSegment(start: 0.65, end: 0.70, type: SleepType.rem),
-      SleepSegment(start: 0.70, end: 0.85, type: SleepType.deep),
-      SleepSegment(start: 0.85, end: 0.90, type: SleepType.light),
-      SleepSegment(start: 0.90, end: 0.92, type: SleepType.awake),
-      SleepSegment(start: 0.92, end: 1.00, type: SleepType.light),
-    ];
+  // ✅ Fungsi untuk mendapatkan rentang tanggal berdasarkan tab dan currentDate
+  Map<String, DateTime> _getDateRange() {
+    DateTime startDate;
+    DateTime endDate;
+
+    if (_selectedTabIndex == 0) {
+      // Mode Harian: 1 hari saja
+      startDate = _currentDate;
+      endDate = _currentDate.add(const Duration(days: 1)); // Sampai akhir hari
+    } else if (_selectedTabIndex == 1) {
+      // Mode Mingguan: 7 hari ke belakang dari currentDate
+      startDate = _currentDate.subtract(const Duration(days: 6));
+      endDate = _currentDate.add(const Duration(days: 1)); // Sampai akhir hari
+    } else {
+      // Mode Bulanan: 30 hari ke belakang dari currentDate
+      startDate = _currentDate.subtract(const Duration(days: 29));
+      endDate = _currentDate.add(const Duration(days: 1)); // Sampai akhir hari
+    }
+
+    return {
+      'start': startDate,
+      'end': endDate,
+    };
   }
 
-  // ==========================================
-  // DATA DUMMY TEKANAN DARAH (Sistolik & Diastolik)
-  // ==========================================
-  List<Map<String, double>> _generateBpDummyData(int length) {
-    final random = Random();
-    List<Map<String, double>> data = [];
-    double sys = 115.0; // Sistolik awal
-    double dia = 75.0;  // Diastolik awal
-    for (int i = 0; i < length; i++) {
-      sys += (random.nextDouble() * 10) - 5;
-      dia += (random.nextDouble() * 6) - 3;
-      if (sys < 90) sys = 90 + random.nextDouble() * 5;
-      if (sys > 150) sys = 150 - random.nextDouble() * 5;
-      if (dia < 60) dia = 60 + random.nextDouble() * 5;
-      if (dia > 100) dia = 100 - random.nextDouble() * 5;
-      data.add({'sys': sys, 'dia': dia});
+  // ✅ Fungsi untuk filter data berdasarkan rentang tanggal
+  List<WearableModel> _filterDataByDateRange(List<WearableModel> allData) {
+    final dateRange = _getDateRange();
+    final startDate = dateRange['start']!;
+    final endDate = dateRange['end']!;
+
+    return allData.where((w) {
+      if (w.tglData == null) return false;
+
+      // Konversi tglData ke DateTime (hanya tanggal, abaikan waktu)
+      final dataDate = DateTime(w.tglData!.year, w.tglData!.month, w.tglData!.day);
+
+      // Cek apakah data dalam rentang
+      return (dataDate.isAfter(startDate.subtract(const Duration(days: 1))) ||
+          dataDate.isAtSameMomentAs(startDate)) &&
+          dataDate.isBefore(endDate);
+    }).toList();
+  }
+
+  // ✅ Fungsi untuk navigasi tanggal
+  void _goToPreviousDate() {
+    setState(() {
+      if (_selectedTabIndex == 0) {
+        _currentDate = _currentDate.subtract(const Duration(days: 1));
+      } else if (_selectedTabIndex == 1) {
+        _currentDate = _currentDate.subtract(const Duration(days: 7));
+      } else if (_selectedTabIndex == 2) {
+        _currentDate = _currentDate.subtract(const Duration(days: 30));
+      }
+    });
+  }
+
+  void _goToNextDate() {
+    DateTime newDate;
+    if (_selectedTabIndex == 0) {
+      newDate = _currentDate.add(const Duration(days: 1));
+    } else if (_selectedTabIndex == 1) {
+      newDate = _currentDate.add(const Duration(days: 7));
+    } else {
+      newDate = _currentDate.add(const Duration(days: 30));
     }
-    return data;
+
+    // Cegah melewati tanggal hari ini
+    if (newDate.isAfter(_todayDate)) return;
+
+    setState(() {
+      _currentDate = newDate;
+    });
+  }
+
+  // ✅ Format tanggal untuk label
+  String _formatDate(DateTime? date) {
+    if (date == null) return "Hari ini";
+    const days = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    return "${date.day} ${months[date.month - 1]} (${days[date.weekday - 1]})";
+  }
+
+  // ✅ Fungsi untuk mendapatkan label tanggal sesuai mode
+  String _getDateLabel() {
+    final dateRange = _getDateRange();
+    final startDate = dateRange['start']!;
+    final endDate = dateRange['end']!.subtract(const Duration(days: 1));
+
+    if (_selectedTabIndex == 0) {
+      return _formatDate(_currentDate);
+    } else {
+      return "${_formatDate(startDate)} - ${_formatDate(endDate)}";
+    }
+  }
+
+  // ✅ Cek apakah tombol next bisa ditekan
+  bool get _canGoNext {
+    if (_selectedTabIndex == 0) {
+      return _currentDate.isBefore(_todayDate);
+    } else {
+      return _currentDate.isBefore(_todayDate);
+    }
+  }
+
+  bool _hasValidData(List<WearableModel> data) {
+    if (data.isEmpty) return false;
+    return data.any((w) => w.heartRateRHR > 0 || w.sleepDuration > 0 || w.sistolik > 0 || w.diastolik > 0);
   }
 
   @override
   Widget build(BuildContext context) {
-    // Router internal untuk menampilkan UI berdasarkan metricType
+    final wearableState = ref.watch(wearableProvider);
     final metric = widget.metricType.toLowerCase();
-    if (metric == 'tidur') {
-      return _buildSleepSummary();
-    } else if (metric == 'tekanan darah') {
-      return _buildBloodPressureSummary();
-    } else {
-      return _buildHeartRateSummary();
+
+    if (wearableState.isLoading) {
+      return const Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(child: CircularProgressIndicator(color: AppColors.primaryBlue)),
+      );
     }
+
+    if (wearableState.errorMessage != null) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: AppColors.textDark), onPressed: () => Navigator.pop(context)),
+        ),
+        body: Center(child: Text(wearableState.errorMessage!, style: const TextStyle(color: AppColors.textGrey))),
+      );
+    }
+
+    final allData = wearableState.wearableData ?? [];
+
+    // ✅ Filter data berdasarkan rentang tanggal yang dipilih
+    final filteredData = _filterDataByDateRange(allData);
+
+    if (filteredData.isEmpty || !_hasValidData(filteredData)) {
+      return _buildEmptyDataScreen(metric);
+    }
+
+    if (metric == 'tidur') return _buildSleepSummary(filteredData);
+    if (metric == 'tekanan darah') return _buildBloodPressureSummary(filteredData);
+    return _buildHeartRateSummary(filteredData);
   }
 
-  // =========================================================================
-  // 1. UI REKAP TIDUR
-  // =========================================================================
-  Widget _buildSleepSummary() {
-    final sleepSegments = _generateSleepDummyData();
+  // ==========================================
+  // 1. UI REKAP DETAK JANTUNG
+  // ==========================================
+  Widget _buildHeartRateSummary(List<WearableModel> data) {
+    // ✅ Urutkan data berdasarkan tanggal (terlama ke terbaru untuk grafik)
+    data.sort((a, b) {
+      if (a.tglData == null || b.tglData == null) return 0;
+      return a.tglData!.compareTo(b.tglData!);
+    });
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            Container(
-              color: AppColors.primaryBlue,
-              padding: const EdgeInsets.only(top: 50, bottom: 20),
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20), onPressed: () => Navigator.pop(context)),
-                        const Text("Tidur", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                        Row(
-                          children: const [
-                            Icon(Icons.share, color: Colors.white, size: 20),
-                            SizedBox(width: 16),
-                            Icon(Icons.calendar_today, color: Colors.white, size: 20),
-                          ],
-                        )
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 24),
-                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(24)),
-                    child: Row(
-                      children: [
-                        _buildPillTab("Hari", 0),
-                        _buildPillTab("Minggu", 1),
-                        _buildPillTab("Bulan", 2),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle), child: const Icon(Icons.chevron_left, color: Colors.white, size: 16)),
-                      const SizedBox(width: 16),
-                      const Text("5 Mar 2026", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500)),
-                      const SizedBox(width: 16),
-                      Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle), child: const Icon(Icons.chevron_right, color: Colors.white, size: 16)),
-                    ],
-                  ),
-                  const SizedBox(height: 30),
-                  SizedBox(
-                    height: 160,
-                    width: double.infinity,
-                    child: CustomPaint(painter: SleepChartPainter(segments: sleepSegments)),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: const [
-                      Text("6", style: TextStyle(fontSize: 42, fontWeight: FontWeight.bold, color: AppColors.textDark)),
-                      Text(" jam ", style: TextStyle(fontSize: 16, color: AppColors.textGrey)),
-                      Text("32", style: TextStyle(fontSize: 42, fontWeight: FontWeight.bold, color: AppColors.textDark)),
-                      Text(" menit", style: TextStyle(fontSize: 16, color: AppColors.textGrey)),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    height: 8,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Row(
-                        children: [
-                          Expanded(flex: 46, child: Container(color: AppColors.primaryBlue)),
-                          Expanded(flex: 38, child: Container(color: AppColors.activeNavBg)),
-                          Expanded(flex: 15, child: Container(color: AppColors.alertRed)),
-                          Expanded(flex: 1, child: Container(color: AppColors.errorRed)),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _buildSleepDetailItem(AppColors.primaryBlue, "Tidur nyenyak", "3 jam 0 menit"),
-                      _buildSleepDetailItem(AppColors.activeNavBg, "Tidur ringan", "2 jam 28 menit"),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _buildSleepDetailItem(AppColors.alertRed, "Gerakan mata cepat", "1 jam 0 menit"),
-                      _buildSleepDetailItem(AppColors.errorRed, "Bangun", "4 Menit"),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              color: Colors.white,
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              child: Column(
+    final validData = data.where((w) => w.heartRateRHR > 0).toList();
+    if (validData.isEmpty) return _buildEmptyDataScreen('detak jantung');
+
+    // Data untuk grafik (urutan dari terlama ke terbaru)
+    final chartData = validData.map((w) => w.heartRateRHR.toDouble()).toList();
+
+    // Data terbaru untuk tampilan
+    final latestData = validData.last; // ✅ Ambil data terakhir (terbaru)
+    final double latestVal = latestData.heartRateRHR.toDouble();
+    final double maxVal = chartData.reduce(max);
+    final double minVal = chartData.reduce(min);
+    final double avgVal = chartData.reduce((a, b) => a + b) / chartData.length;
+
+    String updateTime = latestData.waktuData?.substring(0, 5) ?? "--:--";
+    if (updateTime == "null:null") updateTime = "--:--";
+
+    return _buildBaseScreen(
+      title: "Jantung",
+      dateLabel: _getDateLabel(),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Center(child: Text("Analisis kualitas tidur", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textDark))),
-                  const SizedBox(height: 24),
-                  _buildAnalysisItem(Icons.nightlight_round, AppColors.primaryBlue, "Tidur terlalu malam", "Waktu terbaik untuk tidur merupakan sebelum jam 22.00, begadang kelamaan mungkin menurunkan kekebalan tubuh dan mempercepat penuaan."),
-                  const SizedBox(height: 16),
-                  _buildAnalysisItem(Icons.battery_alert, AppColors.primaryBlue, "Kurang tidur", "Total waktu terbaik untuk tidur merupakan 7 sampai 9 jam, kurang tidur mungkin menurunkan kekebalan tubuh dan memperlambat mampu bereaksi."),
-                ],
-              ),
-            )
-          ],
-        ),
-      ),
-    );
-  }
-
-  // =========================================================================
-  // 2. UI REKAP DETAK JANTUNG
-  // =========================================================================
-  Widget _buildHeartRateSummary() {
-    int dataLength = _selectedTabIndex == 0 ? 50 : (_selectedTabIndex == 1 ? 100 : 150);
-    List<double> chartData = _generateHeartDummyData(dataLength);
-
-    double maxVal = chartData.reduce(max);
-    double minVal = chartData.reduce(min);
-    double avgVal = chartData.reduce((a, b) => a + b) / chartData.length;
-    double latestVal = chartData.last;
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            Container(
-              color: AppColors.primaryBlue,
-              padding: const EdgeInsets.only(top: 50, bottom: 20),
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20), onPressed: () => Navigator.pop(context)),
-                        const Text("Detak Jantung", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                        const Icon(Icons.share, color: Colors.white, size: 20),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
                     children: [
-                      _buildTopLineTab("7 Hari", 0),
-                      _buildTopLineTab("31 Hari", 1),
-                      _buildTopLineTab("12 Bulan", 2),
+                      Text("${minVal.toInt()}-${maxVal.toInt()}", style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.textDark)),
+                      const Text(" bpm", style: TextStyle(fontSize: 14, color: AppColors.textGrey, fontWeight: FontWeight.w600)),
                     ],
                   ),
-                  const SizedBox(height: 40),
-                  SizedBox(
-                    height: 180,
-                    width: double.infinity,
-                    child: CustomPaint(painter: HeartLineChartPainter(data: chartData)),
-                  ),
+                  const SizedBox(height: 4),
+                  const Text("Rentang denyut jantung", style: TextStyle(fontSize: 13, color: AppColors.textGrey)),
                 ],
               ),
-            ),
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-              child: Column(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
                     children: [
-                      const Icon(Icons.favorite, color: AppColors.alertRed, size: 36),
-                      const SizedBox(width: 8),
-                      Text(latestVal.toInt().toString(), style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, height: 1.0, color: AppColors.textDark)),
-                      const SizedBox(width: 12),
-                      const Expanded(child: Text("Status Normal\nkali/menit", style: TextStyle(fontSize: 13, color: AppColors.textGrey, height: 1.3))),
+                      Text("${latestVal.toInt()}", style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.textDark)),
+                      const Text(" bpm", style: TextStyle(fontSize: 14, color: AppColors.textGrey, fontWeight: FontWeight.w600)),
                     ],
                   ),
-                  const SizedBox(height: 30),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildStatColumn("Rata-rata", "${avgVal.toInt()}"),
-                      _buildStatColumn("Terendah", "${minVal.toInt()}"),
-                      _buildStatColumn("Tertinggi", "${maxVal.toInt()}"),
-                    ],
-                  ),
+                  const SizedBox(height: 4),
+                  Text("Terakhir diperbarui $updateTime", style: const TextStyle(fontSize: 13, color: AppColors.textGrey)),
                 ],
               ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.tune, color: AppColors.primaryBlue, size: 20),
-                      const SizedBox(width: 8),
-                      const Expanded(child: Text("Rentang denyut jantung", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textDark))),
-                      Icon(Icons.chevron_right, color: Colors.grey.shade400),
-                    ],
-                  ),
-                  const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(height: 1, color: AppColors.statusGreyBg)),
-                  _buildZoneItem("Rendah", "(< 60 kali/menit)", 10, const Color(0xFF64B5F6)),
-                  _buildZoneItem("Normal", "(60 - 100 kali/menit)", 85, AppColors.normalGreen),
-                  _buildZoneItem("Tinggi", "(> 100 kali/menit)", 5, AppColors.alertRed),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // =========================================================================
-  // 3. UI REKAP TEKANAN DARAH
-  // =========================================================================
-  Widget _buildBloodPressureSummary() {
-    int dataLength = _selectedTabIndex == 0 ? 50 : (_selectedTabIndex == 1 ? 100 : 150);
-    List<Map<String, double>> chartData = _generateBpDummyData(dataLength);
-
-    double latestSys = chartData.last['sys']!;
-    double latestDia = chartData.last['dia']!;
-
-    double avgSys = chartData.map((e) => e['sys']!).reduce((a, b) => a + b) / chartData.length;
-    double avgDia = chartData.map((e) => e['dia']!).reduce((a, b) => a + b) / chartData.length;
-
-    String status = (latestSys < 120 && latestDia < 80) ? "Normal" : "Tinggi";
-    Color statusColor = status == "Normal" ? AppColors.normalGreen : AppColors.alertRed;
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // --- BAGIAN ATAS ---
-            Container(
-              color: AppColors.primaryBlue,
-              padding: const EdgeInsets.only(top: 50, bottom: 20),
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20), onPressed: () => Navigator.pop(context)),
-                        const Text("Tekanan Darah", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                        const Icon(Icons.share, color: Colors.white, size: 20),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _buildTopLineTab("7 Hari", 0),
-                      _buildTopLineTab("31 Hari", 1),
-                      _buildTopLineTab("12 Bulan", 2),
-                    ],
-                  ),
-                  const SizedBox(height: 40),
-
-                  // Grafik 2 Garis (Sistolik & Diastolik)
-                  SizedBox(
-                    height: 180,
-                    width: double.infinity,
-                    child: CustomPaint(painter: BloodPressureChartPainter(data: chartData)),
-                  ),
-
-                  // Legenda Garis
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(width: 12, height: 3, color: Colors.white),
-                      const SizedBox(width: 6),
-                      const Text("Sistolik", style: TextStyle(color: Colors.white, fontSize: 12)),
-                      const SizedBox(width: 20),
-                      Container(width: 12, height: 3, color: AppColors.activeNavBg),
-                      const SizedBox(width: 6),
-                      const Text("Diastolik", style: TextStyle(color: Colors.white, fontSize: 12)),
-                    ],
-                  )
-                ],
-              ),
-            ),
-
-            // --- BAGIAN TENGAH ---
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-              child: Column(
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Icon(Icons.water_drop, color: statusColor, size: 36),
-                      const SizedBox(width: 8),
-                      Text("${latestSys.toInt()}/${latestDia.toInt()}", style: const TextStyle(fontSize: 42, fontWeight: FontWeight.bold, height: 1.0, color: AppColors.textDark)),
-                      const SizedBox(width: 12),
-                      Expanded(child: Text("Status $status\nmmHg", style: const TextStyle(fontSize: 13, color: AppColors.textGrey, height: 1.3))),
-                    ],
-                  ),
-                  const SizedBox(height: 30),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _buildStatColumn("Rata-rata Sistolik", "${avgSys.toInt()}"),
-                      _buildStatColumn("Rata-rata Diastolik", "${avgDia.toInt()}"),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // --- BAGIAN BAWAH: ZONA & ANALISIS ---
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.assessment, color: AppColors.primaryBlue, size: 20),
-                      const SizedBox(width: 8),
-                      const Expanded(child: Text("Kategori Tekanan Darah", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textDark))),
-                    ],
-                  ),
-                  const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(height: 1, color: AppColors.statusGreyBg)),
-                  _buildZoneItem("Normal", "(< 120 / < 80 mmHg)", status == "Normal" ? 100 : 0, AppColors.normalGreen),
-                  _buildZoneItem("Tinggi", "(≥ 120 / ≥ 80 mmHg)", status == "Tinggi" ? 100 : 0, AppColors.alertRed),
-
-                  const SizedBox(height: 24),
-                  _buildAnalysisItem(
-                      Icons.info_outline,
-                      AppColors.primaryBlue,
-                      "Informasi Medis",
-                      "Sistolik mengukur tekanan di pembuluh darah saat jantung berdetak. Diastolik mengukur tekanan di pembuluh darah saat jantung beristirahat di antara detak."
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ==========================================
-  // COMPONENT HELPERS
-  // ==========================================
-  Widget _buildTopLineTab(String title, int index) {
-    bool isSelected = _selectedTabIndex == index;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedTabIndex = index),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Column(
-          children: [
-            Text(title, style: TextStyle(color: isSelected ? Colors.white : Colors.white54, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 15)),
-            const SizedBox(height: 4),
-            if (isSelected) Container(width: 24, height: 3, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(2))),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPillTab(String title, int index) {
-    bool isSelected = _selectedTabIndex == index;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _selectedTabIndex = index),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: isSelected ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Center(
-            child: Text(
-              title,
-              style: TextStyle(
-                color: isSelected ? AppColors.primaryBlue : Colors.white,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatColumn(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: AppColors.textGrey, height: 1.4)),
-        const SizedBox(height: 8),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.textDark)),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildZoneItem(String title, String subtitle, int percentage, Color color) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color)),
-              const SizedBox(width: 4),
-              Text(subtitle, style: const TextStyle(fontSize: 12, color: AppColors.textGrey)),
             ],
           ),
-          const SizedBox(height: 8),
-          Stack(
-            children: [
-              Container(height: 4, width: double.infinity, decoration: BoxDecoration(color: AppColors.statusGreyBg, borderRadius: BorderRadius.circular(2))),
-              Container(height: 4, width: percentage > 0 ? (MediaQuery.of(context).size.width - 48) * (percentage / 100) : 4, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
-            ],
+          const SizedBox(height: 32),
+          Container(
+            height: 180,
+            width: double.infinity,
+            padding: const EdgeInsets.only(top: 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey.shade100),
+            ),
+            child: CustomPaint(painter: HeartLineChartPainter(data: chartData)),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSleepDetailItem(Color color, String label, String value) {
-    return SizedBox(
-      width: 140,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textDark)),
-          const SizedBox(height: 4),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(width: 8, height: 8, color: color),
-              const SizedBox(width: 6),
-              Flexible(child: Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textGrey), overflow: TextOverflow.ellipsis)),
-            ],
+          const SizedBox(height: 24),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF6F8FF),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.favorite, color: AppColors.alertRed, size: 20),
+                const SizedBox(width: 8),
+                Text("Rata-rata: ${avgVal.toInt()} bpm", style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.primaryBlue)),
+              ],
+            ),
           )
         ],
       ),
     );
   }
 
-  Widget _buildAnalysisItem(IconData icon, Color iconColor, String title, String desc) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(color: iconColor.withOpacity(0.1), shape: BoxShape.circle),
-          child: Icon(icon, color: iconColor, size: 16),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+  // ==========================================
+  // 2. UI REKAP TIDUR
+  // ==========================================
+  Widget _buildSleepSummary(List<WearableModel> data) {
+    // ✅ Urutkan data berdasarkan tanggal
+    data.sort((a, b) {
+      if (a.tglData == null || b.tglData == null) return 0;
+      return a.tglData!.compareTo(b.tglData!);
+    });
+
+    final validData = data.where((w) => w.sleepDuration > 0).toList();
+    if (validData.isEmpty) return _buildEmptyDataScreen('tidur');
+
+    // ✅ Hitung rata-rata atau total sesuai mode
+    int totalMinutes;
+    if (_selectedTabIndex == 0) {
+      // Mode Harian: tampilkan data terbaru
+      totalMinutes = validData.last.sleepDuration;
+    } else {
+      // Mode Mingguan/Bulanan: hitung rata-rata
+      totalMinutes = (validData.map((w) => w.sleepDuration).reduce((a, b) => a + b) / validData.length).round();
+    }
+
+    final hours = totalMinutes ~/ 60;
+    final minutes = totalMinutes % 60;
+
+    return _buildBaseScreen(
+      title: "Tidur",
+      dateLabel: _getDateLabel(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            _selectedTabIndex == 0 ? "Total Waktu Tidur" : "Rata-rata Waktu Tidur",
+            style: const TextStyle(fontSize: 14, color: AppColors.textGrey),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.textDark)),
-              const SizedBox(height: 4),
-              Text(desc, style: const TextStyle(color: AppColors.textGrey, fontSize: 12, height: 1.4)),
+              Text("$hours", style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: AppColors.textDark)),
+              const Text(" j ", style: TextStyle(fontSize: 18, color: AppColors.textGrey, fontWeight: FontWeight.w600)),
+              Text("$minutes", style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: AppColors.textDark)),
+              const Text(" m", style: TextStyle(fontSize: 18, color: AppColors.textGrey, fontWeight: FontWeight.w600)),
             ],
           ),
-        )
-      ],
+          const SizedBox(height: 40),
+          Container(
+            height: 200,
+            width: 80,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE5F0FA),
+              borderRadius: BorderRadius.circular(40),
+            ),
+            child: Stack(
+              alignment: Alignment.bottomCenter,
+              children: [
+                FractionallySizedBox(
+                  heightFactor: (totalMinutes / 480).clamp(0.1, 1.0),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryBlue,
+                      borderRadius: BorderRadius.circular(40),
+                      boxShadow: [
+                        BoxShadow(color: AppColors.primaryBlue.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4))
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 32),
+          Text(
+            totalMinutes >= 420 ? "Tidur Anda sudah cukup optimal." : "Waktu tidur Anda kurang dari anjuran.",
+            style: const TextStyle(fontSize: 14, color: AppColors.textGrey),
+          )
+        ],
+      ),
+    );
+  }
+
+  // ==========================================
+  // 3. UI REKAP TEKANAN DARAH
+  // ==========================================
+  Widget _buildBloodPressureSummary(List<WearableModel> data) {
+    // ✅ Urutkan data berdasarkan tanggal
+    data.sort((a, b) {
+      if (a.tglData == null || b.tglData == null) return 0;
+      return a.tglData!.compareTo(b.tglData!);
+    });
+
+    final validData = data.where((w) => w.sistolik > 0 && w.diastolik > 0).toList();
+    if (validData.isEmpty) return _buildEmptyDataScreen('tekanan darah');
+
+    // Data untuk grafik (urutan dari terlama ke terbaru)
+    final chartData = validData.map((w) => {
+      'sys': w.sistolik.toDouble(),
+      'dia': w.diastolik.toDouble()
+    }).toList();
+
+    // Data terbaru untuk tampilan
+    final latestData = validData.last; // ✅ Ambil data terakhir (terbaru)
+    double latestSys = latestData.sistolik.toDouble();
+    double latestDia = latestData.diastolik.toDouble();
+
+    double avgSys = chartData.map((e) => e['sys']!).reduce((a, b) => a + b) / chartData.length;
+    double avgDia = chartData.map((e) => e['dia']!).reduce((a, b) => a + b) / chartData.length;
+
+    String updateTime = latestData.waktuData?.substring(0, 5) ?? "--:--";
+
+    return _buildBaseScreen(
+      title: "Tekanan Darah",
+      dateLabel: _getDateLabel(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("Tekanan darah", style: TextStyle(fontSize: 13, color: AppColors.textGrey)),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text("${latestSys.toInt()}/${latestDia.toInt()}", style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.textDark)),
+              const Text(" mmHg", style: TextStyle(fontSize: 14, color: AppColors.textGrey, fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text("Terakhir diperbarui $updateTime", style: const TextStyle(fontSize: 12, color: AppColors.textGrey)),
+
+          const SizedBox(height: 32),
+
+          Container(
+            height: 180,
+            width: double.infinity,
+            padding: const EdgeInsets.only(top: 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey.shade100),
+            ),
+            child: CustomPaint(painter: BloodPressureChartPainter(data: chartData)),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Legenda
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text("● ", style: TextStyle(color: Color(0xFFE5A93D), fontSize: 14)),
+              const Text("Sistolik", style: TextStyle(color: AppColors.textGrey, fontSize: 13, fontWeight: FontWeight.w500)),
+              const SizedBox(width: 24),
+              const Text("● ", style: TextStyle(color: AppColors.primaryBlue, fontSize: 14)),
+              const Text("Diastolik", style: TextStyle(color: AppColors.textGrey, fontSize: 13, fontWeight: FontWeight.w500)),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF6F8FF),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  _selectedTabIndex == 0 ? "Tekanan darah saat ini" : "Tekanan darah rata-rata",
+                  style: const TextStyle(fontSize: 13, color: AppColors.textGrey),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text("${avgSys.toInt()}/${avgDia.toInt()}", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.primaryBlue)),
+                    const Text(" mmHg", style: TextStyle(fontSize: 13, color: AppColors.primaryBlue, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ],
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  // ==========================================
+  // WIDGET PEMBUNGKUS LAYAR (HEADER & TABS)
+  // ==========================================
+  Widget _buildBaseScreen({required String title, required String dateLabel, required Widget child}) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(icon: const Icon(Icons.arrow_back, color: AppColors.textDark), onPressed: () => Navigator.pop(context)),
+        title: Text(title, style: const TextStyle(color: AppColors.textDark, fontSize: 18, fontWeight: FontWeight.bold)),
+        centerTitle: false,
+        actions: const [Padding(padding: EdgeInsets.only(right: 16), child: Icon(Icons.more_vert, color: AppColors.textDark))],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Tab interaktif
+            Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(color: const Color(0xFFF0F2F5), borderRadius: BorderRadius.circular(24)),
+              child: Row(
+                children: [
+                  _buildInteractiveTab(0, "Hari"),
+                  _buildInteractiveTab(1, "Minggu"),
+                  _buildInteractiveTab(2, "Bulan"),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Navigasi tanggal dengan tombol interaktif
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Tombol Previous
+                GestureDetector(
+                  onTap: _goToPreviousDate,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F2F5),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.chevron_left, color: AppColors.textDark, size: 20),
+                  ),
+                ),
+                const SizedBox(width: 16),
+
+                // Label Tanggal
+                Text(
+                  dateLabel,
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textDark),
+                ),
+                const SizedBox(width: 16),
+
+                // Tombol Next
+                GestureDetector(
+                  onTap: _canGoNext ? _goToNextDate : null,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: _canGoNext ? const Color(0xFFF0F2F5) : Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.chevron_right,
+                      color: _canGoNext ? AppColors.textDark : Colors.grey.shade400,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 32),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Helper untuk membuat tab yang bisa ditekan
+  Widget _buildInteractiveTab(int index, String title) {
+    bool isSelected = _selectedTabIndex == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _selectedTabIndex = index;
+            // Reset ke tanggal hari ini saat ganti tab
+            _currentDate = _todayDate;
+          });
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: isSelected ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)] : [],
+          ),
+          child: Center(
+            child: Text(
+              title,
+              style: TextStyle(
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                color: isSelected ? AppColors.textDark : AppColors.textGrey,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // LAYAR DATA KOSONG
+  // ==========================================
+  Widget _buildEmptyDataScreen(String metric) {
+    String title;
+    IconData icon;
+
+    if (metric == 'tidur') {
+      title = 'Belum Ada Data Tidur';
+      icon = Icons.nightlight_round;
+    } else if (metric == 'tekanan darah') {
+      title = 'Belum Ada Data Tekanan Darah';
+      icon = Icons.water_drop;
+    } else {
+      title = 'Belum Ada Data Detak Jantung';
+      icon = Icons.favorite;
+    }
+
+    // ✅ Tampilkan informasi rentang tanggal yang dipilih
+    String dateInfo = _getDateLabel();
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(icon: const Icon(Icons.arrow_back, color: AppColors.textDark), onPressed: () => Navigator.pop(context)),
+      ),
+      body: Column(
+        children: [
+          // ✅ Tambahkan navigasi tab dan tanggal di halaman kosong
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                // Tab interaktif
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(color: const Color(0xFFF0F2F5), borderRadius: BorderRadius.circular(24)),
+                  child: Row(
+                    children: [
+                      _buildInteractiveTab(0, "Hari"),
+                      _buildInteractiveTab(1, "Minggu"),
+                      _buildInteractiveTab(2, "Bulan"),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Navigasi tanggal
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    GestureDetector(
+                      onTap: _goToPreviousDate,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF0F2F5),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.chevron_left, color: AppColors.textDark, size: 20),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Text(
+                      dateInfo,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textDark),
+                    ),
+                    const SizedBox(width: 16),
+                    GestureDetector(
+                      onTap: _canGoNext ? _goToNextDate : null,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: _canGoNext ? const Color(0xFFF0F2F5) : Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.chevron_right,
+                          color: _canGoNext ? AppColors.textDark : Colors.grey.shade400,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // Konten kosong di tengah
+          Expanded(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, size: 80, color: Colors.grey.shade300),
+                    const SizedBox(height: 24),
+                    Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textDark)),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Data aktivitas belum tersedia untuk rentang tanggal ini.\nCoba pilih tanggal lain atau pastikan jam tangan Anda telah terhubung.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: AppColors.textGrey, fontSize: 14, height: 1.5),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
 // =======================================================
-// PAINTER GRAFIK TEKANAN DARAH (2 GARIS)
+// PAINTER GRAFIK
 // =======================================================
+class HeartLineChartPainter extends CustomPainter {
+  final List<double> data;
+  HeartLineChartPainter({required this.data});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (data.isEmpty) return;
+
+    final gridPaint = Paint()..color = Colors.grey.shade200..strokeWidth = 1..style = PaintingStyle.stroke;
+    for (int label in [0, 50, 100, 150, 200]) {
+      double yPos = size.height - ((label / 200) * size.height);
+
+      final textPainter = TextPainter(
+          text: TextSpan(text: label.toString(), style: const TextStyle(color: AppColors.textGrey, fontSize: 10)),
+          textDirection: ui.TextDirection.ltr
+      )..layout();
+      textPainter.paint(canvas, Offset(8, yPos - 6));
+
+      canvas.drawLine(Offset(32, yPos), Offset(size.width, yPos), gridPaint);
+    }
+
+    final linePaint = Paint()
+      ..color = AppColors.primaryBlue
+      ..strokeWidth = 2.5
+      ..style = PaintingStyle.stroke
+      ..strokeJoin = StrokeJoin.round;
+
+    final path = Path();
+    double stepX = (size.width - 40) / (data.length > 1 ? data.length - 1 : 1);
+
+    for (int i = 0; i < data.length; i++) {
+      double x = 40 + (i * stepX);
+      double y = size.height - ((data[i] / 200) * size.height);
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    canvas.drawPath(path, linePaint);
+
+    // ✅ Tambahkan titik pada setiap data point
+    for (int i = 0; i < data.length; i++) {
+      double x = 40 + (i * stepX);
+      double y = size.height - ((data[i] / 200) * size.height);
+      canvas.drawCircle(
+          Offset(x, y),
+          4,
+          Paint()..color = AppColors.primaryBlue
+      );
+    }
+  }
+
+  @override bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
 class BloodPressureChartPainter extends CustomPainter {
   final List<Map<String, double>> data;
   BloodPressureChartPainter({required this.data});
@@ -608,45 +785,40 @@ class BloodPressureChartPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (data.isEmpty) return;
 
-    final gridPaint = Paint()
-      ..color = Colors.white.withOpacity(0.3)
-      ..strokeWidth = 1
-      ..style = PaintingStyle.stroke;
-
-    // Skala Y untuk Tekanan Darah (40 - 160)
-    List<int> yLabels = [40, 80, 120, 160];
-    for (int label in yLabels) {
+    final gridPaint = Paint()..color = Colors.grey.shade200..strokeWidth = 1..style = PaintingStyle.stroke;
+    for (int label in [40, 80, 120, 160]) {
       double yPos = size.height - (((label - 40) / 120) * size.height);
-      final textPainter = TextPainter(text: TextSpan(text: label.toString(), style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 10)), textDirection: ui.TextDirection.ltr)..layout();
-      textPainter.paint(canvas, Offset(16, yPos - 6));
-
-      double startX = 40;
-      while (startX < size.width - 16) {
-        canvas.drawLine(Offset(startX, yPos), Offset(startX + 4, yPos), gridPaint);
-        startX += 8;
-      }
+      final textPainter = TextPainter(
+          text: TextSpan(text: label.toString(), style: const TextStyle(color: AppColors.textGrey, fontSize: 10)),
+          textDirection: ui.TextDirection.ltr
+      )..layout();
+      textPainter.paint(canvas, Offset(8, yPos - 6));
+      canvas.drawLine(Offset(32, yPos), Offset(size.width, yPos), gridPaint);
     }
 
     final sysLinePaint = Paint()
-      ..color = Colors.white
-      ..strokeWidth = 2.0
+      ..color = const Color(0xFFE5A93D)
+      ..strokeWidth = 2.5
       ..style = PaintingStyle.stroke
       ..strokeJoin = StrokeJoin.round;
 
     final diaLinePaint = Paint()
-      ..color = AppColors.activeNavBg
-      ..strokeWidth = 2.0
+      ..color = AppColors.primaryBlue
+      ..strokeWidth = 2.5
       ..style = PaintingStyle.stroke
       ..strokeJoin = StrokeJoin.round;
 
     final sysPath = Path();
     final diaPath = Path();
-    double stepX = (size.width - 56) / (data.length - 1);
+    double stepX = (size.width - 40) / (data.length > 1 ? data.length - 1 : 1);
 
     for (int i = 0; i < data.length; i++) {
       double x = 40 + (i * stepX);
       double sysY = size.height - (((data[i]['sys']! - 40) / 120) * size.height);
       double diaY = size.height - (((data[i]['dia']! - 40) / 120) * size.height);
+
+      canvas.drawCircle(Offset(x, sysY), 4, Paint()..color = const Color(0xFFE5A93D));
+      canvas.drawCircle(Offset(x, diaY), 4, Paint()..color = AppColors.primaryBlue);
 
       if (i == 0) {
         sysPath.moveTo(x, sysY);
@@ -659,158 +831,7 @@ class BloodPressureChartPainter extends CustomPainter {
 
     canvas.drawPath(sysPath, sysLinePaint);
     canvas.drawPath(diaPath, diaLinePaint);
-
-    final xTextPainter1 = TextPainter(text: const TextSpan(text: "07:20", style: TextStyle(color: Colors.white70, fontSize: 10)), textDirection: ui.TextDirection.ltr)..layout();
-    final xTextPainter2 = TextPainter(text: const TextSpan(text: "13:45", style: TextStyle(color: Colors.white70, fontSize: 10)), textDirection: ui.TextDirection.ltr)..layout();
-    final xTextPainter3 = TextPainter(text: const TextSpan(text: "20:10", style: TextStyle(color: Colors.white70, fontSize: 10)), textDirection: ui.TextDirection.ltr)..layout();
-
-    xTextPainter1.paint(canvas, Offset(40, size.height + 8));
-    xTextPainter2.paint(canvas, Offset((size.width / 2) - 10, size.height + 8));
-    xTextPainter3.paint(canvas, Offset(size.width - 40, size.height + 8));
   }
 
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
-}
-
-// =======================================================
-// PAINTER GRAFIK DETAK JANTUNG (GARIS)
-// =======================================================
-class HeartLineChartPainter extends CustomPainter {
-  final List<double> data;
-  HeartLineChartPainter({required this.data});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (data.isEmpty) return;
-
-    final gridPaint = Paint()
-      ..color = Colors.white.withOpacity(0.3)
-      ..strokeWidth = 1
-      ..style = PaintingStyle.stroke;
-
-    List<int> yLabels = [0, 50, 100, 150, 200];
-    for (int label in yLabels) {
-      double yPos = size.height - ((label / 200) * size.height);
-      final textPainter = TextPainter(text: TextSpan(text: label.toString(), style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 10)), textDirection: ui.TextDirection.ltr)..layout();
-      textPainter.paint(canvas, Offset(16, yPos - 14));
-
-      double startX = 40;
-      while (startX < size.width - 16) {
-        canvas.drawLine(Offset(startX, yPos), Offset(startX + 4, yPos), gridPaint);
-        startX += 8;
-      }
-    }
-
-    final linePaint = Paint()
-      ..color = Colors.white
-      ..strokeWidth = 2.0
-      ..style = PaintingStyle.stroke
-      ..strokeJoin = StrokeJoin.round;
-
-    final path = Path();
-    double stepX = (size.width - 56) / (data.length - 1);
-
-    for (int i = 0; i < data.length; i++) {
-      double x = 40 + (i * stepX);
-      double y = size.height - ((data[i] / 200) * size.height);
-      if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
-    }
-    canvas.drawPath(path, linePaint);
-
-    final xTextPainter1 = TextPainter(text: const TextSpan(text: "07:20", style: TextStyle(color: Colors.white70, fontSize: 10)), textDirection: ui.TextDirection.ltr)..layout();
-    final xTextPainter2 = TextPainter(text: const TextSpan(text: "13:45", style: TextStyle(color: Colors.white70, fontSize: 10)), textDirection: ui.TextDirection.ltr)..layout();
-    final xTextPainter3 = TextPainter(text: const TextSpan(text: "20:10", style: TextStyle(color: Colors.white70, fontSize: 10)), textDirection: ui.TextDirection.ltr)..layout();
-
-    xTextPainter1.paint(canvas, Offset(40, size.height + 8));
-    xTextPainter2.paint(canvas, Offset((size.width / 2) - 10, size.height + 8));
-    xTextPainter3.paint(canvas, Offset(size.width - 40, size.height + 8));
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
-}
-
-// =======================================================
-// PAINTER GRAFIK TIDUR (KOTAK-KOTAK)
-// =======================================================
-enum SleepType { deep, light, rem, awake }
-
-class SleepSegment {
-  final double start;
-  final double end;
-  final SleepType type;
-  SleepSegment({required this.start, required this.end, required this.type});
-}
-
-class SleepChartPainter extends CustomPainter {
-  final List<SleepSegment> segments;
-  SleepChartPainter({required this.segments});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final double chartHeight = size.height - 30;
-    final double startX = 30;
-    final double endX = size.width - 30;
-    final double width = endX - startX;
-
-    final gridPaint = Paint()
-      ..color = Colors.white.withOpacity(0.2)
-      ..strokeWidth = 1
-      ..style = PaintingStyle.stroke;
-
-    canvas.drawLine(Offset(startX, chartHeight), Offset(endX, chartHeight), gridPaint);
-    canvas.drawLine(Offset(startX, chartHeight * 0.5), Offset(endX, chartHeight * 0.5), gridPaint);
-
-    for (var seg in segments) {
-      Color color;
-      double topY;
-
-      switch (seg.type) {
-        case SleepType.deep:
-          color = AppColors.primaryBlue;
-          topY = chartHeight * 0.6;
-          break;
-        case SleepType.light:
-          color = AppColors.activeNavBg;
-          topY = chartHeight * 0.3;
-          break;
-        case SleepType.rem:
-          color = AppColors.alertRed;
-          topY = chartHeight * 0.1;
-          break;
-        case SleepType.awake:
-          color = AppColors.errorRed;
-          topY = 0;
-          break;
-      }
-
-      final rect = Rect.fromLTRB(
-        startX + (seg.start * width),
-        topY,
-        startX + (seg.end * width),
-        chartHeight,
-      );
-
-      final paint = Paint()..color = color;
-      canvas.drawRect(rect, paint);
-    }
-
-    _drawText(canvas, "22:00", Offset(startX - 10, chartHeight + 10));
-    _drawText(canvas, "0:00", Offset(startX + (width * 0.25) - 10, chartHeight + 10));
-    _drawText(canvas, "2:00", Offset(startX + (width * 0.5) - 10, chartHeight + 10));
-    _drawText(canvas, "4:00", Offset(startX + (width * 0.75) - 10, chartHeight + 10));
-    _drawText(canvas, "6:00", Offset(endX - 10, chartHeight + 10));
-  }
-
-  void _drawText(Canvas canvas, String text, Offset offset) {
-    final textPainter = TextPainter(
-      text: TextSpan(text: text, style: const TextStyle(color: Colors.white70, fontSize: 10)),
-      textDirection: ui.TextDirection.ltr,
-    )..layout();
-    textPainter.paint(canvas, offset);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  @override bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }

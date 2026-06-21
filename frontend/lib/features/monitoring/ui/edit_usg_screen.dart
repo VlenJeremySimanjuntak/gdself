@@ -157,14 +157,64 @@ class _EditUsgScreenState extends ConsumerState<EditUsgScreen> {
     if (picked != null) setState(() => _selectedDate = picked);
   }
 
+  // ✅ FUNGSI PICK IMAGE BARU (Pop-up Galeri / Kamera)
   Future<void> _pickImage() async {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Wrap(
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: ListTile(
+                  leading: const Icon(Icons.photo_library_outlined, color: Color(0xFF00618A)),
+                  title: const Text('Pilih dari Galeri', style: TextStyle(fontWeight: FontWeight.w600)),
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    await _getImage(ImageSource.gallery);
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: ListTile(
+                  leading: const Icon(Icons.camera_alt_outlined, color: Color(0xFF00618A)),
+                  title: const Text('Ambil dari Kamera', style: TextStyle(fontWeight: FontWeight.w600)),
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    await _getImage(ImageSource.camera);
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ✅ FUNGSI EKSEKUSI KAMERA/GALERI UNTUK EDIT
+  Future<void> _getImage(ImageSource source) async {
     final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() {
-        _imageFile = File(pickedFile.path);
-        _isImageChanged = true;
-      });
+    try {
+      final pickedFile = await picker.pickImage(
+        source: source,
+        imageQuality: 80, // Kompres gambar agar tidak membebani server
+      );
+      if (pickedFile != null) {
+        setState(() {
+          _imageFile = File(pickedFile.path);
+          _isImageChanged = true; // ✅ Menandai bahwa foto diganti
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal mengambil gambar: $e')),
+      );
     }
   }
 

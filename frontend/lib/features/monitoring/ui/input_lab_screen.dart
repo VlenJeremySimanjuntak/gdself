@@ -164,7 +164,20 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
   }
 
   void _simpanDataLab() async {
+    // 1. Cek validasi form bawaan (untuk tanggal periksa)
     if (!_formKey.currentState!.validate()) return;
+
+    // 2. VALIDASI WAJIB: TSH dan FT4 Harus Diisi!
+    if (_tshValCtrl.text.isEmpty || _ft4ValCtrl.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Gagal disimpan! Parameter TSH dan FT4 wajib diisi."),
+          backgroundColor: AppColors.errorRed,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return; // Hentikan proses simpan
+    }
 
     final user = ref.read(userProvider).user;
     if (user == null) return;
@@ -219,16 +232,6 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
       });
     }
 
-    if (parameters.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Mohon isi minimal satu hasil lab (TSH, FT4, FT3, atau TRAb)."),
-          backgroundColor: AppColors.errorRed,
-        ),
-      );
-      return;
-    }
-
     final payload = {
       "id_user": user.idUser,
       "tgl_periksa": _dateController.text,
@@ -274,7 +277,7 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
               const Text("Tambah Data Hormon", style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: AppColors.textDark)),
               const SizedBox(height: 8),
               const Text(
-                "Masukkan hasil laboratorium terbaru Anda untuk memantau perkembangan kesehatan tiroid secara berkala. (Pilih setidaknya satu hormon)",
+                "Masukkan hasil laboratorium terbaru Anda. (Data parameter TSH dan FT4 wajib diisi)",
                 style: TextStyle(fontSize: 13, color: AppColors.textGrey, height: 1.5),
               ),
               const SizedBox(height: 24),
@@ -282,13 +285,14 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
               _buildMainCard(),
               const SizedBox(height: 16),
               _buildHormoneSection(
-                title: "TSH",
-                sub: "Thyroid Stimulating Hormone",
+                title: "TSHs",
+                sub: "Thyroid Stimulating Hormone-sensitive",
                 valCtrl: _tshValCtrl,
                 minCtrl: _tshMinCtrl,
                 maxCtrl: _tshMaxCtrl,
                 selectedUnit: _selectedUnitTSH,
                 onUnitChanged: (newUnit) => setState(() => _selectedUnitTSH = newUnit!),
+                isRequired: true, // 👈 Tandai sebagai wajib
               ),
               const SizedBox(height: 16),
               _buildHormoneSection(
@@ -299,6 +303,7 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
                 maxCtrl: _ft4MaxCtrl,
                 selectedUnit: _selectedUnitFT4,
                 onUnitChanged: (newUnit) => setState(() => _selectedUnitFT4 = newUnit!),
+                isRequired: true, // 👈 Tandai sebagai wajib
               ),
               const SizedBox(height: 16),
               _buildHormoneSection(
@@ -309,6 +314,7 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
                 maxCtrl: _ft3MaxCtrl,
                 selectedUnit: _selectedUnitFT3,
                 onUnitChanged: (newUnit) => setState(() => _selectedUnitFT3 = newUnit!),
+                isRequired: false,
               ),
               const SizedBox(height: 16),
               _buildTrabSection(),
@@ -406,6 +412,7 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
     required TextEditingController maxCtrl,
     required String selectedUnit,
     required ValueChanged<String?> onUnitChanged,
+    bool isRequired = false, // 👈 Parameter baru untuk bintang merah
   }) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -420,7 +427,20 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textDark)),
+              // 👈 Tampilkan bintang merah jika wajib diisi
+              RichText(
+                text: TextSpan(
+                  text: title,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textDark),
+                  children: [
+                    if (isRequired)
+                      const TextSpan(
+                        text: ' *',
+                        style: TextStyle(color: AppColors.errorRed),
+                      ),
+                  ],
+                ),
+              ),
               Text(sub, style: const TextStyle(fontSize: 10, color: AppColors.textGrey)),
             ],
           ),

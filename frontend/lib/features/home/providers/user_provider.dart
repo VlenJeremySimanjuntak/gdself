@@ -4,9 +4,6 @@ import '../../../models/user_model.dart';
 import '../../../services/api_service.dart';
 import '../../../services/google_auth_service.dart';
 
-// ----------------------------------------------------------------
-// State
-// ----------------------------------------------------------------
 class AuthState {
   final bool isLoading;
   final UserModel? user;
@@ -25,25 +22,22 @@ class AuthState {
     UserModel? user,
     String? errorMessage,
     bool clearError = false,
-    bool clearUser  = false,
+    bool clearUser = false,
   }) {
     return AuthState(
-      isLoading:    isLoading ?? this.isLoading,
-      user:         clearUser  ? null : (user ?? this.user),
+      isLoading: isLoading ?? this.isLoading,
+      user: clearUser ? null : (user ?? this.user),
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
     );
   }
 }
 
-// ----------------------------------------------------------------
-// Notifier (Riverpod v2/v3 style)
-// ----------------------------------------------------------------
 class UserNotifier extends Notifier<AuthState> {
   @override
-  AuthState build() {
-    // Restore session saat pertama kali provider dibuat
-    Future.microtask(() => restoreSession());
-    return const AuthState();
+  AuthState build() => const AuthState();
+
+  void setUser(UserModel user) {
+    state = AuthState(user: user);
   }
 
   Future<bool> login(String email, String password) async {
@@ -58,35 +52,83 @@ class UserNotifier extends Notifier<AuthState> {
     }
   }
 
-  // 👇 METHOD BARU UNTUK GOOGLE SIGN-IN
-  Future<bool> loginWithGoogle() async {
+  /// Return: 'success' | 'new_user' | 'error'
+  /// Kalau 'new_user', caller harus buka GoogleCompleteRegisterScreen
+  Future<Map<String, dynamic>> loginWithGoogle() async {
     state = state.copyWith(isLoading: true, clearError: true);
-
     try {
-      // 1. Ambil ID Token dari Google
       final googleService = GoogleAuthService();
       final idToken = await googleService.signIn();
 
-      // Jika user menutup pop-up akun Google (batal memilih)
       if (idToken == null) {
         state = state.copyWith(isLoading: false, errorMessage: "Google Sign-In dibatalkan.");
-        return false;
+        return {'status': 'cancelled'};
       }
 
-      // 2. Kirim token tersebut ke backend Golang melalui ApiService
-      final user = await ApiService().loginWithGoogle(idToken);
+      // Cek ke backend apakah user sudah ada atau belum
+      final result = await ApiService().googleCheck(idToken);
+      final bool isNewUser = result['is_new_user'] ?? false;
 
-      // 3. Update state menjadi sukses login
+      if (isNewUser) {
+        // User baru — kembalikan data Google untuk pre-fill form
+        state = state.copyWith(isLoading: false);
+        return {
+          'status': 'new_user',
+          'id_token': idToken,
+          'google_email': result['google_email'] ?? '',
+          'google_name': result['google_name'] ?? '',
+          'google_photo': result['google_photo'] ?? '',
+        };
+      }
+
+      // User sudah ada — login langsung
+      // Backend sudah return token di response googleCheck untuk existing user
+      final token = result['token'] ?? '';
+      final userData = result['user'];
+
+      if (token.isNotEmpty && userData != null) {
+        final user = UserModel.fromJson(userData as Map<String, dynamic>);
+        // Simpan token dan user ke storage
+        await ApiService().saveSessionFromGoogle(token, user);
+        state = AuthState(user: user);
+        return {'status': 'success'};
+      }
+
+      state = state.copyWith(isLoading: false, errorMessage: "Gagal login dengan Google.");
+      return {'status': 'error'};
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: "Gagal masuk dengan Google: ${e.toString()}",
+      );
+      return {'status': 'error'};
+    }
+  }
+
+  /// Selesaikan registrasi Google user baru
+  Future<bool> completeGoogleRegister({
+    required String idToken,
+    required String password,
+    required String jenisKelamin,
+    String? tglLahir,
+    String? tglTerdiagnosis,
+  }) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final user = await ApiService().googleComplete(
+        idToken: idToken,
+        password: password,
+        jenisKelamin: jenisKelamin,
+        tglLahir: tglLahir,
+        tglTerdiagnosis: tglTerdiagnosis,
+      );
       state = AuthState(user: user);
       return true;
-
     } catch (e) {
-      // Tangkap error jika validasi token di backend gagal atau masalah jaringan
-      state = state.copyWith(isLoading: false, errorMessage: "Gagal masuk dengan Google: ${e.toString()}");
+      state = AuthState(errorMessage: e.toString());
       return false;
     }
   }
-  // 👆 BATAS METHOD BARU
 
   Future<bool> register({
     required String nama,
@@ -99,11 +141,11 @@ class UserNotifier extends Notifier<AuthState> {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final user = await ApiService().register(
-        nama:            nama,
-        email:           email,
-        password:        password,
-        jenisKelamin:    jenisKelamin,
-        tglLahir:        tglLahir,
+        nama: nama,
+        email: email,
+        password: password,
+        jenisKelamin: jenisKelamin,
+        tglLahir: tglLahir,
         tglTerdiagnosis: tglTerdiagnosis,
       );
       state = AuthState(user: user);
@@ -115,20 +157,10 @@ class UserNotifier extends Notifier<AuthState> {
   }
 
   Future<void> logout() async {
-    // 1. Hapus token dari memori lokal / secure storage
-    // authService.logout() atau hapus shared preferences Anda
-
-    // 👇 2. TAMBAHKAN BARIS INI UNTUK LOGOUT DARI GOOGLE
+    await ApiService().logout();
     final GoogleSignIn googleSignIn = GoogleSignIn();
-    await googleSignIn.signOut(); // Ini yang akan mereset ingatan Google
-
-    // 3. Arahkan user kembali ke halaman Login
-  }
-
-  Future<void> restoreSession() async {
-    state = state.copyWith(isLoading: true);
-    final hasSession = await ApiService().restoreSession();
-    state = state.copyWith(isLoading: false, clearUser: !hasSession);
+    await googleSignIn.signOut();
+    state = const AuthState();
   }
 
   void clearError() {
@@ -138,9 +170,6 @@ class UserNotifier extends Notifier<AuthState> {
   }
 }
 
-// ----------------------------------------------------------------
-// Provider
-// ----------------------------------------------------------------
 final userProvider = NotifierProvider<UserNotifier, AuthState>(
   UserNotifier.new,
 );

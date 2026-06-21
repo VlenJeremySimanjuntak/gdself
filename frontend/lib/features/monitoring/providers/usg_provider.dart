@@ -6,13 +6,13 @@ import '../../../models/usg_tiroid_model.dart';
 import '../../../services/api_service.dart';
 
 // ==========================================
-// STATE (Sekarang mendukung penyimpanan data model)
+// STATE
 // ==========================================
 class UsgState {
   final bool isLoading;
   final String? errorMessage;
   final bool isSuccess;
-  final UsgTiroidModel? usgData; // Menyimpan data hasil kembalian dari server
+  final UsgTiroidModel? usgData;
 
   const UsgState({
     this.isLoading = false,
@@ -57,18 +57,19 @@ class UsgNotifier extends Notifier<UsgState> {
       final apiService = ApiService();
       String fileName = imageFile.path.split('/').last;
 
-      // 👇 FE MENYESUAIKAN: Kunci form-data wajib HURUF KECIL SEMUA agar terbaca oleh c.Bind Go
+      // ✅ DISESUAIKAN: Menggunakan snake_case agar seragam dengan fungsi Update/Edit
+      // dan standar binding form pada Golang
+      // Di usg_provider.dart
       FormData formData = FormData.fromMap({
-        "idriwayat": idRiwayat,
-        "namars": namaRs,
-        "tglpemeriksaan": DateFormat('yyyy-MM-dd').format(tglPemeriksaan),
-        "catatandokter": catatanDokter,
+        "id_riwayat": idRiwayat,
+        "nama_rs": namaRs,
+        "tgl_pemeriksaan": DateFormat('yyyy-MM-dd').format(tglPemeriksaan),
+        "catatan_dokter": catatanDokter,
         "foto": await MultipartFile.fromFile(imageFile.path, filename: fileName),
       });
 
-      // Kirim request ke backend menggunakan instance Dio dari ApiService
       final response = await apiService.sendRequest.post(
-        '/usg-tiroid',
+        '/usg-tiroid', // Pastikan endpoint ini sesuai!
         data: formData,
       );
 
@@ -89,7 +90,7 @@ class UsgNotifier extends Notifier<UsgState> {
       return false;
 
     } on DioException catch (e) {
-      String errorMsg = e.response?.data?['error'] ?? e.message ?? 'Terjadi kesalahan';
+      String errorMsg = e.response?.data?['error'] ?? e.message ?? 'Terjadi kesalahan jaringan';
       state = state.copyWith(isLoading: false, errorMessage: errorMsg);
       return false;
     } catch (e) {

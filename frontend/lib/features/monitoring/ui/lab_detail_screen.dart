@@ -113,7 +113,7 @@ class _LabDetailScreenState extends ConsumerState<LabDetailScreen> {
                 _buildGeneralInfoCard(namaLab, tgl),
                 const SizedBox(height: 16),
 
-                _buildHormoneCard("TSH", "Thyroid Stimulating Hormone", _getParamData("TSH")),
+                _buildHormoneCard("TSHs", "Thyroid Stimulating Hormone", _getParamData("TSH")),
                 const SizedBox(height: 16),
                 _buildHormoneCard("FT4", "Free Thyroxine", _getParamData("FT4")),
                 const SizedBox(height: 16),

@@ -4,14 +4,14 @@ import 'package:gdself/features/home/ui/tambah_obat_screen.dart';
 import 'package:gdself/features/home/ui/wearable_summary_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
-import 'package:health/health.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
+import 'package:health/health.dart';
 
 import '../../../models/hasil_ai_harian_model.dart';
 import '../../../models/lab_data_model.dart';
 import '../../../models/obat_model.dart';
 import '../../../models/wearable_model.dart';
-import '../../../models/hasil_ai_gabungan_model.dart';
 import '../../riwayat/ui/riwayat_screen.dart';
 import '../../education/ui/education_screen.dart';
 import '../../home/providers/home_provider.dart';
@@ -19,6 +19,7 @@ import '../../home/providers/user_provider.dart';
 import '../../monitoring/ui/monitoring_screen.dart';
 import '../../../utils/design_system.dart';
 import '../../profil/ui/profile_screen.dart';
+import '../providers/wearable_provider.dart';
 import 'jadwal_obat_screen.dart';
 import 'edit_obat_screen.dart';
 import 'wearable_sync_screen.dart';
@@ -32,17 +33,24 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObserver {
   int _selectedIndex = 0;
-  bool _isDisconnected = false;
+  bool _isDisconnected = true; // Default awal terputus sebelum dicek
+  bool _isSyncing = false;
+  final _healthChannel = const MethodChannel('com.example.gdself/health_connect');
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _cekStatusKoneksi();
-    final userId = ref.read(userProvider).user?.idUser;
-    if (userId != null) {
-      Future.microtask(() => ref.read(homeProvider.notifier).fetchAll(userId));
-    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      final userId = ref.read(userProvider).user?.idUser;
+      if (userId != null && mounted) {
+        ref.read(homeProvider.notifier).fetchAll(userId);
+      }
+      _cekStatusKoneksi();
+    });
   }
 
   @override
@@ -58,28 +66,62 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     }
   }
 
+  // ===========================================================================
+  // ✅ REFACTORING LOGIKA KONEKSI (Hanya Berpatokan pada Keputusan User)
+  // ===========================================================================
   Future<void> _cekStatusKoneksi() async {
+    // Cek status dulu TANPA tunggu _isSyncing
     final Health health = Health();
-    health.configure();
+    final types = [
+      HealthDataType.HEART_RATE,
+      HealthDataType.SLEEP_SESSION,
+      HealthDataType.BLOOD_PRESSURE_SYSTOLIC,
+      HealthDataType.BLOOD_PRESSURE_DIASTOLIC,
+    ];
+    final permissions = [
+      HealthDataAccess.READ,
+      HealthDataAccess.READ,
+      HealthDataAccess.READ,
+      HealthDataAccess.READ,
+    ];
 
-    final types = [HealthDataType.HEART_RATE, HealthDataType.SLEEP_SESSION];
-    final permissions = [HealthDataAccess.READ, HealthDataAccess.READ];
-
-    bool hasRealPermissions = false;
+    // ✅ Cek izin real ke Android
+    bool hasPermissions = false;
     try {
-      hasRealPermissions =
-          await health.hasPermissions(types, permissions: permissions) ?? false;
+      hasPermissions = await health.hasPermissions(types, permissions: permissions) ?? false;
     } catch (_) {
-      hasRealPermissions = false;
+      hasPermissions = false;
     }
 
+    // ✅ Simpan ke SharedPreferences dan update UI
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('is_wearable_disconnected', !hasRealPermissions);
+    await prefs.setBool('is_wearable_disconnected', !hasPermissions);
 
     if (!mounted) return;
     setState(() {
-      _isDisconnected = !hasRealPermissions;
+      _isDisconnected = !hasPermissions;
     });
+
+    // Auto-sync hanya jika terhubung dan tidak sedang sync
+    if (hasPermissions && !_isSyncing) {
+      _isSyncing = true;
+      try {
+        final userId = ref.read(userProvider).user?.idUser;
+        if (userId != null) {
+          debugPrint("🔄 Auto-Sync berjalan...");
+          bool syncStatus = await ref
+              .read(wearableProvider.notifier)
+              .syncRealWearableData(userId);
+
+          if (mounted && syncStatus) {
+            debugPrint("✨ Ada data baru! Me-refresh Beranda...");
+            await ref.read(homeProvider.notifier).fetchAll(userId);
+          }
+        }
+      } finally {
+        _isSyncing = false;
+      }
+    }
   }
 
   Future<void> _setDisconnectState(bool value) async {
@@ -93,7 +135,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
 
   Future<void> _refresh() async {
     await _cekStatusKoneksi();
-
     if (!mounted) return;
 
     final userId = ref.read(userProvider).user?.idUser;
@@ -102,85 +143,60 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     }
   }
 
+  // ===========================================================================
+  // ✅ REFACTORING DIALOG LEPAS AKSES (Lebih Bersih)
+  // ===========================================================================
+  // ✅ Kembalikan dialog yang buka Health Connect Settings
   void _showLepasAksesDialog(BuildContext context) {
     showDialog(
       context: context,
-      barrierDismissible: false,
       builder: (BuildContext context) {
-        bool isVerifying = false;
-
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: const Text('Lepaskan Akses Perangkat', style: TextStyle(fontWeight: FontWeight.bold)),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Untuk keamanan, Anda perlu mencabut izin akses GdSelf di pengaturan sistem.',
-                    style: TextStyle(fontSize: 14, color: Colors.black54),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildStep("1. Buka Pengaturan > Privasi > Health Connect."),
-                  _buildStep("2. Pilih aplikasi GdSelf."),
-                  _buildStep("3. Matikan izin Akses Data."),
-                ],
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: const Text('Lepaskan Akses', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: const Text(
+            'Anda akan diarahkan ke halaman izin Health Connect. Silakan nonaktifkan izin untuk GdSelf di sana.',
+            style: TextStyle(fontSize: 14, color: Colors.black54, height: 1.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Batal', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFD9534F),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Batal'),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF005680)),
-                  onPressed: isVerifying ? null : () async {
-                    setDialogState(() => isVerifying = true);
-
-                    final Health health = Health();
-                    health.configure();
-                    await health.requestAuthorization([HealthDataType.HEART_RATE, HealthDataType.SLEEP_SESSION]);
-
-                    await Future.delayed(const Duration(seconds: 2));
-
-                    bool masihAdaIzin = await health.hasPermissions(
-                      [HealthDataType.HEART_RATE, HealthDataType.SLEEP_SESSION],
-                      permissions: [HealthDataAccess.READ, HealthDataAccess.READ],
-                    ) ?? false;
-
-                    if (!masihAdaIzin) {
-                      await _setDisconnectState(true);
-                      if (context.mounted) Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Akses berhasil dilepaskan!')));
-                    } else {
-                      setDialogState(() => isVerifying = false);
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Izin masih aktif, silakan matikan manual.')));
-                    }
-                  },
-                  child: isVerifying
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Text('Saya Sudah Matikan', style: TextStyle(color: Colors.white)),
-                ),
-              ],
-            );
-          },
+              onPressed: () async {
+                Navigator.pop(context);
+                await _bukaHealthConnectSettings(); // ✅ Buka settings, biarkan resumed yang handle
+              },
+              child: const Text('Buka Pengaturan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
         );
       },
     );
   }
 
-  Widget _buildStep(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.check_circle_outline, size: 18, color: Colors.blueGrey),
-          const SizedBox(width: 8),
-          Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
-        ],
-      ),
-    );
+// ✅ Kembalikan fungsi ini
+  Future<void> _bukaHealthConnectSettings() async {
+    try {
+      await _healthChannel.invokeMethod('openHealthConnectSettings');
+      // Tidak perlu delay atau cek di sini
+      // didChangeAppLifecycleState(resumed) yang akan handle saat user kembali
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Gagal membuka Health Connect. Buka manual dari Pengaturan > Aplikasi > Health Connect.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -218,6 +234,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     final laporan = state.laporanTerbaru;
     final wearable = state.wearableTerbaru;
     final String namaUser = user?.nama ?? '-';
+    final int userId = user?.idUser ?? user?.id ?? 0;
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -259,6 +276,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       ).then((_) => _refresh());
     }
 
+    // ===========================================================================
+    // ✅ KEMBALI DARI HALAMAN SINKRONISASI (Paksa status Connected)
+    // ===========================================================================
     Future<void> onHubungkanPerangkat() async {
       final result = await Navigator.push(
         context,
@@ -267,9 +287,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
 
       if (!mounted) return;
 
+      // Jika user berhasil memberi izin (walaupun datanya kosong)
       if (result == true) {
         await _setDisconnectState(false);
-        _refresh();
+
+        // Panggil fetchAll agar kartu indikator (HR, Tidur) merender angka 0 / Kosong
+        final userId = ref.read(userProvider).user?.idUser;
+        if (userId != null) {
+          await ref.read(homeProvider.notifier).fetchAll(userId);
+        }
       }
     }
 
@@ -419,7 +445,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                       'Aktivitas',
                       style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: Color(0xFF263238)),
                     ),
-                    if (wearable != null && !_isDisconnected)
+                    if (!_isDisconnected)
                       PopupMenuButton<String>(
                         icon: const Icon(Icons.more_vert, color: Color(0xFF6B7280)),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -443,15 +469,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                 ),
                 const SizedBox(height: 18),
 
-                _buildWearablesSection(
+                if (_isDisconnected)
+                  _emptyWearableCard(onHubungkanPerangkat)
+                else
+                // Jika terhubung tapi wearable kosong, kirim nilai default 0
+                  _buildWearablesSection(
                     wearable ?? WearableModel(
                       idWearable: 0,
-                      idUser: 0,
-                      heartRateRHR: 78,
-                      sleepDuration: 26500,
-                      hasilAI: [],
-                    )
-                ),
+                      idRiwayat: null,
+                      idUser: userId,
+                      tglData: null,
+                      waktuData: null,
+                      heartRateRHR: 0,
+                      sleepDuration: 0,
+                      sistolik: 0,
+                      diastolik: 0,
+                      hasilAI: const [],
+                    ),
+                    userId,
+                  ),
               ],
             ),
           ],
@@ -465,6 +501,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     (user?.nama != null && (user!.nama as String).isNotEmpty)
         ? (user.nama as String)[0].toUpperCase()
         : '?';
+
+    final String? avatarUrl = user?.fotoProfil;
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -482,15 +520,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
             ),
           ],
         ),
-        CircleAvatar(
-          radius: 18,
-          backgroundColor: const Color(0xFFE3ECF7),
-          child: Text(
-            initial,
-            style: const TextStyle(
-                color: Color(0xFF334155),
-                fontWeight: FontWeight.w700,
-                fontSize: 14),
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              _selectedIndex = 4;
+            });
+          },
+          child: CircleAvatar(
+            radius: 18,
+            backgroundColor: const Color(0xFFE3ECF7),
+            backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty
+                ? NetworkImage(avatarUrl)
+                : null,
+            child: avatarUrl == null || avatarUrl.isEmpty
+                ? Text(
+              initial,
+              style: const TextStyle(
+                  color: Color(0xFF334155),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14),
+            )
+                : null,
           ),
         ),
       ],
@@ -516,6 +566,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     final tshLab = getHasilLab('TSH');
     final ft3Lab = getHasilLab('FT3');
     final ft4Lab = getHasilLab('FT4');
+    final trabLab = getHasilLab('TRAB');
 
     int getStatusLevel(HasilLabModel? hasil) {
       if (hasil == null) return -2;
@@ -527,20 +578,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     int tshStatus = getStatusLevel(tshLab);
     int ft3Status = getStatusLevel(ft3Lab);
     int ft4Status = getStatusLevel(ft4Lab);
+    int trabStatus = getStatusLevel(trabLab);
 
     String displayStatus = 'Tidak Diketahui';
 
     if (laporan == null || laporan.hasilLab.isEmpty) {
       displayStatus = 'Belum Ada';
     } else {
-      if (tshStatus == 0 && ft3Status == 0 && ft4Status == 0) {
+      if (tshStatus == -1 || tshStatus == 1 ||
+          ft4Status == -1 || ft4Status == 1 ||
+          trabStatus == 1) {
+        displayStatus = 'Belum normal';
+      }
+      else if (tshStatus == 0 && (ft4Status == 0 || ft4Status == -2)) {
         displayStatus = 'Normal';
-      } else if (tshStatus == -1 && ft3Status == 1 && ft4Status == 1) {
-        displayStatus = 'Belum normal';
-      } else if (tshStatus == -1 && ft3Status == 1 && ft4Status == 0) {
-        displayStatus = 'Belum normal';
-      } else if (tshStatus == -1 && ft3Status == 0 && ft4Status == 1) {
-        displayStatus = 'Belum normal';
+      }
+      else {
+        displayStatus = 'Diproses';
       }
     }
 
@@ -552,16 +606,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         idParameter: 0,
         idHasilLab: 0,
         namaParameter: name,
-        nilaiHasil: 0.0, // PERBAIKAN: nilai → nilaiHasil
+        nilaiHasil: 0.0,
         satuan: defaultSatuan,
         kategori: null,
       );
     }
 
     final metrics = [
-      getParamOrDefault(tshLab, 'TSH', 'mIU/L'),
-      getParamOrDefault(ft3Lab, 'FT3', 'pmol/L'),
-      getParamOrDefault(ft4Lab, 'FT4', 'pmol/L'),
+      getParamOrDefault(tshLab, 'TSHs', 'uIU/mL'),
+      getParamOrDefault(ft4Lab, 'FT4', 'ng/dL'),
+      getParamOrDefault(ft3Lab, 'FT3', 'pg/mL'),
+      getParamOrDefault(trabLab, 'TRAb', 'IU/L'),
     ];
 
     final lastDate = laporan?.tglPeriksa ?? DateTime.now();
@@ -630,7 +685,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                 return Expanded(
                   child: Padding(
                     padding: EdgeInsets.only(
-                        right: index == metrics.length - 1 ? 0 : 12),
+                        right: index == metrics.length - 1 ? 0 : 8),
                     child: _buildStatusMetricCard(param),
                   ),
                 );
@@ -644,37 +699,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
 
   Widget _buildStatusMetricCard(ParameterLabModel param) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.12),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(param.namaParameter,
               style: const TextStyle(
                   color: Colors.white70,
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: FontWeight.w500)),
           const SizedBox(height: 8),
-          Text(param.nilaiHasil.toStringAsFixed(1), // PERBAIKAN: nilai → nilaiHasil
+          Text(param.nilaiHasil.toStringAsFixed(1),
               style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 24,
+                  fontSize: 20,
                   fontWeight: FontWeight.bold,
                   height: 1)),
           const SizedBox(height: 4),
           Text(param.satuan ?? '',
-              style: const TextStyle(color: Colors.white70, fontSize: 11)),
+              style: const TextStyle(color: Colors.white70, fontSize: 10)),
         ],
       ),
     );
   }
-
-  // --- Sisa widget (emptyMedicationCard, buildMedicationCard, wearable cards, dll.) sama persis seperti sebelumnya ---
-  // Karena tidak ada perubahan, saya singkat dengan placeholder agar tidak terlalu panjang.
-  // Namun untuk kode lengkap, saya tetap sertakan di bawah ini.
 
   Widget _emptyMedicationCard(VoidCallback onCardPressed, VoidCallback onButtonPressed) {
     return Column(
@@ -980,8 +1031,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
   }
 
   Widget _buildAIInsightCard(HasilAIHarianModel? aiData) {
-    final String pesan = aiData?.pesanHarian ??
-        "Sedang menganalisis pola aktivitas harian Anda. Menunggu data sinkronisasi lebih lanjut.";
+    List<String> kumpulanReminder = [];
+
+    if (aiData != null) {
+      if (aiData.reminderHr != null &&
+          aiData.reminderHr!.isNotEmpty &&
+          aiData.reminderHr != '-') {
+        kumpulanReminder.add(aiData.reminderHr!);
+      }
+
+      if (aiData.reminderTd != null &&
+          aiData.reminderTd!.isNotEmpty &&
+          aiData.reminderTd != '-') {
+        kumpulanReminder.add(aiData.reminderTd!);
+      }
+
+      if (aiData.reminderTidur != null &&
+          aiData.reminderTidur!.isNotEmpty &&
+          aiData.reminderTidur != '-') {
+        kumpulanReminder.add(aiData.reminderTidur!);
+      }
+    }
+
+    final String pesanFinal = kumpulanReminder.isNotEmpty
+        ? kumpulanReminder.join(" ")
+        : "Sedang menganalisis pola aktivitas harian Anda. Menunggu data sinkronisasi lebih lanjut.";
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -1043,7 +1117,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
           ),
           const SizedBox(height: 16),
           Text(
-            pesan,
+            pesanFinal,
             style: const TextStyle(
                 color: Color(0xFF4B5563), fontSize: 13, height: 1.5),
           ),
@@ -1052,7 +1126,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     );
   }
 
-  Widget _buildWearablesSection(WearableModel wearable) {
+  Widget _buildWearablesSection(WearableModel wearable, int userId) {
     int sleepPercentInt = 0;
     String sleepTime = '-';
     String sleepStatus;
@@ -1064,11 +1138,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       sleepBadgeBg = const Color(0xFFF3F4F6);
       sleepBadgeText = const Color(0xFF6B7280);
     } else {
-      final double goalInMinutes = 8 * 60; // 480 menit
+      final double goalInMinutes = 8 * 60;
       final percent = (wearable.sleepDuration / goalInMinutes).clamp(0.0, 1.0);
+      sleepPercentInt = (percent * 100).toInt();
       final hours = wearable.sleepDuration ~/ 60;
       final minutes = wearable.sleepDuration % 60;
-      sleepTime = '${hours}j ${minutes}m Deep Sleep';
+      sleepTime = '${hours}j ${minutes}m Tidur';
 
       if (sleepPercentInt >= 85) {
         sleepStatus = 'Cukup';
@@ -1089,6 +1164,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     final String hrStatus;
     final Color hrBadgeBg;
     final Color hrBadgeText;
+
     if (hr == 0) {
       hrStatus = 'Tidak Ada Data';
       hrBadgeBg = const Color(0xFFF3F4F6);
@@ -1107,10 +1183,41 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       hrBadgeText = const Color(0xFFC0392B);
     }
 
-    final String bpStatus = 'Normal';
-    final Color bpBadgeBg = const Color(0xFF8DF0A8);
-    final Color bpBadgeText = const Color(0xFF064E3B);
-    final String bpValue = "120/80";
+    // ✅ Hitung status BP dari data real
+    final int sistolik = wearable.sistolik;
+    final int diastolik = wearable.diastolik;
+
+    final String bpStatus;
+    final Color bpBadgeBg;
+    final Color bpBadgeText;
+    final String bpValue;
+
+    if (sistolik == 0 || diastolik == 0) {
+      bpStatus = 'Tidak Ada Data';
+      bpBadgeBg = const Color(0xFFF3F4F6);
+      bpBadgeText = const Color(0xFF6B7280);
+      bpValue = '-/-';
+    } else if (sistolik < 90 || diastolik < 60) {
+      bpStatus = 'Rendah';
+      bpBadgeBg = const Color(0xFFFEF3C7);
+      bpBadgeText = const Color(0xFF92400E);
+      bpValue = '$sistolik/$diastolik';
+    } else if (sistolik <= 120 && diastolik <= 80) {
+      bpStatus = 'Normal';
+      bpBadgeBg = const Color(0xFF8DF0A8);
+      bpBadgeText = const Color(0xFF064E3B);
+      bpValue = '$sistolik/$diastolik';
+    } else if (sistolik <= 139 || diastolik <= 89) {
+      bpStatus = 'Tinggi';
+      bpBadgeBg = const Color(0xFFFEF3C7);
+      bpBadgeText = const Color(0xFF92400E);
+      bpValue = '$sistolik/$diastolik';
+    } else {
+      bpStatus = 'Sangat Tinggi';
+      bpBadgeBg = const Color(0xFFFADBD8);
+      bpBadgeText = const Color(0xFFC0392B);
+      bpValue = '$sistolik/$diastolik';
+    }
 
     final aiData = wearable.hasilAI.isNotEmpty ? wearable.hasilAI.last : null;
 
@@ -1124,12 +1231,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
           iconBgColor: const Color(0xFFFCF3F2),
           iconColor: const Color(0xFFD9534F),
           statusTag: _statusBadge(hrStatus, hrBadgeBg, hrBadgeText),
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WearableSummaryScreen(metricType: 'Detak Jantung'))),
+          onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => WearableSummaryScreen(
+                    metricType: 'detak jantung',
+                    userId: userId,
+                  )
+              )
+          ),
           bottomContent: Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text('$hr', style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w800, color: Color(0xFF1F2937))),
+              Text(hr == 0 ? '-' : '$hr', style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w800, color: Color(0xFF1F2937))),
               const SizedBox(width: 6),
               const Text('BPM', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF6B7280))),
             ],
@@ -1138,12 +1253,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         const SizedBox(height: 16),
 
         _buildActivityBaseCard(
-          title: 'Tidur',
+          title: 'Waktu Tidur',
           icon: PhosphorIcons.moon(PhosphorIconsStyle.regular),
           iconBgColor: const Color(0xFFEDF4FC),
           iconColor: const Color(0xFF2C5282),
           statusTag: _statusBadge(sleepStatus, sleepBadgeBg, sleepBadgeText),
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WearableSummaryScreen(metricType: 'Tidur'))),
+          onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => WearableSummaryScreen(
+                    metricType: 'tidur',
+                    userId: userId,
+                  )
+              )
+          ),
           bottomContent: Row(
             children: [
               SizedBox(
@@ -1175,7 +1298,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
           iconBgColor: const Color(0xFFEAF5EF),
           iconColor: const Color(0xFF2E7D32),
           statusTag: _statusBadge(bpStatus, bpBadgeBg, bpBadgeText),
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WearableSummaryScreen(metricType: 'Tekanan Darah'))),
+          onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => WearableSummaryScreen(
+                    metricType: 'tekanan darah',
+                    userId: userId,
+                  )
+              )
+          ),
           bottomContent: Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
@@ -1225,8 +1356,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                   child: Text(title, style: const TextStyle(fontSize: 16, color: Color(0xFF6B7280), fontWeight: FontWeight.w500)),
                 ),
                 statusTag,
-                const SizedBox(width: 8),
-                const Icon(Icons.chevron_right_rounded, color: Colors.grey),
               ],
             ),
             const SizedBox(height: 20),

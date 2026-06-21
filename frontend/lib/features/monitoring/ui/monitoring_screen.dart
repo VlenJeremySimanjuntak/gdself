@@ -63,6 +63,7 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     final double screenWidth = MediaQuery.of(context).size.width;
     final monitorState = ref.watch(monitoringProvider);
     final homeState = ref.watch(homeProvider);
+    final user = ref.watch(userProvider).user;
 
     List<Map<String, dynamic>> currentData = monitorState.history[_selectedTab] ?? [];
     bool hasLabDataForTab = currentData.isNotEmpty;
@@ -80,6 +81,10 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ✅ TAMBAHKAN: Logo dan Foto Profil
+            _buildTopHeader(user),
+            const SizedBox(height: 24),
+
             _buildHeaderTitle(),
             const SizedBox(height: 24),
 
@@ -114,7 +119,7 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
 
             const SizedBox(height: 40),
 
-            // ── Section Hasil USG Tiroid (tanpa titik 3) ──
+            // ── Section Hasil USG Tiroid ──
             _buildSectionHeaderWithoutMenu("Hasil USG Tiroid"),
             const SizedBox(height: 16),
 
@@ -151,7 +156,50 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  // ── Header ──────────────────────────────────────────────────────────
+  // ✅ TAMBAHKAN: Widget Logo & Foto Profil (sama seperti HomeScreen)
+  Widget _buildTopHeader(dynamic user) {
+    final String initial =
+    (user?.nama != null && (user!.nama as String).isNotEmpty)
+        ? (user.nama as String)[0].toUpperCase()
+        : '?';
+
+    final String? avatarUrl = user?.fotoProfil;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        // Logo dan teks
+        Row(
+          children: [
+            Image.asset(
+              'assets/images/graves-logo.png',
+              width: 28,
+              height: 28,
+              errorBuilder: (context, error, stackTrace) {
+                return const Icon(
+                  Icons.medical_services,
+                  color: AppColors.primaryBlue,
+                  size: 28,
+                );
+              },
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              "Graves disease",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: AppColors.primaryBlue,
+                fontSize: 18,
+              ),
+            ),
+          ],
+        ),
+
+      ],
+    );
+  }
+
+  // ── Header Title ──────────────────────────────────────────────────────
   Widget _buildHeaderTitle() {
     return const Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -173,7 +221,7 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  // ── Section Header USG (tanpa menu) ───────────────────────────────
+  // ── Section Header USG (tanpa menu) ───────────────────────────────────
   Widget _buildSectionHeaderWithoutMenu(String title) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -184,12 +232,11 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
                 fontWeight: FontWeight.w900,
                 color: Color(0xFF1E293B),
                 letterSpacing: -0.5)),
-        // Tidak ada ikon more_vert
       ],
     );
   }
 
-  // ── Chart Card ───────────────────────────────────────────────────────
+  // ── Chart Card ─────────────────────────────────────────────────────────
   Widget _buildChartCard(double width, bool hasData, List<Map<String, dynamic>> currentData) {
     String latestDate = '';
     if (currentData.isNotEmpty) {
@@ -295,7 +342,7 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  // ── Chart Empty ──────────────────────────────────────────────────────
+  // ── Chart Empty ────────────────────────────────────────────────────────
   Widget _buildChartEmptyContent() {
     return Center(
       child: Column(
@@ -333,7 +380,7 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  // ── Chart Content ────────────────────────────────────────────────────
+  // ── Chart Content ──────────────────────────────────────────────────────
   Widget _buildChartContent(double width, List<Map<String, dynamic>> currentData) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -415,7 +462,7 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  // ── Tab Selector ─────────────────────────────────────────────────────
+  // ── Tab Selector ───────────────────────────────────────────────────────
   Widget _buildTabSelector(double width) {
     return Row(
       children: ["TSHs", "FT4", "FT3", "TRAb"].map((tab) {
@@ -443,7 +490,7 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  // ── USG Empty Card ───────────────────────────────────────────────────
+  // ── USG Empty Card ─────────────────────────────────────────────────────
   Widget _buildUsgEmptyStateCard() {
     return Container(
       width: double.infinity,
@@ -483,7 +530,7 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  // ── USG Filled Card (dengan tombol Detail) ──────────────────────────
+  // ── USG Filled Card ────────────────────────────────────────────────────
   Widget _buildFilledUsgCard(UsgTiroidModel usg) {
     final String tanggal = usg.tglPemeriksaan != null
         ? DateFormat('dd MMMM yyyy', 'id_ID').format(usg.tglPemeriksaan!)
@@ -592,7 +639,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
                     ),
                   ),
                 ] else ...[
-                  // Preview teks
                   Text(
                     deskripsi,
                     maxLines: 3,
@@ -603,20 +649,18 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
                         height: 1.5,
                         fontWeight: FontWeight.w500),
                   ),
-                  // Tampilkan "Detail >" jika teks panjang
                   if (deskripsi.length > 100) ...[
                     const SizedBox(height: 8),
                     Align(
                       alignment: Alignment.centerRight,
                       child: GestureDetector(
                         onTap: () {
-                          // ✅ Navigasi ke halaman detail USG dengan mengirim usgData
                           Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (_) => UsgDetailScreen(
                                 usgId: usg.idUsg!,
-                                usgData: usg, // ✅ kirim data
+                                usgData: usg,
                               ),
                             ),
                           );
@@ -651,7 +695,7 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  // ── Action Button ────────────────────────────────────────────────────
+  // ── Action Button ──────────────────────────────────────────────────────
   Widget _buildActionButton(
       {required IconData icon, required String label, required VoidCallback onPressed}) {
     return ElevatedButton.icon(
@@ -668,7 +712,7 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  // ── Alert Card (AI) ──────────────────────────────────────────────────
+  // ── Alert Card (AI) ────────────────────────────────────────────────────
   Widget _buildAlertCard(HasilAIGabunganModel? aiResult, String selectedTab) {
     if (aiResult == null) {
       return _buildBaseAlertCard(
@@ -762,7 +806,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     return _buildBaseAlertCard("Lonjakan Hormon", statusLabel, statusColor, bgColor, deskripsi);
   }
 
-  // ✅ Desain Base Card yang super bersih
   Widget _buildBaseAlertCard(String title, String statusLabel, Color statusColor, Color bgColor, String deskripsi) {
     return Container(
       padding: const EdgeInsets.all(20),

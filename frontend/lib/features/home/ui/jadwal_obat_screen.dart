@@ -7,10 +7,8 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../models/obat_model.dart';
 import '../../home/providers/home_provider.dart';
 import '../../home/providers/user_provider.dart';
-import '../providers/obat_provider.dart';
 import 'detail_obat_screen.dart';
 import 'tambah_obat_screen.dart';
-import 'edit_obat_screen.dart';
 
 class JadwalObatScreen extends ConsumerStatefulWidget {
   const JadwalObatScreen({super.key});
@@ -22,8 +20,6 @@ class JadwalObatScreen extends ConsumerStatefulWidget {
 class _JadwalObatScreenState extends ConsumerState<JadwalObatScreen> {
   String _searchQuery = '';
   int _selectedTab = 0;
-  bool _isSelectionMode = false;
-  final Set<int> _selectedObatIds = {};
   late ScrollController _scrollController;
   bool _isScrolled = false;
 
@@ -58,17 +54,6 @@ class _JadwalObatScreenState extends ConsumerState<JadwalObatScreen> {
     }
   }
 
-  void _toggleSelection(int idObat) {
-    setState(() {
-      if (_selectedObatIds.contains(idObat)) {
-        _selectedObatIds.remove(idObat);
-        if (_selectedObatIds.isEmpty) _isSelectionMode = false;
-      } else {
-        _selectedObatIds.add(idObat);
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final homeState = ref.watch(homeProvider);
@@ -81,33 +66,12 @@ class _JadwalObatScreenState extends ConsumerState<JadwalObatScreen> {
         elevation: _isScrolled ? 1 : 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF006699)),
-          onPressed: () {
-            if (_isSelectionMode) {
-              setState(() {
-                _isSelectionMode = false;
-                _selectedObatIds.clear();
-              });
-            } else {
-              Navigator.pop(context);
-            }
-          },
+          onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
           "Jadwal Obat",
           style: TextStyle(color: Color(0xFF006699), fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        actions: [
-          if (_isSelectionMode)
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _isSelectionMode = false;
-                  _selectedObatIds.clear();
-                });
-              },
-              child: const Text("Batalkan", style: TextStyle(color: Color(0xFFE53935), fontWeight: FontWeight.w700)),
-            )
-        ],
       ),
       body: Stack(
         children: [
@@ -148,33 +112,13 @@ class _JadwalObatScreenState extends ConsumerState<JadwalObatScreen> {
           ),
         ],
       ),
-      floatingActionButtonLocation: _isSelectionMode && _selectedObatIds.isNotEmpty
-          ? FloatingActionButtonLocation.centerFloat
-          : FloatingActionButtonLocation.endFloat,
-      floatingActionButton: _isSelectionMode && _selectedObatIds.isNotEmpty
-          ? SizedBox(
-        height: 50,
-        child: ElevatedButton(
-          onPressed: () => _showDeleteConfirmation(context),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFC62828),
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.delete_outline, size: 20),
-              const SizedBox(width: 8),
-              Text("Hapus (${_selectedObatIds.length})", style: const TextStyle(fontWeight: FontWeight.bold)),
-            ],
-          ),
-        ),
-      )
-          : ElevatedButton.icon(
+      floatingActionButton: ElevatedButton.icon(
         onPressed: () async {
-          final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => const TambahObatScreen()));
-          if (result != null) await _refresh();
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const TambahObatScreen()),
+          );
+          if (result != null && mounted) await _refresh();
         },
         icon: Icon(PhosphorIcons.plusCircle(PhosphorIconsStyle.regular), size: 20),
         label: const Text("Tambah Obat", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
@@ -241,7 +185,15 @@ class _JadwalObatScreenState extends ConsumerState<JadwalObatScreen> {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: _selectedTab == 0 ? [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 4, offset: const Offset(0, 2))] : [],
                 ),
-                child: Center(child: Text("Sedang Dikonsumsi", style: TextStyle(color: _selectedTab == 0 ? const Color(0xFF1F2937) : Colors.grey.shade600, fontWeight: _selectedTab == 0 ? FontWeight.w600 : FontWeight.normal))),
+                child: Center(
+                  child: Text(
+                    "Sedang Dikonsumsi",
+                    style: TextStyle(
+                      color: _selectedTab == 0 ? const Color(0xFF1F2937) : Colors.grey.shade600,
+                      fontWeight: _selectedTab == 0 ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -255,7 +207,15 @@ class _JadwalObatScreenState extends ConsumerState<JadwalObatScreen> {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: _selectedTab == 1 ? [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 4, offset: const Offset(0, 2))] : [],
                 ),
-                child: Center(child: Text("Rekapan Obat", style: TextStyle(color: _selectedTab == 1 ? const Color(0xFF1F2937) : Colors.grey.shade600, fontWeight: _selectedTab == 1 ? FontWeight.w600 : FontWeight.normal))),
+                child: Center(
+                  child: Text(
+                    "Rekapan Obat",
+                    style: TextStyle(
+                      color: _selectedTab == 1 ? const Color(0xFF1F2937) : Colors.grey.shade600,
+                      fontWeight: _selectedTab == 1 ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -393,124 +353,93 @@ class _JadwalObatScreenState extends ConsumerState<JadwalObatScreen> {
     );
   }
 
-  // 👇 DESAIN KAPSUL FULL (Rounded 40) seperti di gambar
   Widget _buildMedicationItem(BuildContext context, ObatModel obat, List<String> times, List<JadwalObatModel> allJadwal) {
-    final isSelected = _selectedObatIds.contains(obat.idObat);
-
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-      child: Row(
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: _isSelectionMode ? 40 : 0,
-            child: _isSelectionMode
-                ? Checkbox(
-              value: isSelected,
-              activeColor: const Color(0xFF4285F4),
-              shape: const CircleBorder(),
-              onChanged: (bool? value) => _toggleSelection(obat.idObat),
-            ) : const SizedBox.shrink(),
-          ),
-          Expanded(
-            child: GestureDetector(
-              onLongPress: () {
-                if (!_isSelectionMode) {
-                  setState(() {
-                    _isSelectionMode = true;
-                    _selectedObatIds.add(obat.idObat);
-                  });
-                }
-              },
-              onTap: () {
-                if (_isSelectionMode) {
-                  _toggleSelection(obat.idObat);
-                } else {
-                  final daysSet = <String>{};
-                  for (var j in allJadwal) {
-                    if (j.hari != null) daysSet.addAll(j.hari!.split(',').map((e) => e.trim()));
-                  }
+      child: GestureDetector(
+        onTap: () {
+          final daysSet = <String>{};
+          for (var j in allJadwal) {
+            if (j.hari != null) daysSet.addAll(j.hari!.split(',').map((e) => e.trim()));
+          }
 
-                  if (_selectedTab == 0) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DetailObatScreen(
-                          jadwal: allJadwal.first,
-                          times: times,
-                          days: daysSet.toList(),
-                        ),
-                      ),
-                    ).then((_) => _refresh());
-                  } else {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => RekapObatScreen(
-                          jadwal: allJadwal.first,
-                          times: times,
-                        ),
-                      ),
-                    ).then((_) => _refresh());
-                  }
-                }
-              },
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFFF0F4FA) : Colors.white,
-                  borderRadius: BorderRadius.circular(40), // Bentuk Kapsul Sempurna
-                  border: Border.all(
-                      color: isSelected ? const Color(0xFF4285F4) : const Color(0xFF00695C),
-                      width: 1.5
-                  ), // Border hijau melingkari seluruh kartu
-                  boxShadow: [
-                    BoxShadow(
-                        color: const Color(0xFF00695C).withOpacity(0.15), // Efek glow hijau halus di bawah
-                        blurRadius: 15,
-                        offset: const Offset(0, 6)
-                    )
-                  ],
+          if (_selectedTab == 0) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => DetailObatScreen(
+                  jadwal: allJadwal.first,
+                  times: times,
+                  days: daysSet.toList(),
                 ),
-                child: Row(
+              ),
+            ).then((result) {
+              if (result == true && mounted) _refresh();
+            });
+          } else {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => RekapObatScreen(
+                  jadwal: allJadwal.first,
+                  times: times,
+                ),
+              ),
+            ).then((result) {
+              if (result == true && mounted) _refresh();
+            });
+          }
+        },
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(40),
+            border: Border.all(color: const Color(0xFF00695C), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF00695C).withOpacity(0.15),
+                blurRadius: 15,
+                offset: const Offset(0, 6),
+              )
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: const BoxDecoration(color: Color(0xFFE8F5E9), shape: BoxShape.circle),
+                child: Icon(PhosphorIcons.pill(PhosphorIconsStyle.regular), color: const Color(0xFF00695C), size: 26),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: const BoxDecoration(color: Color(0xFFE8F5E9), shape: BoxShape.circle),
-                      child: Icon(PhosphorIcons.pill(PhosphorIconsStyle.regular), color: const Color(0xFF00695C), size: 26),
+                    Text(
+                      obat.namaObat,
+                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF101828), letterSpacing: -0.3),
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                              obat.namaObat,
-                              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF101828), letterSpacing: -0.3)
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                              "${obat.dosis ?? '-'}    ${obat.frekuensi ?? '-'}",
-                              style: const TextStyle(color: Colors.grey, fontSize: 13, fontWeight: FontWeight.w500)
-                          ),
-                          const SizedBox(height: 12),
-                          if (times.isNotEmpty)
-                            Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: times.map((t) => _buildTimeChip(t)).toList()
-                            )
-                          else
-                            Text('Belum ada jam', style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
-                        ],
-                      ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "${obat.dosis ?? '-'}    ${obat.frekuensi ?? '-'}",
+                      style: const TextStyle(color: Colors.grey, fontSize: 13, fontWeight: FontWeight.w500),
                     ),
+                    const SizedBox(height: 12),
+                    if (times.isNotEmpty)
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: times.map((t) => _buildTimeChip(t)).toList(),
+                      )
+                    else
+                      Text('Belum ada jam', style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
                   ],
                 ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -522,26 +451,6 @@ class _JadwalObatScreenState extends ConsumerState<JadwalObatScreen> {
       child: Text(time, style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF4B5563), fontSize: 12)),
     );
   }
-
-  void _showDeleteConfirmation(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Hapus Obat', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Text('Yakin ingin menghapus ${_selectedObatIds.length} obat?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal', style: TextStyle(color: Colors.grey))),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFC62828)),
-            child: const Text('Hapus', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _GlowBubble extends StatelessWidget {
@@ -551,6 +460,13 @@ class _GlowBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(width: size, height: size, decoration: BoxDecoration(shape: BoxShape.circle, gradient: RadialGradient(colors: [color, color.withOpacity(0.0)])));
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(colors: [color, color.withOpacity(0.0)]),
+      ),
+    );
   }
 }

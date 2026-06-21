@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:health/health.dart';
-import 'package:huawei_health/huawei_health.dart';
 import 'package:dio/dio.dart';
 import '../../../services/api_service.dart';
+import '../../../models/wearable_model.dart'; // ✅ WAJIB ADA
 
 // =======================================================
 // 1. STATE CLASS
@@ -12,25 +12,29 @@ import '../../../services/api_service.dart';
 class WearableState {
   final bool isLoading;
   final String? errorMessage;
+  final List<WearableModel> wearableData; // ✅ DIKEMBALIKAN
 
   const WearableState({
     this.isLoading = false,
     this.errorMessage,
+    this.wearableData = const [],
   });
 
   WearableState copyWith({
     bool? isLoading,
     String? errorMessage,
+    List<WearableModel>? wearableData,
   }) {
     return WearableState(
       isLoading: isLoading ?? this.isLoading,
-      errorMessage: errorMessage,
+      errorMessage: errorMessage, // Jika null, error akan hilang saat sukses
+      wearableData: wearableData ?? this.wearableData,
     );
   }
 }
 
 // =======================================================
-// 2. NOTIFIER — Riverpod v2 (Notifier)
+// 2. NOTIFIER
 // =======================================================
 class WearableNotifier extends Notifier<WearableState> {
   final _apiService = ApiService();
@@ -39,39 +43,82 @@ class WearableNotifier extends Notifier<WearableState> {
   WearableState build() => const WearableState();
 
   // =====================================================
-  // MESIN 1: HEALTH CONNECT (Google / Default Android)
+  // METHOD: FETCH WEARABLE DATA (DIKEMBALIKAN UTUH)
+  // =====================================================
+  Future<void> fetchWearableData(int userId) async {
+    state = state.copyWith(isLoading: true, errorMessage: null);
+
+    try {
+      final response = await _apiService.get('/wearable/user/$userId');
+
+      if (response.data['data'] != null && response.data['data'] is List) {
+        final List<dynamic> data = response.data['data'];
+        final List<WearableModel> wearableList = data
+            .map((json) => WearableModel.fromJson(json as Map<String, dynamic>))
+            .toList();
+
+        state = state.copyWith(isLoading: false, wearableData: wearableList);
+      } else {
+        state = state.copyWith(isLoading: false, wearableData: [], errorMessage: 'Data wearable belum tersedia');
+      }
+    } catch (e) {
+      state = state.copyWith(isLoading: false, wearableData: [], errorMessage: 'Belum ada data aktivitas');
+    }
+  }
+
+  Future<void> fetchWearableDataByDateRange(int userId, DateTime startDate, DateTime endDate) async {
+    state = state.copyWith(isLoading: true, errorMessage: null);
+
+    try {
+      final formattedStart = startDate.toIso8601String().split('T').first;
+      final formattedEnd = endDate.toIso8601String().split('T').first;
+
+      final response = await _apiService.get(
+        '/wearable/user/$userId?start_date=$formattedStart&end_date=$formattedEnd',
+      );
+
+      if (response.data['data'] != null) {
+        final List<dynamic> data = response.data['data'];
+        final List<WearableModel> wearableList = data
+            .map((json) => WearableModel.fromJson(json as Map<String, dynamic>))
+            .toList();
+
+        state = state.copyWith(isLoading: false, wearableData: wearableList);
+      } else {
+        state = state.copyWith(isLoading: false, wearableData: [], errorMessage: 'Data tidak ditemukan');
+      }
+    } catch (e) {
+      state = state.copyWith(isLoading: false, wearableData: [], errorMessage: 'Gagal memuat data');
+    }
+  }
+
+  Future<WearableModel?> getLatestWearableData(int userId) async {
+    try {
+      final response = await _apiService.get('/wearable/user/$userId/latest');
+      if (response.data['data'] != null) {
+        return WearableModel.fromJson(response.data['data'] as Map<String, dynamic>);
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // =====================================================
+  // ✅ METHOD: SYNC DATA (KHUSUS MENGAMBIL DATA SETELAH IZIN DI UI)
   // =====================================================
   Future<bool> syncRealWearableData(int userId) async {
     state = state.copyWith(isLoading: true, errorMessage: null);
 
     final Health health = Health();
-    health.configure();
-
-    final types = [HealthDataType.HEART_RATE, HealthDataType.SLEEP_SESSION];
-    final permissions = [HealthDataAccess.READ, HealthDataAccess.READ];
+    final types = [
+      HealthDataType.HEART_RATE,
+      HealthDataType.SLEEP_SESSION,
+      HealthDataType.BLOOD_PRESSURE_SYSTOLIC,
+      HealthDataType.BLOOD_PRESSURE_DIASTOLIC,
+    ];
 
     try {
-      // 1. CEK IZIN (Tahap ini harus dipisah)
-      bool hasPermissions = await health.hasPermissions(types, permissions: permissions) ?? false;
-
-      if (!hasPermissions) {
-        debugPrint("⚠️ Izin belum diberikan, meminta izin sekarang...");
-        bool requested = await health.requestAuthorization(types, permissions: permissions);
-        if (!requested) {
-          state = state.copyWith(
-              isLoading: false,
-              errorMessage: "Izin akses kesehatan ditolak. Mohon aktifkan izin di pengaturan agar kami bisa mengambil data."
-          );
-          return false;
-        }
-        // Cek ulang setelah request
-        hasPermissions = await health.hasPermissions(types, permissions: permissions) ?? false;
-        if (!hasPermissions) {
-          state = state.copyWith(isLoading: false, errorMessage: "Izin akses tetap tidak tersedia.");
-          return false;
-        }
-      }
-
       final now = DateTime.now();
       final startTime = now.subtract(const Duration(hours: 24));
 
@@ -81,170 +128,60 @@ class WearableNotifier extends Notifier<WearableState> {
         types: types,
       );
 
-      // 3. VALIDASI DATA KOSONG (Beda dengan izin ditolak)
       if (healthData.isEmpty) {
-        debugPrint("ℹ️ Izin aktif, tapi tidak ada data dalam 24 jam terakhir.");
         state = state.copyWith(
-            isLoading: false,
-            errorMessage: "Izin aktif, namun tidak ditemukan data aktivitas baru di Health Connect dalam 24 jam terakhir. Silakan sinkronkan jam tangan Anda."
+          isLoading: false,
+          errorMessage: "Tidak ditemukan data aktivitas baru dalam 24 jam terakhir.",
         );
         return false;
       }
 
-      // 4. LOGIKA PERHITUNGAN DATA
-      int totalHR = 0;
-      int countHR = 0;
-      int totalSleepMinutes = 0;
+      int totalHR = 0, countHR = 0, totalSleepMinutes = 0;
+      int totalSistolik = 0, countSistolik = 0;
+      int totalDiastolik = 0, countDiastolik = 0;
+
+      // ✅ Ambil timestamp dari Health Connect untuk jadi acuan waktu_data
+      DateTime? waktuDataHC; // Timestamp data terbaru dari Health Connect
 
       for (var point in healthData) {
-        if (point.type == HealthDataType.HEART_RATE) {
-          if (point.value is NumericHealthValue) {
-            final hrValue = point.value as NumericHealthValue;
-            totalHR += hrValue.numericValue.toInt();
-            countHR++;
+        if (point.type == HealthDataType.HEART_RATE && point.value is NumericHealthValue) {
+          totalHR += (point.value as NumericHealthValue).numericValue.toInt();
+          countHR++;
+
+          // ✅ Ambil dateFrom dari data HR sebagai waktu_data
+          // (HR adalah data paling representatif untuk timestamp)
+          if (waktuDataHC == null || point.dateFrom.isAfter(waktuDataHC)) {
+            waktuDataHC = point.dateFrom;
           }
+
         } else if (point.type == HealthDataType.SLEEP_SESSION) {
-          final duration = point.dateTo.difference(point.dateFrom).inMinutes;
-          totalSleepMinutes += duration;
+          totalSleepMinutes += point.dateTo.difference(point.dateFrom).inMinutes;
+
+        } else if (point.type == HealthDataType.BLOOD_PRESSURE_SYSTOLIC && point.value is NumericHealthValue) {
+          totalSistolik += (point.value as NumericHealthValue).numericValue.toInt();
+          countSistolik++;
+
+        } else if (point.type == HealthDataType.BLOOD_PRESSURE_DIASTOLIC && point.value is NumericHealthValue) {
+          totalDiastolik += (point.value as NumericHealthValue).numericValue.toInt();
+          countDiastolik++;
         }
       }
 
       final int finalHR = countHR > 0 ? (totalHR ~/ countHR) : 0;
       final int finalSleepSeconds = totalSleepMinutes * 60;
-      const int finalStress = 0; // Fallback jika tidak didukung langsung oleh Health Connect
+      final int finalSistolik = countSistolik > 0 ? (totalSistolik ~/ countSistolik) : 0;
+      final int finalDiastolik = countDiastolik > 0 ? (totalDiastolik ~/ countDiastolik) : 0;
 
-      // 5. KIRIM KE BACKEND
-      return await _sendDataToBackend(userId, finalHR, finalStress, finalSleepSeconds);
+      // ✅ Fallback ke waktu sekarang jika tidak ada data HR sama sekali
+      waktuDataHC ??= now;
+
+      return await _sendDataToBackend(
+        userId, finalHR, finalSleepSeconds, finalSistolik, finalDiastolik,
+        waktuDataHC, // ✅ Kirim timestamp dari Health Connect
+      );
 
     } catch (e) {
-      debugPrint("❌ Error sistem: $e");
-      state = state.copyWith(isLoading: false, errorMessage: "Terjadi kesalahan sistem saat menarik data Health Connect.");
-      return false;
-    }
-  }
-
-  // =====================================================
-  // MESIN 2: SAMSUNG HEALTH
-  // =====================================================
-  Future<bool> syncSamsungHealthData(int userId) async {
-    state = state.copyWith(isLoading: true, errorMessage: null);
-    try {
-      debugPrint("📱 Samsung Health → menarik via Health Connect...");
-      return await syncRealWearableData(userId);
-    } catch (e) {
-      debugPrint("❌ Error Samsung Health: $e");
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage:
-        "Gagal membaca data Samsung Health. "
-            "Pastikan Samsung Health sudah tersinkron ke Health Connect.",
-      );
-      return false;
-    }
-  }
-
-  // =====================================================
-  // MESIN 3: HUAWEI HEALTH
-  // =====================================================
-  Future<bool> syncHuaweiHealthData(int userId) async {
-    state = state.copyWith(isLoading: true, errorMessage: null);
-
-    try {
-      debugPrint("📱 Memulai koneksi ke Huawei Health...");
-
-      // 1. Sign-in & request scopes
-      final List<Scope> scopes = [
-        Scope.HEALTHKIT_HEARTRATE_READ,
-        Scope.HEALTHKIT_SLEEP_READ,
-        Scope.HEALTHKIT_HISTORYDATA_OPEN_WEEK,
-      ];
-
-      AuthHuaweiId? authResult;
-      try {
-        authResult = await HealthAuth.signIn(scopes);
-      } on PlatformException catch (e) {
-        throw Exception("Login Huawei Health gagal: ${e.message}. Pastikan HMS Core terinstal.");
-      }
-
-      if (authResult == null) {
-        throw Exception("Login Huawei Health gagal. Pastikan HMS Core terinstal.");
-      }
-      debugPrint("✅ Huawei sign-in berhasil: ${authResult.displayName}");
-
-      // 2. Init DataController
-      final DataController dataController = await DataController.init();
-
-      final DateTime now = DateTime.now();
-      final DateTime startTime = now.subtract(const Duration(hours: 24));
-
-      // ─── 3a. Tarik Heart Rate ────────────────────────────────────────────
-      final DataCollector hrCollector = DataCollector(
-        dataType: DataType.DT_INSTANTANEOUS_HEART_RATE,
-        dataGenerateType: DataGenerateType.DATA_TYPE_RAW,
-        dataStreamName: 'heart_rate_stream',
-      );
-
-      final ReadOptions hrOptions = ReadOptions(
-        startTime: startTime,
-        endTime: now,
-        dataCollectors: [hrCollector],
-        timeUnit: TimeUnit.MILLISECONDS,
-      );
-
-      final ReadReply? hrReply = await dataController.read(hrOptions);
-
-      int totalHR = 0;
-      int countHR = 0;
-      for (final SampleSet sampleSet in hrReply?.sampleSets ?? []) {
-        for (final SamplePoint point in sampleSet.samplePoints ?? []) {
-          final dynamic rawVal = point.fieldValues?[Field.FIELD_BPM.toString()];
-          if (rawVal != null) {
-            final int hrVal = (rawVal as num).toInt();
-            if (hrVal > 0) {
-              totalHR += hrVal;
-              countHR++;
-            }
-          }
-        }
-      }
-
-      // ─── 3b. Tarik Sleep ────────────────────────────────────────────────
-      final DataCollector sleepCollector = DataCollector(
-        dataType: DataType.DT_CONTINUOUS_SLEEP,
-        dataGenerateType: DataGenerateType.DATA_TYPE_RAW,
-        dataStreamName: 'sleep_stream',
-      );
-
-      final ReadOptions sleepOptions = ReadOptions(
-        startTime: startTime,
-        endTime: now,
-        dataCollectors: [sleepCollector],
-        timeUnit: TimeUnit.MILLISECONDS,
-      );
-
-      final ReadReply? sleepReply = await dataController.read(sleepOptions);
-
-      int totalSleepSeconds = 0;
-      for (final SampleSet sampleSet in sleepReply?.sampleSets ?? []) {
-        for (final SamplePoint point in sampleSet.samplePoints ?? []) {
-          final int? startMs = point.startTime?.millisecondsSinceEpoch;
-          final int? endMs = point.endTime?.millisecondsSinceEpoch;
-          if (startMs != null && endMs != null && endMs > startMs) {
-            totalSleepSeconds += ((endMs - startMs) ~/ 1000);
-          }
-        }
-      }
-
-      final int finalHR = countHR > 0 ? (totalHR ~/ countHR) : 0;
-      const int finalStress = 0;
-
-      return await _sendDataToBackend(userId, finalHR, finalStress, totalSleepSeconds);
-    } catch (e) {
-      debugPrint("❌ Error Huawei Health: $e");
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage: "Gagal menghubungkan layanan Huawei Health: ${e.toString()}",
-      );
+      state = state.copyWith(isLoading: false, errorMessage: "Terjadi kesalahan sistem saat menarik data.");
       return false;
     }
   }
@@ -253,89 +190,73 @@ class WearableNotifier extends Notifier<WearableState> {
   // FUNGSI PEMBANTU: Kirim data ke Backend Golang
   // =====================================================
   Future<bool> _sendDataToBackend(
-      int userId, int hr, int stress, int sleepSeconds) async {
-
-    // 1. VALIDASI: Jangan kirim ke backend jika data benar-benar kosong
-    if (hr == 0 && sleepSeconds == 0 && stress == 0) {
-      debugPrint("⚠️ Data wearable kosong, tidak dikirim ke backend.");
-      state = state.copyWith(
-          isLoading: false,
-          errorMessage: "Data aktivitas tidak ditemukan. Pastikan jam tangan Anda sudah tersinkron dengan aplikasi kesehatan."
-      );
+      int userId, int hr, int sleepSeconds, int sistolik, int diastolik,
+      DateTime waktuDataHC, // ✅ Tambah parameter ini
+      ) async {
+    if (hr == 0 && sleepSeconds == 0) {
+      state = state.copyWith(isLoading: false, errorMessage: "Data aktivitas kosong.");
       return false;
     }
 
     try {
-      debugPrint("📡 Mengirim data ke Golang: HR=$hr, SleepSec=$sleepSeconds, Stress=$stress");
-      final String tglDataGolang = "${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().day.toString().padLeft(2, '0')}";
+      final now = DateTime.now();
+      final String tglData =
+          "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
 
-      // 2. POST /wearable
+      // ✅ waktu_data dari Health Connect, bukan dari DateTime.now()
+      final String waktuData =
+          "${waktuDataHC.hour.toString().padLeft(2, '0')}:${waktuDataHC.minute.toString().padLeft(2, '0')}:${waktuDataHC.second.toString().padLeft(2, '0')}";
+
+      debugPrint("📡 Kirim wearable: tgl=$tglData waktu=$waktuData hr=$hr sleep=${sleepSeconds ~/ 60}mnt");
+
       final wearableRes = await _apiService.post(
         '/wearable',
         data: {
           'id_user': userId,
           'heart_rate_hr': hr,
           'sleep_duration': sleepSeconds ~/ 60,
-          'tgl_data': tglDataGolang, // ✅ PERBAIKAN DI SINI
+          'sistolik': sistolik,
+          'diastolik': diastolik,
+          'tgl_data': tglData,
+          'waktu_data': waktuData, // ✅ Waktu dari Health Connect (misal: "19:17:00")
         },
       );
 
       final dataRes = wearableRes.data;
       if (dataRes['data'] == null || dataRes['data']['id_wearable'] == null) {
-        throw Exception("Respon server tidak valid (id_wearable tidak ditemukan)");
+        throw Exception("Respon server tidak valid");
       }
 
-      final int idWearable = dataRes['data']['id_wearable'];
-      debugPrint("✅ Wearable tersimpan, id_wearable=$idWearable");
-
-      // 3. POST /hasil-ai
-      await _apiService.post(
-        '/hasil-ai',
-        data: {
-          'id_user': userId,
-          'id_wearable': idWearable,
-          'input': {
-            'is_lab_day': false,
-            'wearable': {
-              'hr': hr,
-              'stress': stress,
-              'sleep_minutes': sleepSeconds ~/ 60,
-            }
-          }
-        },
-      );
-
-      debugPrint("✅ Hasil AI tersimpan");
+      await fetchWearableData(userId);
       state = state.copyWith(isLoading: false);
       return true;
 
-    } on DioException catch (e) {
-      debugPrint("❌ Error Backend Sync (Dio): ${e.message}");
-      debugPrint("❌ Detail Response Server: ${e.response?.data}");
-
-      final serverMsg = e.response?.data is Map
-          ? e.response?.data['error']
-          : "Terjadi kesalahan server";
-
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage: serverMsg ?? "Kesalahan server: ${e.response?.statusCode}",
-      );
-      return false;
     } catch (e) {
-      debugPrint("❌ Error Backend Sync: $e");
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage: "Terjadi kesalahan saat menyimpan data: ${e.toString()}",
-      );
+      state = state.copyWith(isLoading: false, errorMessage: "Gagal menyimpan ke server.");
       return false;
     }
   }
 }
 
 // =======================================================
-// 3. PROVIDER — Riverpod v2: NotifierProvider
+// 3. PROVIDER EXPORT
 // =======================================================
-final wearableProvider = NotifierProvider<WearableNotifier, WearableState>(
-  WearableNotifier.new,
-);
+final wearableProvider = NotifierProvider<WearableNotifier, WearableState>(WearableNotifier.new);
+
+final wearableDataProvider = Provider<List<WearableModel>>((ref) {
+  return ref.watch(wearableProvider).wearableData;
+});
+
+final wearableLoadingProvider = Provider<bool>((ref) {
+  return ref.watch(wearableProvider).isLoading;
+});
+
+final wearableErrorProvider = Provider<String?>((ref) {
+  return ref.watch(wearableProvider).errorMessage;
+});
+
+final latestWearableProvider = Provider<WearableModel?>((ref) {
+  final data = ref.watch(wearableProvider).wearableData;
+  if (data.isEmpty) return null;
+  return data.first;
+});

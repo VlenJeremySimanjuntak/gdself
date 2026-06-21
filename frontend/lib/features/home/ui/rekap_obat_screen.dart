@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../models/obat_model.dart';
 import '../providers/obat_provider.dart';
-import '../../home/providers/home_provider.dart'; // ✅ 1. Import Home Provider
+import '../../home/providers/home_provider.dart';
 
 class RekapObatScreen extends ConsumerStatefulWidget {
   final JadwalObatModel jadwal;
@@ -29,11 +29,18 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // ⚠️ CATATAN PENTING UNTUK BACKEND:
-      // Karena jadwal dipisah per hari (id 1 = SEN, id 3 = RAB), jika API ini
-      // hanya memanggil idJadwalObat = 1, maka log hari Rabu & Jumat tidak akan ditarik.
-      // Pastikan backend kamu menarik log berdasarkan "id_obat" agar semua hari ikut terbawa.
-      ref.read(obatProvider.notifier).fetchLogKonsumsi(widget.jadwal.idJadwalObat);
+      // ✅ KITA AMBIL SEMUA ID JADWAL UNTUK OBAT INI DARI PROVIDER
+      final semuaJadwalDb = ref.read(homeProvider).jadwalObat;
+      final jadwalTerkait = semuaJadwalDb.where((j) => j.idObat == widget.jadwal.obat.idObat).toList();
+      final listJadwalId = jadwalTerkait.map((j) => j.idJadwalObat).toList();
+
+      if (listJadwalId.isNotEmpty) {
+        // Panggil fungsi baru kita untuk menarik semua data sekaligus!
+        ref.read(obatProvider.notifier).fetchSemuaLogUntukObat(listJadwalId);
+      } else {
+        // Fallback aman
+        ref.read(obatProvider.notifier).fetchLogKonsumsi(widget.jadwal.idJadwalObat);
+      }
     });
   }
 
@@ -43,7 +50,7 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
     super.dispose();
   }
 
-  // ✅ 2. Cek apakah tanggal tersebut termasuk dalam daftar SEMUA hari (SEN, RAB, JUM)
+  // ✅ Cek apakah tanggal tersebut termasuk dalam daftar SEMUA hari (SEN, RAB, JUM)
   bool _isHariKonsumsi(DateTime date, List<String> semuaHari) {
     final weekdays = ['SEN', 'SEL', 'RAB', 'KAM', 'JUM', 'SAB', 'MIN'];
     final dayName = weekdays[date.weekday - 1];
@@ -54,17 +61,23 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
     return true;
   }
 
+  // ✅ LOGIKA PENGECEKAN STATUS 'Diminum' / 'Teratur'
   Map<String, int> _buildKepatuhanCount(List<LogKonsumsiObatModel> logs) {
     final map = <String, int>{};
     for (final log in logs) {
-      if (log.tglKonsumsi != null && log.status.toLowerCase() == 'diminum') {
-        final key = DateFormat('yyyy-MM-dd').format(log.tglKonsumsi!);
-        map[key] = (map[key] ?? 0) + 1;
+      if (log.tglKonsumsi != null) {
+        final status = log.status.toLowerCase();
+        // Hitung HANYA yang statusnya sukses (diminum / teratur)
+        if (status == 'diminum' || status == 'teratur') {
+          final key = DateFormat('yyyy-MM-dd').format(log.tglKonsumsi!);
+          map[key] = (map[key] ?? 0) + 1;
+        }
       }
     }
     return map;
   }
 
+  // ✅ LOGIKA PENENTUAN STATUS HARIAN (Teratur / Sebagian / Terlewat)
   String _getStatusHarian(DateTime date, Map<String, int> kepatuhanCount, int targetFrekuensi, List<String> semuaHari) {
     if (!_isHariKonsumsi(date, semuaHari)) return 'Bukan Jadwal';
 
@@ -75,11 +88,15 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
     if (dateNorm.isAfter(todayNorm)) return 'Belum';
 
     final key = DateFormat('yyyy-MM-dd').format(date);
-    int diminum = kepatuhanCount[key] ?? 0;
+    int jumlahDiminum = kepatuhanCount[key] ?? 0;
 
-    if (diminum == 0) return 'Terlewat';
-    if (diminum < targetFrekuensi) return 'Sebagian';
-    return 'Teratur';
+    if (jumlahDiminum >= targetFrekuensi) {
+      return 'Teratur';
+    } else if (jumlahDiminum > 0 && jumlahDiminum < targetFrekuensi) {
+      return 'Sebagian';
+    } else {
+      return 'Terlewat';
+    }
   }
 
   Color _getWarnaStatus(String status) {
@@ -115,7 +132,7 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
     final obat = widget.jadwal.obat;
     final logs = obatState.logKonsumsiList;
 
-    // ✅ 3. Menggabungkan semua jadwal untuk mendapatkan "SEN, RAB, JUM" secara akurat
+    // Menggabungkan semua jadwal untuk mendapatkan "SEN, RAB, JUM" secara akurat
     final semuaJadwalDb = ref.watch(homeProvider).jadwalObat;
     final jadwalTerkait = semuaJadwalDb.where((j) => j.idObat == obat.idObat).toList();
 
@@ -140,7 +157,7 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
     final endCounter = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
 
     while (!currentCounter.isAfter(endCounter) && !currentCounter.isAfter(tglSelesai)) {
-      // Hitung hanya jika hari tersebut masuk dalam gabunganHari (SEN/RAB/JUM)
+      // Hitung hanya jika hari tersebut masuk dalam gabunganHari
       if (_isHariKonsumsi(currentCounter, gabunganHari)) {
         statTotal += targetFrekuensi;
         final key = DateFormat('yyyy-MM-dd').format(currentCounter);
@@ -300,7 +317,7 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
                           tglSelesai: tglSelesai,
                           kepatuhanCount: kepatuhanCount,
                           targetFrekuensi: targetFrekuensi,
-                          gabunganHari: gabunganHari, // ✅ Menggunakan gabunganHari
+                          gabunganHari: gabunganHari,
                         );
                       },
                     ),
@@ -437,11 +454,16 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
     DateTime now = DateTime.now();
 
     final selectedKey = DateFormat('yyyy-MM-dd').format(_selectedDate!);
-    final logsToday = logs.where((l) =>
-    l.tglKonsumsi != null &&
-        DateFormat('yyyy-MM-dd').format(l.tglKonsumsi!) == selectedKey &&
-        l.status.toLowerCase() == 'diminum'
-    ).toList();
+    final logsToday = logs.where((l) {
+      if (l.tglKonsumsi == null) return false;
+      bool isDateMatch = DateFormat('yyyy-MM-dd').format(l.tglKonsumsi!) == selectedKey;
+
+      // Cek semua variasi status berhasil
+      String s = l.status.toLowerCase();
+      bool isSuccessStatus = (s == 'diminum' || s == 'teratur');
+
+      return isDateMatch && isSuccessStatus;
+    }).toList();
 
     List<String> timeList = widget.times.isNotEmpty ? widget.times : ["08:00:00"];
 
@@ -457,18 +479,23 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
           _selectedDate!.year, _selectedDate!.month, _selectedDate!.day, hour, minute
       );
 
-      bool isDiminum = i < logsToday.length;
+      LogKonsumsiObatModel? actualLog;
+
+      if (i < logsToday.length) {
+        actualLog = logsToday[i];
+      }
 
       String slotStatus;
       Color slotColor;
       IconData slotIcon;
       String slotDesc;
 
-      if (isDiminum) {
+      if (actualLog != null) {
+        // Karena kita sudah memfilter hanya 'diminum' / 'teratur' di logsToday
         slotStatus = "Diminum";
         slotColor = const Color(0xFF00695C);
         slotIcon = Icons.check_circle;
-        slotDesc = "Anda sudah meminum obat ini tepat waktu.";
+        slotDesc = "Riwayat konsumsi tercatat.";
       } else {
         if (now.isAfter(targetTimeObj)) {
           slotStatus = "Terlewat";

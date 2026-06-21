@@ -156,7 +156,7 @@ class DetailObatScreen extends StatelessWidget {
     String angka = value;
     String satuan = '';
     if (value.toLowerCase().contains('mg')) {
-      angka = value.replaceAll(RegExp(r'(?i)mg'), '').trim();
+      angka = value.replaceAll(RegExp(r'mg', caseSensitive: false), '').trim();
       satuan = ' mg';
     } else if (value.toLowerCase().contains('gr')) {
       angka = value.replaceAll(RegExp(r'(?i)gr'), '').trim();

@@ -42,14 +42,13 @@ class _RiwayatScreenState extends ConsumerState<RiwayatScreen> {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final riwayatState = ref.watch(riwayatProvider);
+    final user = ref.watch(userProvider).user;
     final rawItems = riwayatState.items;
 
-    // ✅ Logika Filter yang sudah diperbarui: Pencarian HANYA berlaku untuk USG
     final filteredItems = rawItems.where((item) {
       if (_activeFilter == 'LAB' && item['type'] != 'lab') return false;
       if (_activeFilter == 'USG' && item['type'] != 'usg') return false;
 
-      // Pencarian hanya dieksekusi jika tab USG aktif
       if (_activeFilter == 'USG' && _searchQuery.isNotEmpty) {
         final title = (item['raw_data'] as UsgTiroidModel).namaRs.toLowerCase();
         final subtitle = (item['formatted_date'] ?? '').toString().toLowerCase();
@@ -89,7 +88,7 @@ class _RiwayatScreenState extends ConsumerState<RiwayatScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 20),
-                _buildHeaderLogo(),
+                _buildTopHeader(user),
                 const SizedBox(height: 40),
 
                 const Text("Riwayat\nLaboratorium",
@@ -117,7 +116,6 @@ class _RiwayatScreenState extends ConsumerState<RiwayatScreen> {
                 ),
                 const SizedBox(height: 32),
 
-                // ✅ Animasi menyembunyikan/memunculkan Search Bar
                 AnimatedSize(
                   duration: const Duration(milliseconds: 300),
                   curve: Curves.easeInOut,
@@ -152,12 +150,36 @@ class _RiwayatScreenState extends ConsumerState<RiwayatScreen> {
     );
   }
 
-  Widget _buildHeaderLogo() {
+  Widget _buildTopHeader(dynamic user) {
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Image.asset('assets/images/graves-logo.png', width: 28, height: 28),
-        const SizedBox(width: 10),
-        const Text("Graves disease", style: TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF005085), fontSize: 18, letterSpacing: -0.5)),
+        Row(
+          children: [
+            Image.asset(
+              'assets/images/graves-logo.png',
+              width: 28,
+              height: 28,
+              errorBuilder: (context, error, stackTrace) {
+                return const Icon(
+                  Icons.medical_services,
+                  color: Color(0xFF005085),
+                  size: 28,
+                );
+              },
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              "Graves disease",
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF005085),
+                fontSize: 18,
+                letterSpacing: -0.5,
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -203,7 +225,6 @@ class _RiwayatScreenState extends ConsumerState<RiwayatScreen> {
       onTap: () {
         setState(() {
           _activeFilter = filterValue;
-          // ✅ Reset pencarian saat berpindah tab
           _searchQuery = '';
           _searchController.clear();
         });
@@ -277,9 +298,8 @@ class _RiwayatScreenState extends ConsumerState<RiwayatScreen> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                LabDetailScreen(
-              reportData: item, // Kirim datanya langsung!
+            builder: (context) => LabDetailScreen(
+              reportData: item,
             ),
           ),
         );
@@ -300,8 +320,8 @@ class _RiwayatScreenState extends ConsumerState<RiwayatScreen> {
           context,
           MaterialPageRoute(
             builder: (context) => UsgDetailScreen(
-              usgId: usg.idUsg!, // ✅ tambahkan ini
-              usgData: usg,      // ✅ lempar data juga
+              usgId: usg.idUsg!,
+              usgData: usg,
             ),
           ),
         );
@@ -309,6 +329,7 @@ class _RiwayatScreenState extends ConsumerState<RiwayatScreen> {
     );
   }
 
+  // ✅ PERBAIKAN: Kurung tutup yang benar
   Widget _buildCard({
     required IconData icon,
     required Color iconBgColor,
@@ -326,7 +347,11 @@ class _RiwayatScreenState extends ConsumerState<RiwayatScreen> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(40),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))
+            BoxShadow(
+              color: Colors.black.withOpacity(0.02),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
           ],
         ),
         child: Row(
@@ -346,13 +371,22 @@ class _RiwayatScreenState extends ConsumerState<RiwayatScreen> {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF1E293B), letterSpacing: -0.3),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14,
+                      color: Color(0xFF1E293B),
+                      letterSpacing: -0.3,
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                      color: Color(0xFF94A3B8),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),

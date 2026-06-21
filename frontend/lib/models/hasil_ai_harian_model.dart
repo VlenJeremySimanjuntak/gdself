@@ -1,46 +1,53 @@
 class HasilAIHarianModel {
   final int idHasilAiHarian;
   final int idWearable;
-  final int idRiwayat;
   final DateTime? tglHasilAi;
-  final double score;
-  final String statusHarian;
-  final String pesanHarian;
+
+  // ✅ FIELD BARU SESUAI RULE-BASED DI GOLANG
+  final String? statusHr;
+  final String? reminderHr;
+  final String? statusTidur;
+  final String? reminderTidur;
+  final String? statusTd;
+  final String? reminderTd;
 
   HasilAIHarianModel({
     required this.idHasilAiHarian,
     required this.idWearable,
-    required this.idRiwayat,
     this.tglHasilAi,
-    required this.score,
-    required this.statusHarian,
-    required this.pesanHarian,
+    this.statusHr,
+    this.reminderHr,
+    this.statusTidur,
+    this.reminderTidur,
+    this.statusTd,
+    this.reminderTd,
   });
 
   factory HasilAIHarianModel.fromJson(Map<String, dynamic> json) {
     return HasilAIHarianModel(
       idHasilAiHarian: _toInt(json['id_hasil_ai_harian']) ?? 0,
       idWearable: _toInt(json['id_wearable']) ?? 0,
-      idRiwayat: _toInt(json['id_riwayat']) ?? 0,
-      tglHasilAi: _parseDateTime(json['tgl_hasil_ai']),
-      score: _toDouble(json['score']) ?? 0.0,
-      statusHarian: json['status_harian'] as String? ?? 'Belum ada status',
-      pesanHarian: json['pesan_harian'] as String? ?? 'Belum ada pesan',
+      tglHasilAi: _parseDateTime(json['tgl_hasil_ai'] ?? json['created_at']),
+
+      // ✅ PARSING JSON DARI GOLANG
+      statusHr: json['status_hr'] as String?,
+      reminderHr: json['reminder_hr'] as String?,
+      statusTidur: json['status_tidur'] as String?,
+      reminderTidur: json['reminder_tidur'] as String?,
+      statusTd: json['status_td'] as String?,
+      reminderTd: json['reminder_td'] as String?,
     );
   }
 }
 
-// Fungsi helper parsers
+// ==========================================
+// FUNGSI HELPER PARSERS
+// ==========================================
 int? _toInt(dynamic value) {
   if (value == null) return null;
   if (value is int) return value;
+  if (value is double) return value.toInt();
   return int.tryParse(value.toString());
-}
-
-double? _toDouble(dynamic value) {
-  if (value == null) return null;
-  if (value is double) return value;
-  return double.tryParse(value.toString());
 }
 
 DateTime? _parseDateTime(dynamic value) {
