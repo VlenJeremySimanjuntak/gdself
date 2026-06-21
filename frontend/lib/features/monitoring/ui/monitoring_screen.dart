@@ -81,7 +81,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ✅ TAMBAHKAN: Logo dan Foto Profil
             _buildTopHeader(user),
             const SizedBox(height: 24),
 
@@ -119,7 +118,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
 
             const SizedBox(height: 40),
 
-            // ── Section Hasil USG Tiroid ──
             _buildSectionHeaderWithoutMenu("Hasil USG Tiroid"),
             const SizedBox(height: 16),
 
@@ -156,19 +154,10 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  // ✅ TAMBAHKAN: Widget Logo & Foto Profil (sama seperti HomeScreen)
   Widget _buildTopHeader(dynamic user) {
-    final String initial =
-    (user?.nama != null && (user!.nama as String).isNotEmpty)
-        ? (user.nama as String)[0].toUpperCase()
-        : '?';
-
-    final String? avatarUrl = user?.fotoProfil;
-
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        // Logo dan teks
         Row(
           children: [
             Image.asset(
@@ -194,12 +183,10 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
             ),
           ],
         ),
-
       ],
     );
   }
 
-  // ── Header Title ──────────────────────────────────────────────────────
   Widget _buildHeaderTitle() {
     return const Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -221,7 +208,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  // ── Section Header USG (tanpa menu) ───────────────────────────────────
   Widget _buildSectionHeaderWithoutMenu(String title) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -236,7 +222,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  // ── Chart Card ─────────────────────────────────────────────────────────
   Widget _buildChartCard(double width, bool hasData, List<Map<String, dynamic>> currentData) {
     String latestDate = '';
     if (currentData.isNotEmpty) {
@@ -342,7 +327,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  // ── Chart Empty ────────────────────────────────────────────────────────
   Widget _buildChartEmptyContent() {
     return Center(
       child: Column(
@@ -380,12 +364,15 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  // ── Chart Content ──────────────────────────────────────────────────────
   Widget _buildChartContent(double width, List<Map<String, dynamic>> currentData) {
     return LayoutBuilder(
       builder: (context, constraints) {
         return GestureDetector(
           onTapDown: (details) {
+
+            // =========================================================
+            // ✅ BUG NAVIGASI DIPERBAIKI DI SINI: AUTO-REFRESH SETELAH EDIT
+            // =========================================================
             void navigateToDetail(String shortDate) {
               try {
                 DateTime parsed = DateFormat('dd MMM yyyy', 'id_ID').parse(shortDate);
@@ -399,9 +386,20 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
 
                 if (reportIndex != -1) {
                   Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => LabDetailScreen(reportData: arsipList[reportIndex])));
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => LabDetailScreen(reportData: arsipList[reportIndex]),
+                    ),
+                  ).then((_) {
+                    // Ketika user klik tombol kembali/kembali dari layar Detail (setelah diedit)
+                    // Maka ambil ulang data terbaru dari Backend!
+                    final userId = ref.read(userProvider).user?.idUser;
+                    if (userId != null) {
+                      ref.read(monitoringProvider.notifier).fetchMonitoringData(userId);
+                      ref.read(homeProvider.notifier).fetchAll(userId);
+                      ref.read(riwayatProvider.notifier).fetchRiwayatData(userId);
+                    }
+                  });
                 }
               } catch (e) {}
             }
@@ -462,7 +460,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  // ── Tab Selector ───────────────────────────────────────────────────────
   Widget _buildTabSelector(double width) {
     return Row(
       children: ["TSHs", "FT4", "FT3", "TRAb"].map((tab) {
@@ -490,7 +487,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  // ── USG Empty Card ─────────────────────────────────────────────────────
   Widget _buildUsgEmptyStateCard() {
     return Container(
       width: double.infinity,
@@ -530,7 +526,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  // ── USG Filled Card ────────────────────────────────────────────────────
   Widget _buildFilledUsgCard(UsgTiroidModel usg) {
     final String tanggal = usg.tglPemeriksaan != null
         ? DateFormat('dd MMMM yyyy', 'id_ID').format(usg.tglPemeriksaan!)
@@ -695,7 +690,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  // ── Action Button ──────────────────────────────────────────────────────
   Widget _buildActionButton(
       {required IconData icon, required String label, required VoidCallback onPressed}) {
     return ElevatedButton.icon(
@@ -712,7 +706,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  // ── Alert Card (AI) ────────────────────────────────────────────────────
   Widget _buildAlertCard(HasilAIGabunganModel? aiResult, String selectedTab) {
     if (aiResult == null) {
       return _buildBaseAlertCard(
@@ -849,7 +842,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
   }
 }
 
-// ── Custom Painter ───────────────────────────────────────────────────────
 class HormoneChartPainter extends CustomPainter {
   final int? visibleIndex;
   final List<Map<String, dynamic>> points;

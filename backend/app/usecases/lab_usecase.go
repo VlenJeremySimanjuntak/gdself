@@ -23,7 +23,7 @@ type labUsecase struct {
 	repoParameter repositories.ParameterRepository
 	hasilAILab    HasilAILabUsecase
 	hasilAITren   HasilAITrenUsecase
-	laporanRepo   repositories.LaporanLabRepository // ✅ TAMBAHAN: Untuk mengakses GetPreviousLab
+	laporanRepo   repositories.LaporanLabRepository
 }
 
 func NewLabUsecase(
@@ -31,14 +31,14 @@ func NewLabUsecase(
 	repoParam repositories.ParameterRepository,
 	hasilAILab HasilAILabUsecase,
 	hasilAITren HasilAITrenUsecase,
-	laporanRepo repositories.LaporanLabRepository, // ✅ TAMBAHAN DI CONSTRUCTOR
+	laporanRepo repositories.LaporanLabRepository,
 ) LabUsecase {
 	return &labUsecase{
 		repo:          r,
 		repoParameter: repoParam,
 		hasilAILab:    hasilAILab,
 		hasilAITren:   hasilAITren,
-		laporanRepo:   laporanRepo, // ✅ INIT
+		laporanRepo:   laporanRepo,
 	}
 }
 
@@ -113,8 +113,12 @@ func (u *labUsecase) Assess(input models.AssessmentInput) (models.AssessmentResu
 	hasTSH, hasFT4 := false, false
 	for _, p := range input.Lab.Parameters {
 		key := strings.ToUpper(strings.TrimSpace(p.NamaParameter))
-		if key == "TSH" || key == "TSHS" { hasTSH = true }
-		if key == "FT4" { hasFT4 = true }
+		if key == "TSH" || key == "TSHS" {
+			hasTSH = true
+		}
+		if key == "FT4" {
+			hasFT4 = true
+		}
 	}
 	if !hasTSH || !hasFT4 {
 		return res, fmt.Errorf("parameter TSH dan FT4 wajib diisi")
@@ -140,67 +144,79 @@ func (u *labUsecase) Assess(input models.AssessmentInput) (models.AssessmentResu
 
 	// ── Analisis AI Lab ──────────────────────────────────────────
 	currResult := AnalyzeLabResults(input.Lab.Parameters)
-	
-	// Simpan AI Lab jika belum ada
-	existingLab, _ := u.hasilAILab.GetHasilAILabByLaporanLabID(input.Lab.IDLaporanLab)
-	if existingLab.IDHasilAILab == 0 && u.hasilAILab != nil {
-		_, _ = u.hasilAILab.CreateHasilAILab(models.HasilAILab{
-			IDLaporanLab: input.Lab.IDLaporanLab,
-			StatusTsh:    currResult.StatusTSH, ReminderTsh: currResult.ReminderTSH,
-			StatusFt3:    currResult.StatusFT3, ReminderFt3: currResult.ReminderFT3,
-			StatusFt4:    currResult.StatusFT4, ReminderFt4: currResult.ReminderFT4,
-			StatusTrab:   currResult.StatusTRAb, ReminderTrab: currResult.ReminderTRAb,
-			Interpretasi: currResult.Interpretasi,
-		})
+
+	// ✅ SELALU upsert — bukan hanya insert jika belum ada
+	if u.hasilAILab != nil && input.Lab.IDLaporanLab != 0 {
+		_, err := u.hasilAILab.UpsertFromAssessment(
+			input.Lab.IDLaporanLab,
+			input.Lab.Parameters,
+		)
+		if err != nil {
+			fmt.Printf("Warning: gagal upsert hasil AI Lab: %v\n", err)
+		}
 	}
 
 	// ── Logika AI Tren (Mesin 3) ─────────────────────────────────
-	if input.PrevLab != nil && len(input.PrevLab.Parameters) > 0 && u.hasilAITren != nil && input.Lab.IDLaporanLab != 0 {
-		
-		existingTren, _ := u.hasilAITren.GetHasilAITrenByLaporanLabID(input.Lab.IDLaporanLab)
-		if existingTren.IDHasilAITren == 0 {
-			prevResult := AnalyzeLabResults(input.PrevLab.Parameters)
-			trenResult := AnalyzeTren(prevResult, currResult)
+	if input.PrevLab != nil && len(input.PrevLab.Parameters) > 0 &&
+		u.hasilAITren != nil && input.Lab.IDLaporanLab != 0 {
 
-			// ✅ Fungsi pembantu untuk cek eksistensi hormon
-			hasParam := func(params []models.AssessmentParamInput, target string) bool {
-				for _, p := range params {
-					key := strings.ToUpper(strings.TrimSpace(p.NamaParameter))
-					if key == target || (target == "TSH" && key == "TSHS") {
-						return true
-					}
+		prevResult := AnalyzeLabResults(input.PrevLab.Parameters)
+		trenResult := AnalyzeTren(prevResult, currResult)
+
+		hasParam := func(params []models.AssessmentParamInput, target string) bool {
+			for _, p := range params {
+				key := strings.ToUpper(strings.TrimSpace(p.NamaParameter))
+				if key == target || (target == "TSH" && key == "TSHS") {
+					return true
 				}
-				return false
 			}
+			return false
+		}
 
-			// ✅ Pencekalan Tren: Jika hormon tidak ada di data sebelumnya, set Tidak Diketahui
-			if !hasParam(input.PrevLab.Parameters, "TSH") {
-				trenResult.TrenTSH = "Tidak Diketahui"; trenResult.ReminderTrenTSH = ""
-			}
-			if !hasParam(input.PrevLab.Parameters, "FT3") {
-				trenResult.TrenFT3 = "Tidak Diketahui"; trenResult.ReminderTrenFT3 = ""
-			}
-			if !hasParam(input.PrevLab.Parameters, "FT4") {
-				trenResult.TrenFT4 = "Tidak Diketahui"; trenResult.ReminderTrenFT4 = ""
-			}
-			if !hasParam(input.PrevLab.Parameters, "TRAB") {
-				trenResult.TrenTRAb = "Tidak Diketahui"; trenResult.ReminderTrenTRAb = ""
-			}
+		if !hasParam(input.PrevLab.Parameters, "TSH") {
+			trenResult.TrenTSH = "Tidak Terinterpretasi"
+			trenResult.ReminderTrenTSH = ""
+		}
+		if !hasParam(input.PrevLab.Parameters, "FT3") {
+			trenResult.TrenFT3 = "Tidak Terinterpretasi"
+			trenResult.ReminderTrenFT3 = ""
+		}
+		if !hasParam(input.PrevLab.Parameters, "FT4") {
+			trenResult.TrenFT4 = "Tidak Terinterpretasi"
+			trenResult.ReminderTrenFT4 = ""
+		}
+		if !hasParam(input.PrevLab.Parameters, "TRAB") {
+			trenResult.TrenTRAb = "Tidak Terinterpretasi"
+			trenResult.ReminderTrenTRAb = ""
+		}
 
-			// Simpan Tren ke Database
-			_, err := u.hasilAITren.CreateHasilAITren(models.HasilAITren{
-				IDLaporanLab:     input.Lab.IDLaporanLab,
-				TrenTsh:          trenResult.TrenTSH,
-				ReminderTrenTsh:  trenResult.ReminderTrenTSH,
-				TrenFt3:          trenResult.TrenFT3,
-				ReminderTrenFt3:  trenResult.ReminderTrenFT3,
-				TrenFt4:          trenResult.TrenFT4,
-				ReminderTrenFt4:  trenResult.ReminderTrenFT4,
-				TrenTrab:         trenResult.TrenTRAb,
-				ReminderTrenTrab: trenResult.ReminderTrenTRAb,
-			})
+		// ✅ Tren juga perlu upsert — cek dulu apakah sudah ada
+		existingTren, _ := u.hasilAITren.GetHasilAITrenByLaporanLabID(input.Lab.IDLaporanLab)
+
+		tren := models.HasilAITren{
+			IDLaporanLab:     input.Lab.IDLaporanLab,
+			TrenTsh:          trenResult.TrenTSH,
+			ReminderTrenTsh:  trenResult.ReminderTrenTSH,
+			TrenFt3:          trenResult.TrenFT3,
+			ReminderTrenFt3:  trenResult.ReminderTrenFT3,
+			TrenFt4:          trenResult.TrenFT4,
+			ReminderTrenFt4:  trenResult.ReminderTrenFT4,
+			TrenTrab:         trenResult.TrenTRAb,
+			ReminderTrenTrab: trenResult.ReminderTrenTRAb,
+		}
+
+		if existingTren.IDHasilAITren != 0 {
+			// ✅ Sudah ada → update
+			tren.IDHasilAITren = existingTren.IDHasilAITren
+			_, err := u.hasilAITren.UpdateHasilAITren(tren)
 			if err != nil {
-				fmt.Printf("Warning: gagal simpan hasil AI Tren: %v\n", err)
+				fmt.Printf("Warning: gagal update AI Tren: %v\n", err)
+			}
+		} else {
+			// Belum ada → insert
+			_, err := u.hasilAITren.CreateHasilAITren(tren)
+			if err != nil {
+				fmt.Printf("Warning: gagal simpan AI Tren: %v\n", err)
 			}
 		}
 	}

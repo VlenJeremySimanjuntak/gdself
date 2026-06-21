@@ -8,6 +8,7 @@ import (
 
 type HasilAITrenUsecase interface {
 	CreateHasilAITren(tren models.HasilAITren) (models.HasilAITren, error)
+	UpdateHasilAITren(tren models.HasilAITren) (models.HasilAITren, error) // ✅ Tambah
 	GetHasilAITrenByID(id uint) (models.HasilAITren, error)
 	GetHasilAITrenByLaporanLabID(laporanLabID uint) (models.HasilAITren, error)
 }
@@ -25,6 +26,11 @@ func (u *hasilAITrenUsecase) CreateHasilAITren(tren models.HasilAITren) (models.
 		return models.HasilAITren{}, fmt.Errorf("id_laporan_lab tidak boleh kosong")
 	}
 	return u.repo.Create(tren)
+}
+
+// ✅ Tambah Fungsi Update
+func (u *hasilAITrenUsecase) UpdateHasilAITren(tren models.HasilAITren) (models.HasilAITren, error) {
+	return u.repo.Update(tren)
 }
 
 func (u *hasilAITrenUsecase) GetHasilAITrenByID(id uint) (models.HasilAITren, error) {

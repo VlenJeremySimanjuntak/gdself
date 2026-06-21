@@ -9,29 +9,22 @@ import (
 )
 
 type LaporanLabUsecase interface {
-    CreateLaporanLab(laporan models.LaporanLab, idUser uint) (models.LaporanLab, error)
-    GetLaporanLabByID(id uint) (models.LaporanLab, error)
-    GetAllLaporanLab() ([]models.LaporanLab, error)
-    GetLaporanLabByUserID(userID uint) ([]models.LaporanLab, error) // ✅ Tambah ini
-    UpdateLaporanLab(id uint, input models.UpdateLaporanLabRequest) (models.LaporanLab, error)
-    DeleteLaporanLab(id uint) error
-}
-
-func (u *laporanLabUsecase) GetLaporanLabByUserID(userID uint) ([]models.LaporanLab, error) {
-    if userID == 0 {
-        return nil, fmt.Errorf("user_id tidak valid")
-    }
-    return u.repo.GetByUserID(userID)
+	CreateLaporanLab(laporan models.LaporanLab, idUser uint) (models.LaporanLab, error)
+	GetLaporanLabByID(id uint) (models.LaporanLab, error)
+	GetAllLaporanLab() ([]models.LaporanLab, error)
+	GetLaporanLabByUserID(userID uint) ([]models.LaporanLab, error)
+	UpdateLaporanLab(id uint, input models.UpdateLaporanLabRequest) (models.LaporanLab, error)
+	DeleteLaporanLab(id uint) error
 }
 
 type laporanLabUsecase struct {
 	repo        repositories.LaporanLabRepository
-	riwayatRepo repositories.RiwayatRepository // ✅ Tambah ini
+	riwayatRepo repositories.RiwayatRepository
 }
 
 func NewLaporanLabUsecase(
 	repo repositories.LaporanLabRepository,
-	riwayatRepo repositories.RiwayatRepository, // ✅ Tambah ini
+	riwayatRepo repositories.RiwayatRepository,
 ) LaporanLabUsecase {
 	return &laporanLabUsecase{
 		repo:        repo,
@@ -39,25 +32,28 @@ func NewLaporanLabUsecase(
 	}
 }
 
+func (u *laporanLabUsecase) GetLaporanLabByUserID(userID uint) ([]models.LaporanLab, error) {
+	if userID == 0 {
+		return nil, fmt.Errorf("user_id tidak valid")
+	}
+	return u.repo.GetByUserID(userID)
+}
+
 func (u *laporanLabUsecase) CreateLaporanLab(laporan models.LaporanLab, idUser uint) (models.LaporanLab, error) {
 	if laporan.NamaLab == "" {
 		return models.LaporanLab{}, fmt.Errorf("nama_lab tidak boleh kosong")
 	}
 
-	// Jika IDRiwayat sudah dikirim langsung, langsung pakai
 	if laporan.IDRiwayat == 0 {
 		if idUser == 0 {
 			return models.LaporanLab{}, fmt.Errorf("id_user atau id_riwayat harus diisi")
 		}
 
-		// Cari riwayat hari ini milik user ini
 		today := models.CustomDate(time.Now())
 		existing, err := u.riwayatRepo.GetByUserIDAndDate(idUser, today)
 		if err == nil && existing.IDRiwayat != 0 {
-			// Pakai riwayat yang sudah ada hari ini
 			laporan.IDRiwayat = existing.IDRiwayat
 		} else {
-			// Buat riwayat baru untuk hari ini
 			newRiwayat := models.Riwayat{
 				IDUser:  idUser,
 				Tanggal: &today,
@@ -73,7 +69,6 @@ func (u *laporanLabUsecase) CreateLaporanLab(laporan models.LaporanLab, idUser u
 	return u.repo.Create(laporan)
 }
 
-// Sisanya tidak berubah
 func (u *laporanLabUsecase) GetLaporanLabByID(id uint) (models.LaporanLab, error) {
 	if id == 0 {
 		return models.LaporanLab{}, fmt.Errorf("id tidak valid")
