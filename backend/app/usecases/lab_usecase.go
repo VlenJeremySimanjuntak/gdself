@@ -107,21 +107,20 @@ func (u *labUsecase) Assess(input models.AssessmentInput) (models.AssessmentResu
 
 	// ── Validasi Lab Day ──────────────────────────────────────
 	if len(input.Lab.Parameters) == 0 {
-		return res, fmt.Errorf("minimal parameter TSH dan FT4 harus diisi")
+		return res, fmt.Errorf("minimal parameter TSHs harus diisi")
 	}
 
-	hasTSH, hasFT4 := false, false
+	// ✅ FIX BUG 1: FT4 sekarang murni opsional. Hanya TSHs yang wajib.
+	hasTSH := false
 	for _, p := range input.Lab.Parameters {
 		key := strings.ToUpper(strings.TrimSpace(p.NamaParameter))
 		if key == "TSH" || key == "TSHS" {
 			hasTSH = true
-		}
-		if key == "FT4" {
-			hasFT4 = true
+			break
 		}
 	}
-	if !hasTSH || !hasFT4 {
-		return res, fmt.Errorf("parameter TSH dan FT4 wajib diisi")
+	if !hasTSH {
+		return res, fmt.Errorf("parameter TSHs wajib diisi untuk analisis AI")
 	}
 
 	// ── OTOMATISASI PENCARIAN DATA TREN ──────────────
@@ -173,20 +172,22 @@ func (u *labUsecase) Assess(input models.AssessmentInput) (models.AssessmentResu
 			return false
 		}
 
-		if !hasParam(input.PrevLab.Parameters, "TSH") {
-			trenResult.TrenTSH = "Tidak Terinterpretasi"
+		// ✅ FIX BUG 2: Cek di KEDUA sisi (Lab Lama & Lab Sekarang). 
+		// Jika salah satunya tidak ada, set jadi "Tidak Diketahui" secara paksa.
+		if !hasParam(input.PrevLab.Parameters, "TSH") || !hasParam(input.Lab.Parameters, "TSH") {
+			trenResult.TrenTSH = "Tidak Diketahui"
 			trenResult.ReminderTrenTSH = ""
 		}
-		if !hasParam(input.PrevLab.Parameters, "FT3") {
-			trenResult.TrenFT3 = "Tidak Terinterpretasi"
+		if !hasParam(input.PrevLab.Parameters, "FT3") || !hasParam(input.Lab.Parameters, "FT3") {
+			trenResult.TrenFT3 = "Tidak Diketahui"
 			trenResult.ReminderTrenFT3 = ""
 		}
-		if !hasParam(input.PrevLab.Parameters, "FT4") {
-			trenResult.TrenFT4 = "Tidak Terinterpretasi"
+		if !hasParam(input.PrevLab.Parameters, "FT4") || !hasParam(input.Lab.Parameters, "FT4") {
+			trenResult.TrenFT4 = "Tidak Diketahui"
 			trenResult.ReminderTrenFT4 = ""
 		}
-		if !hasParam(input.PrevLab.Parameters, "TRAB") {
-			trenResult.TrenTRAb = "Tidak Terinterpretasi"
+		if !hasParam(input.PrevLab.Parameters, "TRAB") || !hasParam(input.Lab.Parameters, "TRAB") {
+			trenResult.TrenTRAb = "Tidak Diketahui"
 			trenResult.ReminderTrenTRAb = ""
 		}
 

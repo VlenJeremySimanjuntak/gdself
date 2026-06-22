@@ -42,7 +42,7 @@ func extractHormoneValues(params []models.AssessmentParamInput) map[string]model
 
 func evaluateTSH(p models.AssessmentParamInput) (status, reminder string) {
 	if p.NilaiHasil == 0 || p.NilaiBatasBawah == 0 || p.NilaiBatasAtas == 0 {
-		return "Tidak Terinterpretasi",
+		return "Tidak Diketahui",
 			"Hasil pemeriksaan TSHs tidak dapat diinterpretasikan karena data tidak tersedia atau tidak valid."
 	}
 	if p.NilaiHasil < p.NilaiBatasBawah {
@@ -59,7 +59,7 @@ func evaluateTSH(p models.AssessmentParamInput) (status, reminder string) {
 
 func evaluateFT3(p models.AssessmentParamInput) (status, reminder string) {
 	if p.NilaiHasil == 0 || p.NilaiBatasBawah == 0 || p.NilaiBatasAtas == 0 {
-		return "Tidak Terinterpretasi",
+		return "Tidak Diketahui",
 			"Hasil pemeriksaan FT3 tidak dapat diinterpretasikan karena data tidak tersedia atau tidak valid."
 	}
 	if p.NilaiHasil < p.NilaiBatasBawah {
@@ -76,7 +76,7 @@ func evaluateFT3(p models.AssessmentParamInput) (status, reminder string) {
 
 func evaluateFT4(p models.AssessmentParamInput) (status, reminder string) {
 	if p.NilaiHasil == 0 || p.NilaiBatasBawah == 0 || p.NilaiBatasAtas == 0 {
-		return "Tidak Terinterpretasi",
+		return "Tidak Diketahui",
 			"Hasil pemeriksaan FT4 tidak dapat diinterpretasikan karena data tidak tersedia atau tidak valid."
 	}
 	if p.NilaiHasil < p.NilaiBatasBawah {
@@ -93,7 +93,7 @@ func evaluateFT4(p models.AssessmentParamInput) (status, reminder string) {
 
 func evaluateTRAb(p models.AssessmentParamInput) (status, reminder string) {
 	if p.NilaiHasil == 0 || p.NilaiBatasAtas == 0 {
-		return "Tidak Terinterpretasi",
+		return "Tidak Diketahui",
 			"Hasil pemeriksaan TRAb tidak dapat diinterpretasikan karena data tidak tersedia atau tidak valid."
 	}
 	if p.NilaiHasil > p.NilaiBatasAtas {
@@ -105,31 +105,72 @@ func evaluateTRAb(p models.AssessmentParamInput) (status, reminder string) {
 }
 
 // ==========================================
-// ✅ FUNGSI INTERPRETASI KESELURUHAN (Sesuai Tabel Skripsi)
+// FUNGSI INTERPRETASI KESELURUHAN (Sesuai Tabel Skripsi)
 // ==========================================
 func interpretasiKeseluruhan(statusTSH, statusFT3, statusFT4 string) string {
-	// Catatan: Karena FT3 dan FT4 opsional (bisa tidak diisi dari Frontend), 
-	// maka nilai kosong di Backend akan terbaca sebagai "Tidak Terinterpretasi".
-	// Kita anggap "Tidak Terinterpretasi" layaknya parameter tersebut Normal/Aman.
+	isFT3Aman := statusFT3 == "Normal" || statusFT3 == "Tidak Diketahui"
+	isFT4Aman := statusFT4 == "Normal" || statusFT4 == "Tidak Diketahui"
 
-	isFT3AmanNormal := statusFT3 == "Normal" || statusFT3 == "Tidak Terinterpretasi"
-	isFT4AmanNormal := statusFT4 == "Normal" || statusFT4 == "Tidak Terinterpretasi"
+	isFT3TinggiAtauAman := statusFT3 == "Tinggi" || statusFT3 == "Normal" || statusFT3 == "Tidak Diketahui"
+	isFT4TinggiAtauAman := statusFT4 == "Tinggi" || statusFT4 == "Normal" || statusFT4 == "Tidak Diketahui"
 
-	isFT3TinggiAtauNormal := statusFT3 == "Tinggi" || statusFT3 == "Normal" || statusFT3 == "Tidak Terinterpretasi"
-	isFT4TinggiAtauNormal := statusFT4 == "Tinggi" || statusFT4 == "Normal" || statusFT4 == "Tidak Terinterpretasi"
-
-	// Aturan 1: TSH Normal + FT3 Normal + FT4 Normal -> Normal
-	if statusTSH == "Normal" && isFT3AmanNormal && isFT4AmanNormal {
+	// Aturan 1: TSH Normal + FT3 Normal/TidakDiketahui + FT4 Normal/TidakDiketahui → Normal
+	if statusTSH == "Normal" && isFT3Aman && isFT4Aman {
 		return "Normal"
 	}
 
-	// Aturan 2 s/d 5: TSH Rendah + FT3 (Tinggi/Normal) + FT4 (Tinggi/Normal) -> Belum Normal
-	if statusTSH == "Rendah" && isFT3TinggiAtauNormal && isFT4TinggiAtauNormal {
+	// Aturan 2-5: TSH Rendah + FT3 (Tinggi/Normal/TidakDiketahui) + FT4 (Tinggi/Normal/TidakDiketahui) → Belum Normal
+	if statusTSH == "Rendah" && isFT3TinggiAtauAman && isFT4TinggiAtauAman {
 		return "Belum Normal"
 	}
 
-	// Aturan 6: Kondisi selain aturan di atas (Misal TSH Tinggi, FT4 Rendah, dll) -> Tidak Terinterpretasi
+	// Selain aturan di atas → Tidak Terinterpretasi
 	return "Tidak Terinterpretasi"
+}
+
+func AnalyzeLabResults(params []models.AssessmentParamInput) LabAssessmentResult {
+	var result LabAssessmentResult
+	paramMap := extractHormoneValues(params)
+
+	if tsh, ok := paramMap["TSH"]; ok {
+		result.StatusTSH, result.ReminderTSH = evaluateTSH(tsh)
+		result.NilaiTSH = tsh.NilaiHasil
+	} else {
+		result.StatusTSH = "Tidak Diketahui"
+		result.ReminderTSH = "Hasil pemeriksaan TSHs tidak dapat diinterpretasikan karena data tidak tersedia atau tidak valid."
+	}
+
+	if ft4, ok := paramMap["FT4"]; ok {
+		result.StatusFT4, result.ReminderFT4 = evaluateFT4(ft4)
+		result.NilaiFT4 = ft4.NilaiHasil
+	} else {
+		result.StatusFT4 = "Tidak Diketahui"
+		result.ReminderFT4 = "Hasil pemeriksaan FT4 tidak dapat diinterpretasikan karena data tidak tersedia atau tidak valid."
+	}
+
+	if ft3, ok := paramMap["FT3"]; ok {
+		result.StatusFT3, result.ReminderFT3 = evaluateFT3(ft3)
+		result.NilaiFT3 = ft3.NilaiHasil
+	} else {
+		result.StatusFT3 = "Tidak Diketahui"
+		result.ReminderFT3 = "Hasil pemeriksaan FT3 tidak dapat diinterpretasikan karena data tidak tersedia atau tidak valid."
+	}
+
+	if trab, ok := paramMap["TRAB"]; ok {
+		result.StatusTRAb, result.ReminderTRAb = evaluateTRAb(trab)
+		result.NilaiTRAb = trab.NilaiHasil
+	} else {
+		result.StatusTRAb = "Tidak Diketahui"
+		result.ReminderTRAb = "Hasil pemeriksaan TRAb tidak dapat diinterpretasikan karena data tidak tersedia atau tidak valid."
+	}
+
+	result.Interpretasi = interpretasiKeseluruhan(
+		result.StatusTSH,
+		result.StatusFT3,
+		result.StatusFT4,
+	)
+
+	return result
 }
 
 // ==========================================
@@ -139,7 +180,7 @@ func interpretasiKeseluruhan(statusTSH, statusFT3, statusFT4 string) string {
 func trenTSH(prevNilai, currNilai float64, currStatus string) (tren, reminder string) {
 	switch currStatus {
 	case "Tinggi":
-		return "Tidak Terinterpretasi",
+		return "Tidak Diketahui",
 			"Kondisi TSHs saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 	case "Normal":
 		return "Tetap Normal",
@@ -157,7 +198,7 @@ func trenTSH(prevNilai, currNilai float64, currStatus string) (tren, reminder st
 				"Nilai TSHs tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, kondisi masih berada di bawah rentang normal."
 		}
 	default:
-		return "Tidak Terinterpretasi",
+		return "Tidak Diketahui",
 			"Kondisi TSHs saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 	}
 }
@@ -165,7 +206,7 @@ func trenTSH(prevNilai, currNilai float64, currStatus string) (tren, reminder st
 func trenFT3(prevNilai, currNilai float64, currStatus string) (tren, reminder string) {
 	switch currStatus {
 	case "Rendah":
-		return "Tidak Terinterpretasi",
+		return "Tidak Diketahui",
 			"Kondisi FT3 saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 	case "Normal":
 		return "Tetap Normal",
@@ -183,7 +224,7 @@ func trenFT3(prevNilai, currNilai float64, currStatus string) (tren, reminder st
 				"Nilai FT3 tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, kondisi masih berada di atas rentang normal."
 		}
 	default:
-		return "Tidak Terinterpretasi",
+		return "Tidak Diketahui",
 			"Kondisi FT3 saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 	}
 }
@@ -191,7 +232,7 @@ func trenFT3(prevNilai, currNilai float64, currStatus string) (tren, reminder st
 func trenFT4(prevNilai, currNilai float64, currStatus string) (tren, reminder string) {
 	switch currStatus {
 	case "Rendah":
-		return "Tidak Terinterpretasi",
+		return "Tidak Diketahui",
 			"Kondisi FT4 saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 	case "Normal":
 		return "Tetap Normal",
@@ -209,7 +250,7 @@ func trenFT4(prevNilai, currNilai float64, currStatus string) (tren, reminder st
 				"Nilai FT4 tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, kondisi masih berada di atas rentang normal."
 		}
 	default:
-		return "Tidak Terinterpretasi",
+		return "Tidak Diketahui",
 			"Kondisi FT4 saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 	}
 }
@@ -232,7 +273,7 @@ func trenTRAb(prevNilai, currNilai float64, currStatus string) (tren, reminder s
 				"Nilai TRAb tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, kondisi masih dalam kategori positif."
 		}
 	default:
-		return "Tidak Terinterpretasi",
+		return "Tidak Diketahui",
 			"Kondisi TRAb saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 	}
 }
@@ -245,55 +286,6 @@ func arahPerubahan(prev, curr float64) string {
 		return "penurunan"
 	}
 	return "tidak ada perubahan"
-}
-
-// ==========================================
-// FUNGSI UTAMA ANALISIS LAB
-// ==========================================
-func AnalyzeLabResults(params []models.AssessmentParamInput) LabAssessmentResult {
-	var result LabAssessmentResult
-	paramMap := extractHormoneValues(params)
-
-	if tsh, ok := paramMap["TSH"]; ok {
-		result.StatusTSH, result.ReminderTSH = evaluateTSH(tsh)
-		result.NilaiTSH = tsh.NilaiHasil
-	} else {
-		result.StatusTSH = "Tidak Terinterpretasi"
-		result.ReminderTSH = "Hasil pemeriksaan TSHs tidak dapat diinterpretasikan karena data tidak tersedia atau tidak valid."
-	}
-
-	if ft4, ok := paramMap["FT4"]; ok {
-		result.StatusFT4, result.ReminderFT4 = evaluateFT4(ft4)
-		result.NilaiFT4 = ft4.NilaiHasil
-	} else {
-		result.StatusFT4 = "Tidak Terinterpretasi"
-		result.ReminderFT4 = "Hasil pemeriksaan FT4 tidak dapat diinterpretasikan karena data tidak tersedia atau tidak valid."
-	}
-
-	if ft3, ok := paramMap["FT3"]; ok {
-		result.StatusFT3, result.ReminderFT3 = evaluateFT3(ft3)
-		result.NilaiFT3 = ft3.NilaiHasil
-	} else {
-		result.StatusFT3 = "Tidak Terinterpretasi"
-		result.ReminderFT3 = "Hasil pemeriksaan FT3 tidak dapat diinterpretasikan karena data tidak tersedia atau tidak valid."
-	}
-
-	if trab, ok := paramMap["TRAB"]; ok {
-		result.StatusTRAb, result.ReminderTRAb = evaluateTRAb(trab)
-		result.NilaiTRAb = trab.NilaiHasil
-	} else {
-		result.StatusTRAb = "Tidak Terinterpretasi"
-		result.ReminderTRAb = "Hasil pemeriksaan TRAb tidak dapat diinterpretasikan karena data tidak tersedia atau tidak valid."
-	}
-
-	// ✅ Interpretasi dieksekusi dengan logika Tabel Skripsi yang ketat
-	result.Interpretasi = interpretasiKeseluruhan(
-		result.StatusTSH,
-		result.StatusFT3,
-		result.StatusFT4,
-	)
-
-	return result
 }
 
 // ==========================================
@@ -312,11 +304,9 @@ type TrenResult struct {
 
 func AnalyzeTren(prev, curr LabAssessmentResult) TrenResult {
 	var tren TrenResult
-
 	tren.TrenTSH, tren.ReminderTrenTSH = trenTSH(prev.NilaiTSH, curr.NilaiTSH, curr.StatusTSH)
 	tren.TrenFT3, tren.ReminderTrenFT3 = trenFT3(prev.NilaiFT3, curr.NilaiFT3, curr.StatusFT3)
 	tren.TrenFT4, tren.ReminderTrenFT4 = trenFT4(prev.NilaiFT4, curr.NilaiFT4, curr.StatusFT4)
 	tren.TrenTRAb, tren.ReminderTrenTRAb = trenTRAb(prev.NilaiTRAb, curr.NilaiTRAb, curr.StatusTRAb)
-
 	return tren
 }
