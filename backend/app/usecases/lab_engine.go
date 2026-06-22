@@ -1,7 +1,6 @@
 package usecases
 
 import (
-	"fmt"
 	"strings"
 
 	"monitoring-service/app/models"
@@ -174,118 +173,99 @@ func AnalyzeLabResults(params []models.AssessmentParamInput) LabAssessmentResult
 }
 
 // ==========================================
-// ANALISIS TREN PER PARAMETER
+// ANALISIS TREN PER PARAMETER (DISESUAIKAN DENGAN TABEL SKRIPSI)
 // ==========================================
 
 func trenTSH(prevNilai, currNilai float64, currStatus string) (tren, reminder string) {
 	switch currStatus {
-	case "Tinggi":
-		return "Tidak Diketahui",
-			"Kondisi TSHs saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
-	case "Normal":
-		return "Tetap Normal",
-			fmt.Sprintf("Berdasarkan hasil pemeriksaan, TSHs saat ini berada dalam rentang normal. Nilai TSHs %s dari pemeriksaan sebelumnya, namun kondisi tetap berada dalam rentang normal.", arahPerubahan(prevNilai, currNilai))
 	case "Rendah":
-		switch {
-		case currNilai > prevNilai:
-			return "Mendekati Normal",
-				"Terjadi peningkatan nilai TSHs dari pemeriksaan sebelumnya, sehingga kondisi mulai mendekati rentang normal."
-		case currNilai < prevNilai:
-			return "Menjauhi Normal",
-				"Terjadi penurunan nilai TSHs dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi rentang normal."
-		default:
-			return "Tidak Berubah",
-				"Nilai TSHs tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, kondisi masih berada di bawah rentang normal."
+		if currNilai > prevNilai {
+			return "Mendekati normal", "Berdasarkan hasil pemeriksaan, TSHs saat ini masih berada di bawah rentang normal dibandingkan sebelumnya. Terjadi peningkatan nilai dari pemeriksaan sebelumnya, sehingga kondisi mulai mendekati rentang normal."
+		} else if currNilai < prevNilai {
+			return "Menjauhi normal", "Berdasarkan hasil pemeriksaan, TSHs saat ini masih berada di bawah rentang normal dibandingkan sebelumnya. Terjadi penurunan nilai dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi rentang normal."
+		} else {
+			return "Tidak berubah", "Berdasarkan hasil pemeriksaan, TSHs saat ini masih berada di bawah rentang normal. Nilai TSHs tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, sehingga kondisi masih berada di bawah rentang normal dan belum menunjukkan perubahan menuju rentang normal."
 		}
-	default:
-		return "Tidak Diketahui",
-			"Kondisi TSHs saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
+	case "Normal":
+		if currNilai > prevNilai {
+			return "Tetap normal", "Berdasarkan hasil pemeriksaan, TSHs saat ini berada dalam rentang normal dibandingkan sebelumnya. Terjadi peningkatan nilai dari pemeriksaan sebelumnya, namun kondisi tetap berada dalam rentang normal."
+		} else if currNilai < prevNilai {
+			return "Tetap normal", "Berdasarkan hasil pemeriksaan, TSHs saat ini berada dalam rentang normal dibandingkan sebelumnya. Terjadi penurunan nilai dari pemeriksaan sebelumnya, namun kondisi tetap berada dalam rentang normal."
+		} else {
+			return "Tetap normal", "Berdasarkan hasil pemeriksaan, TSHs saat ini berada dalam rentang normal. Nilai TSHs tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, sehingga kondisi tetap berada dalam rentang normal."
+		}
+	default: // Status "Tinggi" atau "Tidak Diketahui"
+		return "Tidak diketahui", "Kondisi TSHs saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 	}
 }
 
 func trenFT3(prevNilai, currNilai float64, currStatus string) (tren, reminder string) {
 	switch currStatus {
-	case "Rendah":
-		return "Tidak Diketahui",
-			"Kondisi FT3 saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 	case "Normal":
-		return "Tetap Normal",
-			fmt.Sprintf("FT3 saat ini berada dalam rentang normal. Terjadi %s nilai dari pemeriksaan sebelumnya, namun kondisi tetap normal.", arahPerubahan(prevNilai, currNilai))
-	case "Tinggi":
-		switch {
-		case currNilai < prevNilai:
-			return "Mendekati Normal",
-				"Terjadi penurunan nilai FT3 dari pemeriksaan sebelumnya, sehingga kondisi mulai mendekati rentang normal."
-		case currNilai > prevNilai:
-			return "Menjauhi Normal",
-				"Terjadi peningkatan nilai FT3 dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi rentang normal."
-		default:
-			return "Tidak Berubah",
-				"Nilai FT3 tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, kondisi masih berada di atas rentang normal."
+		if currNilai > prevNilai {
+			return "Tetap normal", "Berdasarkan hasil pemeriksaan, FT3 saat ini berada dalam rentang normal dibandingkan sebelumnya. Terjadi peningkatan nilai dari pemeriksaan sebelumnya, namun kondisi tetap berada dalam rentang normal."
+		} else if currNilai < prevNilai {
+			return "Tetap normal", "Berdasarkan hasil pemeriksaan, FT3 saat ini berada dalam rentang normal dibandingkan sebelumnya. Terjadi penurunan nilai dari pemeriksaan sebelumnya, namun kondisi tetap berada dalam rentang normal."
+		} else {
+			return "Tetap normal", "Berdasarkan hasil pemeriksaan, FT3 saat ini berada dalam rentang normal. Nilai FT3 tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, sehingga kondisi tetap berada dalam rentang normal."
 		}
-	default:
-		return "Tidak Diketahui",
-			"Kondisi FT3 saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
+	case "Tinggi":
+		if currNilai > prevNilai {
+			return "Menjauhi normal", "Berdasarkan hasil pemeriksaan, FT3 saat ini masih berada di atas rentang normal dibandingkan sebelumnya. Terjadi peningkatan nilai dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi rentang normal."
+		} else if currNilai < prevNilai {
+			return "Mendekati normal", "Berdasarkan hasil pemeriksaan, FT3 saat ini berada di atas rentang normal dibandingkan sebelumnya. Terjadi penurunan nilai dari pemeriksaan sebelumnya, sehingga kondisi mulai mendekati rentang normal."
+		} else {
+			return "Tidak berubah", "Berdasarkan hasil pemeriksaan, FT3 saat ini masih berada di atas rentang normal. Nilai FT3 tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, sehingga kondisi masih berada di atas rentang normal."
+		}
+	default: // Status "Rendah" atau "Tidak Diketahui"
+		return "Tidak diketahui", "Kondisi FT3 saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 	}
 }
 
 func trenFT4(prevNilai, currNilai float64, currStatus string) (tren, reminder string) {
 	switch currStatus {
-	case "Rendah":
-		return "Tidak Diketahui",
-			"Kondisi FT4 saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 	case "Normal":
-		return "Tetap Normal",
-			fmt.Sprintf("FT4 saat ini berada dalam rentang normal. Terjadi %s nilai dari pemeriksaan sebelumnya, namun kondisi tetap normal.", arahPerubahan(prevNilai, currNilai))
-	case "Tinggi":
-		switch {
-		case currNilai < prevNilai:
-			return "Mendekati Normal",
-				"Terjadi penurunan nilai FT4 dari pemeriksaan sebelumnya, sehingga kondisi mulai mendekati rentang normal."
-		case currNilai > prevNilai:
-			return "Menjauhi Normal",
-				"Terjadi peningkatan nilai FT4 dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi rentang normal."
-		default:
-			return "Tidak Berubah",
-				"Nilai FT4 tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, kondisi masih berada di atas rentang normal."
+		if currNilai > prevNilai {
+			return "Tetap normal", "Berdasarkan hasil pemeriksaan, FT4 saat ini berada dalam rentang normal dibandingkan sebelumnya. Terjadi peningkatan nilai dari pemeriksaan sebelumnya, namun kondisi tetap berada dalam rentang normal."
+		} else if currNilai < prevNilai {
+			return "Tetap normal", "Berdasarkan hasil pemeriksaan, FT4 saat ini berada dalam rentang normal dibandingkan sebelumnya. Terjadi penurunan nilai dari pemeriksaan sebelumnya, namun kondisi tetap berada dalam rentang normal."
+		} else {
+			return "Tetap normal", "Berdasarkan hasil pemeriksaan, FT4 saat ini berada dalam rentang normal. Nilai FT4 tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, sehingga kondisi tetap berada dalam rentang normal."
 		}
-	default:
-		return "Tidak Diketahui",
-			"Kondisi FT4 saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
+	case "Tinggi":
+		if currNilai > prevNilai {
+			return "Menjauhi normal", "Berdasarkan hasil pemeriksaan, FT4 saat ini masih berada di atas rentang normal dibandingkan sebelumnya. Terjadi peningkatan nilai dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi rentang normal."
+		} else if currNilai < prevNilai {
+			return "Mendekati normal", "Berdasarkan hasil pemeriksaan, FT4 saat ini berada di atas rentang normal dibandingkan sebelumnya. Terjadi penurunan nilai dari pemeriksaan sebelumnya, sehingga kondisi mulai mendekati rentang normal."
+		} else {
+			return "Tidak berubah", "Berdasarkan hasil pemeriksaan, FT4 saat ini masih berada di atas rentang normal. Nilai FT4 tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, sehingga kondisi masih berada di atas rentang normal."
+		}
+	default: // Status "Rendah" atau "Tidak Diketahui"
+		return "Tidak diketahui", "Kondisi FT4 saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 	}
 }
 
 func trenTRAb(prevNilai, currNilai float64, currStatus string) (tren, reminder string) {
 	switch currStatus {
 	case "Negatif":
-		return "Tetap Normal",
-			fmt.Sprintf("TRAb saat ini negatif. Terjadi %s nilai dari pemeriksaan sebelumnya, namun kondisi tetap dalam kategori negatif.", arahPerubahan(prevNilai, currNilai))
+		if currNilai > prevNilai {
+			return "Tetap normal", "Berdasarkan hasil pemeriksaan, TRAb saat ini tidak menunjukkan penanda autoimun (negatif) dibandingkan sebelumnya. Terjadi peningkatan nilai dari pemeriksaan sebelumnya, namun kondisi tetap berada dalam kategori negatif."
+		} else if currNilai < prevNilai {
+			return "Tetap normal", "Berdasarkan hasil pemeriksaan, TRAb saat ini tidak menunjukkan penanda autoimun (negatif) dibandingkan sebelumnya. Terjadi penurunan nilai dari pemeriksaan sebelumnya, namun kondisi tetap berada dalam kategori negatif."
+		} else {
+			return "Tetap normal", "Berdasarkan hasil pemeriksaan, TRAb saat ini tidak menunjukkan penanda autoimun (negatif). Nilai TRAb tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, sehingga kondisi tetap berada dalam kategori negatif."
+		}
 	case "Positif":
-		switch {
-		case currNilai < prevNilai:
-			return "Mendekati Normal",
-				"Terjadi penurunan nilai TRAb dari pemeriksaan sebelumnya, kondisi mulai mendekati kategori negatif."
-		case currNilai > prevNilai:
-			return "Menjauhi Normal",
-				"Terjadi peningkatan nilai TRAb dari pemeriksaan sebelumnya, kondisi semakin menjauhi kategori negatif."
-		default:
-			return "Tidak Berubah",
-				"Nilai TRAb tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, kondisi masih dalam kategori positif."
+		if currNilai > prevNilai {
+			return "Menjauhi normal", "Berdasarkan hasil pemeriksaan, TRAb saat ini masih menunjukkan penanda autoimun (positif) dibandingkan sebelumnya. Terjadi peningkatan nilai dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi kategori negatif."
+		} else if currNilai < prevNilai {
+			return "Mendekati normal", "Berdasarkan hasil pemeriksaan, TRAb saat ini masih menunjukkan penanda autoimun (positif) dibandingkan sebelumnya. Terjadi penurunan nilai dari pemeriksaan sebelumnya, sehingga kondisi mulai mendekati kategori negatif."
+		} else {
+			return "Tidak berubah", "Berdasarkan hasil pemeriksaan, TRAb saat ini masih menunjukkan penanda autoimun (positif). Nilai TRAb tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, sehingga kondisi masih berada dalam kategori positif."
 		}
 	default:
-		return "Tidak Diketahui",
-			"Kondisi TRAb saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
+		return "Tidak diketahui", "Kondisi TRAb saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 	}
-}
-
-func arahPerubahan(prev, curr float64) string {
-	if curr > prev {
-		return "peningkatan"
-	}
-	if curr < prev {
-		return "penurunan"
-	}
-	return "tidak ada perubahan"
 }
 
 // ==========================================
