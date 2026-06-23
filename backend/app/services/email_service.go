@@ -1,12 +1,14 @@
 package services
 
 import (
-	"crypto/rand"
-	"fmt"
-	"math/big"
-	"net/smtp"
-	"os"
-	"strings"
+    "crypto/tls"
+    "fmt"
+    "math/big"
+    "crypto/rand"
+    "net"
+    "net/smtp"
+    "os"
+    "time"
 )
 
 type EmailService struct {
@@ -45,40 +47,78 @@ func GenerateOTP() (string, error) {
 
 // SendOTPEmail mengirim email OTP ke user
 func (s *EmailService) SendOTPEmail(toEmail, otpCode, emailType string) error {
-	var subject, body string
+    if s.SMTPUser == "" || s.SMTPPassword == "" {
+        return fmt.Errorf("konfigurasi email belum diatur di server")
+    }
 
-	switch emailType {
-	case "register":
-		subject = "Kode Verifikasi Pendaftaran GdSelf"
-		body = s.buildRegisterEmailBody(otpCode)
-	case "reset_password":
-		subject = "Kode Reset Password GdSelf"
-		body = s.buildResetPasswordEmailBody(otpCode)
-	default:
-		subject = "Kode Verifikasi GdSelf"
-		body = s.buildRegisterEmailBody(otpCode)
-	}
+    var subject, body string
+    switch emailType {
+    case "register":
+        subject = "Kode Verifikasi Pendaftaran GdSelf"
+        body = s.buildRegisterEmailBody(otpCode)
+    case "reset_password":
+        subject = "Kode Reset Password GdSelf"
+        body = s.buildResetPasswordEmailBody(otpCode)
+    default:
+        subject = "Kode Verifikasi GdSelf"
+        body = s.buildRegisterEmailBody(otpCode)
+    }
 
-	auth := smtp.PlainAuth("", s.SMTPUser, s.SMTPPassword, s.SMTPHost)
+    // ✅ Gunakan port 465 (SSL) bukan 587 (STARTTLS)
+    // Railway sering blokir 587 tapi tidak 465
+    tlsConfig := &tls.Config{
+        ServerName: "smtp.gmail.com",
+    }
 
-	// Header email
-	headers := make(map[string]string)
-	headers["From"] = fmt.Sprintf("%s <%s>", s.FromName, s.FromEmail)
-	headers["To"] = toEmail
-	headers["Subject"] = subject
-	headers["MIME-Version"] = "1.0"
-	headers["Content-Type"] = "text/html; charset=UTF-8"
+    // ✅ Dial dengan timeout 10 detik
+    dialer := &net.Dialer{Timeout: 10 * time.Second}
+    conn, err := tls.DialWithDialer(dialer, "tcp", "smtp.gmail.com:465", tlsConfig)
+    if err != nil {
+        return fmt.Errorf("gagal konek ke server email: %v", err)
+    }
+    defer conn.Close()
 
-	var message strings.Builder
-	for k, v := range headers {
-		message.WriteString(fmt.Sprintf("%s: %s\r\n", k, v))
-	}
-	message.WriteString("\r\n")
-	message.WriteString(body)
+    client, err := smtp.NewClient(conn, "smtp.gmail.com")
+    if err != nil {
+        return fmt.Errorf("gagal membuat SMTP client: %v", err)
+    }
+    defer client.Close()
 
-	addr := fmt.Sprintf("%s:%s", s.SMTPHost, s.SMTPPort)
-	return smtp.SendMail(addr, auth, s.FromEmail, []string{toEmail}, []byte(message.String()))
+    // Auth
+    auth := smtp.PlainAuth("", s.SMTPUser, s.SMTPPassword, "smtp.gmail.com")
+    if err = client.Auth(auth); err != nil {
+        return fmt.Errorf("autentikasi email gagal: %v", err)
+    }
+
+    // Set sender
+    if err = client.Mail(s.FromEmail); err != nil {
+        return fmt.Errorf("gagal set pengirim: %v", err)
+    }
+
+    // Set recipient
+    if err = client.Rcpt(toEmail); err != nil {
+        return fmt.Errorf("gagal set penerima: %v", err)
+    }
+
+    // Tulis pesan
+    w, err := client.Data()
+    if err != nil {
+        return fmt.Errorf("gagal membuka data writer: %v", err)
+    }
+
+    headers := fmt.Sprintf(
+        "From: %s <%s>\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n",
+        s.FromName, s.FromEmail, toEmail, subject,
+    )
+
+    _, err = fmt.Fprint(w, headers+body)
+    if err != nil {
+        return fmt.Errorf("gagal menulis pesan: %v", err)
+    }
+
+    return w.Close()
 }
+
 
 func (s *EmailService) buildRegisterEmailBody(otp string) string {
 	return fmt.Sprintf(`

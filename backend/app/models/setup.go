@@ -14,6 +14,7 @@ func SetupDatabase(db *gorm.DB) {
 	// Eksekusi pembuatan 13 tabel secara berurutan sesuai relasi
 	err := db.AutoMigrate(
 		&User{},
+		&OTPCode{},
 		&Obat{},
 		&JadwalObat{},
 		&LogKonsumsiObat{},
