@@ -1,128 +1,103 @@
 package services
 
 import (
-    "crypto/tls"
-    "fmt"
-    "math/big"
+    "bytes"
     "crypto/rand"
-    "net"
-    "net/smtp"
+    "encoding/json"
+    "fmt"
+    "io"
+    "math/big"
+    "net/http"
     "os"
     "time"
 )
 
 type EmailService struct {
-	SMTPHost     string
-	SMTPPort     string
-	SMTPUser     string
-	SMTPPassword string
-	FromEmail    string
-	FromName     string
+    FromEmail string
+    FromName  string
+    APIKey    string
 }
 
 func NewEmailService() *EmailService {
-	return &EmailService{
-		SMTPHost:     "smtp.gmail.com",
-		SMTPPort:     "587",
-		SMTPUser:     os.Getenv("GMAIL_USER"),     // email Gmail mas
-		SMTPPassword: os.Getenv("GMAIL_APP_PASS"), // App Password Gmail
-		FromEmail:    os.Getenv("GMAIL_USER"),
-		FromName:     "GdSelf App",
-	}
+    return &EmailService{
+        FromEmail: "gdself@resend.dev", // ✅ Pakai domain resend.dev (gratis, tanpa verifikasi domain)
+        FromName:  "GdSelf App",
+        APIKey:    os.Getenv("RESEND_API_KEY"),
+    }
 }
 
-// GenerateOTP membuat kode OTP 6 digit acak
 func GenerateOTP() (string, error) {
-	digits := "0123456789"
-	otp := make([]byte, 6)
-	for i := range otp {
-		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(digits))))
-		if err != nil {
-			return "", err
-		}
-		otp[i] = digits[n.Int64()]
-	}
-	return string(otp), nil
+    digits := "0123456789"
+    otp := make([]byte, 6)
+    for i := range otp {
+        n, err := rand.Int(rand.Reader, big.NewInt(int64(len(digits))))
+        if err != nil {
+            return "", err
+        }
+        otp[i] = digits[n.Int64()]
+    }
+    return string(otp), nil
 }
 
-// SendOTPEmail mengirim email OTP ke user
 func (s *EmailService) SendOTPEmail(toEmail, otpCode, emailType string) error {
-    if s.SMTPUser == "" || s.SMTPPassword == "" {
-        return fmt.Errorf("konfigurasi email belum diatur di server")
+    if s.APIKey == "" {
+        return fmt.Errorf("RESEND_API_KEY belum diset di environment variable")
     }
 
-    var subject, body string
+    var subject, htmlBody string
     switch emailType {
     case "register":
         subject = "Kode Verifikasi Pendaftaran GdSelf"
-        body = s.buildRegisterEmailBody(otpCode)
+        htmlBody = s.buildRegisterEmailBody(otpCode)
     case "reset_password":
         subject = "Kode Reset Password GdSelf"
-        body = s.buildResetPasswordEmailBody(otpCode)
+        htmlBody = s.buildResetPasswordEmailBody(otpCode)
     default:
         subject = "Kode Verifikasi GdSelf"
-        body = s.buildRegisterEmailBody(otpCode)
+        htmlBody = s.buildRegisterEmailBody(otpCode)
     }
 
-    // ✅ Gunakan port 465 (SSL) bukan 587 (STARTTLS)
-    // Railway sering blokir 587 tapi tidak 465
-    tlsConfig := &tls.Config{
-        ServerName: "smtp.gmail.com",
+    // ✅ Payload ke Resend API
+    payload := map[string]interface{}{
+        "from":    fmt.Sprintf("%s <%s>", s.FromName, s.FromEmail),
+        "to":      []string{toEmail},
+        "subject": subject,
+        "html":    htmlBody,
     }
 
-    // ✅ Dial dengan timeout 10 detik
-    dialer := &net.Dialer{Timeout: 10 * time.Second}
-    conn, err := tls.DialWithDialer(dialer, "tcp", "smtp.gmail.com:465", tlsConfig)
+    payloadBytes, err := json.Marshal(payload)
     if err != nil {
-        return fmt.Errorf("gagal konek ke server email: %v", err)
+        return fmt.Errorf("gagal membuat payload email: %v", err)
     }
-    defer conn.Close()
 
-    client, err := smtp.NewClient(conn, "smtp.gmail.com")
+    // ✅ HTTP POST ke Resend API dengan timeout 10 detik
+    req, err := http.NewRequest("POST", "https://api.resend.com/emails",
+        bytes.NewReader(payloadBytes))
     if err != nil {
-        return fmt.Errorf("gagal membuat SMTP client: %v", err)
-    }
-    defer client.Close()
-
-    // Auth
-    auth := smtp.PlainAuth("", s.SMTPUser, s.SMTPPassword, "smtp.gmail.com")
-    if err = client.Auth(auth); err != nil {
-        return fmt.Errorf("autentikasi email gagal: %v", err)
+        return fmt.Errorf("gagal membuat request: %v", err)
     }
 
-    // Set sender
-    if err = client.Mail(s.FromEmail); err != nil {
-        return fmt.Errorf("gagal set pengirim: %v", err)
-    }
+    req.Header.Set("Authorization", "Bearer "+s.APIKey)
+    req.Header.Set("Content-Type", "application/json")
 
-    // Set recipient
-    if err = client.Rcpt(toEmail); err != nil {
-        return fmt.Errorf("gagal set penerima: %v", err)
-    }
-
-    // Tulis pesan
-    w, err := client.Data()
+    client := &http.Client{Timeout: 10 * time.Second}
+    resp, err := client.Do(req)
     if err != nil {
-        return fmt.Errorf("gagal membuka data writer: %v", err)
+        return fmt.Errorf("gagal mengirim email: %v", err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != 200 && resp.StatusCode != 201 {
+        body, _ := io.ReadAll(resp.Body)
+        return fmt.Errorf("Resend API error %d: %s", resp.StatusCode, string(body))
     }
 
-    headers := fmt.Sprintf(
-        "From: %s <%s>\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n",
-        s.FromName, s.FromEmail, toEmail, subject,
-    )
-
-    _, err = fmt.Fprint(w, headers+body)
-    if err != nil {
-        return fmt.Errorf("gagal menulis pesan: %v", err)
-    }
-
-    return w.Close()
+    return nil
 }
 
-
+// Template email sama seperti sebelumnya
 func (s *EmailService) buildRegisterEmailBody(otp string) string {
-	return fmt.Sprintf(`
-<!DOCTYPE html>
+    return fmt.Sprintf(`<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"></head>
 <body style="font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px;">
@@ -141,18 +116,13 @@ func (s *EmailService) buildRegisterEmailBody(otp string) string {
     <p style="color: #888; font-size: 13px;">
       Kode ini berlaku selama <strong>10 menit</strong>. Jangan bagikan kode ini kepada siapapun.
     </p>
-    <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">
-    <p style="color: #aaa; font-size: 12px; text-align: center;">
-      Jika Anda tidak merasa mendaftar di GdSelf, abaikan email ini.
-    </p>
   </div>
 </body>
 </html>`, otp)
 }
 
 func (s *EmailService) buildResetPasswordEmailBody(otp string) string {
-	return fmt.Sprintf(`
-<!DOCTYPE html>
+    return fmt.Sprintf(`<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"></head>
 <body style="font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px;">
@@ -170,10 +140,6 @@ func (s *EmailService) buildResetPasswordEmailBody(otp string) string {
     </div>
     <p style="color: #888; font-size: 13px;">
       Kode ini berlaku selama <strong>10 menit</strong>. Jangan bagikan kode ini kepada siapapun.
-    </p>
-    <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">
-    <p style="color: #aaa; font-size: 12px; text-align: center;">
-      Jika Anda tidak meminta reset password, abaikan email ini. Password Anda tidak akan berubah.
     </p>
   </div>
 </body>
