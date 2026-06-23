@@ -195,18 +195,43 @@ func (u *authUsecase) ForgotPassword(email string) error {
 }
 
 func (u *authUsecase) ResetPassword(email, code, newPassword string) error {
-	if err := u.VerifyOTP(email, code, "reset_password"); err != nil {
-		return err
-	}
-	user, err := u.userRepo.GetByEmail(email)
-	if err != nil || user.IDUser == 0 {
-		return fmt.Errorf("user tidak ditemukan")
-	}
-	hashedPassword, err := helpers.HashPassword(newPassword)
-	if err != nil {
-		return fmt.Errorf("gagal mengenkripsi password")
-	}
-	user.Password = string(hashedPassword)
-	_, err = u.userRepo.Update(user.IDUser, user)
-	return err
+    // ✅ Cek OTP sudah pernah diverifikasi (used=true) dalam 10 menit terakhir
+    // Bukan verifikasi ulang — tapi cek apakah ada OTP yang valid untuk email ini
+    otp, err := u.otpRepo.GetUsedOTPByEmail(email, "reset_password")
+    if err != nil {
+        return fmt.Errorf("sesi reset password tidak valid atau sudah kedaluwarsa")
+    }
+
+    // Pastikan code cocok
+    if otp.Code != code {
+        return fmt.Errorf("sesi reset password tidak valid")
+    }
+
+    // Pastikan tidak lebih dari 10 menit sejak OTP dibuat
+    if time.Now().After(otp.ExpiredAt) {
+        return fmt.Errorf("sesi reset password sudah kedaluwarsa, silakan ulangi")
+    }
+
+    // Ambil user
+    user, err := u.userRepo.GetByEmail(email)
+    if err != nil || user.IDUser == 0 {
+        return fmt.Errorf("user tidak ditemukan")
+    }
+
+    // Hash password baru
+    hashedPassword, err := helpers.HashPassword(newPassword)
+    if err != nil {
+        return fmt.Errorf("gagal mengenkripsi password")
+    }
+
+    // Update password
+    user.Password = string(hashedPassword)
+    _, err = u.userRepo.Update(user.IDUser, user)
+    if err != nil {
+        return fmt.Errorf("gagal menyimpan password baru")
+    }
+
+    // ✅ Hapus OTP setelah password berhasil direset
+    u.otpRepo.DeleteByEmail(email, "reset_password")
+    return nil
 }

@@ -10,6 +10,7 @@ import (
 type OTPRepository interface {
 	Create(otp models.OTPCode) (models.OTPCode, error)
 	GetByEmailAndType(email, otpType string) (models.OTPCode, error)
+	GetUsedOTPByEmail(email, otpType string) (models.OTPCode, error)
 	MarkAsUsed(id uint) error
 	DeleteExpired() error
 	DeleteByEmail(email, otpType string) error
@@ -47,4 +48,13 @@ func (r *otpRepository) DeleteExpired() error {
 
 func (r *otpRepository) DeleteByEmail(email, otpType string) error {
 	return r.db.Where("email = ? AND type = ?", email, otpType).Delete(&models.OTPCode{}).Error
+}
+
+func (r *otpRepository) GetUsedOTPByEmail(email, otpType string) (models.OTPCode, error) {
+    var otp models.OTPCode
+    err := r.db.Where(
+        "email = ? AND type = ? AND used = ?",
+        email, otpType, true,
+    ).Order("created_at DESC").First(&otp).Error
+    return otp, err
 }
