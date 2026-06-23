@@ -122,9 +122,12 @@ func (u *userUsecase) GoogleLogin(idToken string) (models.User, error) {
 	// User sudah ada → update Provider ke "google" kalau belum, dan foto kalau kosong
 	needsUpdate := false
 	if user.Provider != "google" {
-		user.Provider = "google" // ✅ update Provider untuk akun lama yang belum punya provider
-		needsUpdate = true
+		if user.Password == "" {
+			user.Provider = "google"
+			needsUpdate = true
+		}
 	}
+	
 	if user.FotoProfil == "" && picture != "" {
 		user.FotoProfil = picture
 		needsUpdate = true
