@@ -94,50 +94,38 @@ func (ctrl *authController) GoogleCheck(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "payload tidak valid"})
 	}
 
+	// 1. Verifikasi Token Google ke Usecase
 	result, err := ctrl.usecase.GoogleCheck(input.IDToken)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
 
-	// Kalau user sudah ada, generate token dan return user data
-	if !result.IsNewUser {
-		user, err := ctrl.userUsecase.GetUserByEmail("")
-		// Re-fetch user by email dari Google token — gunakan GoogleCheck result
-		// Kita perlu ambil email dari token, jadi panggil langsung lewat userUsecase
-		_ = user
-		_ = err
+	// 2. Cek langsung ke database apakah email ini sudah terdaftar
+	existingUser, loginErr := ctrl.userUsecase.GetUserByEmail(result.GoogleEmail)
 
-		// Ambil user via GoogleLogin flow lama untuk dapat token
-		existingUser, loginErr := ctrl.userUsecase.GetUserByEmail(result.GoogleEmail)
-
-		// GoogleCheck sudah validasi token, jadi kita percaya email ini
-		// Tapi GoogleEmail tidak diisi jika existing user — perlu refactor sedikit
-		// Untuk sementara, return existing user dengan token
-		if loginErr != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "gagal mengambil data user"})
-		}
-
-		token := generateTokenHelper(existingUser.IDUser, existingUser.Email)
+	// 3. LOGIKA UTAMA: Jika terjadi error (misal: Record Not Found), anggap sebagai USER BARU
+	if loginErr != nil {
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"status_code": http.StatusOK,
-			"message":     "Login Google berhasil",
+			"message":     "User belum terdaftar, silakan lengkapi data",
 			"data": map[string]interface{}{
-				"is_new_user": false,
-				"token":       token,
-				"user":        buildUserResponse(existingUser),
+				"is_new_user":  true, // ✅ Flag dikirim sebagai TRUE
+				"google_email": result.GoogleEmail,
+				"google_name":  result.GoogleName,
+				"google_photo": result.GooglePhoto,
 			},
 		})
 	}
 
-	// User baru → return flag dan data Google untuk pre-fill form
+	// 4. JIKA USER DITEMUKAN (Sudah Terdaftar sebelumnya)
+	token := generateTokenHelper(existingUser.IDUser, existingUser.Email)
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"status_code": http.StatusOK,
-		"message":     "User belum terdaftar, silakan lengkapi data",
+		"message":     "Login Google berhasil",
 		"data": map[string]interface{}{
-			"is_new_user":  true,
-			"google_email": result.GoogleEmail,
-			"google_name":  result.GoogleName,
-			"google_photo": result.GooglePhoto,
+			"is_new_user": false, // ✅ Flag dikirim sebagai FALSE
+			"token":       token,
+			"user":        buildUserResponse(existingUser), // Menggunakan helper yang sudah ada di controller Mas
 		},
 	})
 }
