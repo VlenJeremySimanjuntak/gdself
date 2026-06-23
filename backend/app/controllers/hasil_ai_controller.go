@@ -3,6 +3,7 @@ package controllers
 import (
 	"net/http"
 	"strconv"
+	"strings" // ✅ WAJIB DITAMBAHKAN
 
 	"monitoring-service/app/models"
 	"monitoring-service/app/usecases"
@@ -185,14 +186,13 @@ func (ctrl *hasilAIController) GetLabByID(c echo.Context) error {
 func (ctrl *hasilAIController) GetLabByLaporanLabID(c echo.Context) error {
 	laporanLabID, err := strconv.ParseUint(c.Param("laporan_lab_id"), 10, 32)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "laporan_lab_id tidak valid",
-		})
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "laporan_lab_id tidak valid"})
 	}
 
 	hasil, err := ctrl.labUsecase.GetHasilAILabByLaporanLabID(uint(laporanLabID))
 	if err != nil {
-		if err.Error() == "record not found" {
+		// ✅ PERBAIKAN: Gunakan strings.Contains agar lebih fleksibel menangkap error GORM
+		if strings.Contains(strings.ToLower(err.Error()), "not found") {
 			return c.JSON(http.StatusOK, models.Response{
 				StatusCode: http.StatusOK,
 				Message:    "Data Hasil AI Lab belum tersedia untuk laporan ini",
@@ -200,16 +200,10 @@ func (ctrl *hasilAIController) GetLabByLaporanLabID(c echo.Context) error {
 			})
 		}
 		
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": err.Error(),
-		})
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, models.Response{
-		StatusCode: http.StatusOK,
-		Message:    "Hasil AI Lab dari laporan ditemukan",
-		Data:       hasil,
-	})
+	return c.JSON(http.StatusOK, models.Response{StatusCode: http.StatusOK, Message: "Hasil AI Lab ditemukan", Data: hasil})
 }
 
 // ==========================================
@@ -239,37 +233,26 @@ func (ctrl *hasilAIController) GetTrenByID(c echo.Context) error {
 }
 
 func (ctrl *hasilAIController) GetTrenByLaporanLabID(c echo.Context) error {
-    laporanLabID, err := strconv.ParseUint(c.Param("laporan_lab_id"), 10, 32)
-    if err != nil {
-        return c.JSON(http.StatusBadRequest, map[string]string{
-            "error": "laporan_lab_id tidak valid",
-        })
-    }
+	laporanLabID, err := strconv.ParseUint(c.Param("laporan_lab_id"), 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "laporan_lab_id tidak valid"})
+	}
 
-    hasil, err := ctrl.trenUsecase.GetHasilAITrenByLaporanLabID(uint(laporanLabID))
-    if err != nil {
-        // ✅ PERBAIKAN: Jangan kirim 404. 
-        // Jika errornya adalah "data tidak ditemukan", kirim 200 OK dengan data nil.
-        // Kita asumsikan err.Error() dari Usecase/Repo berisi "record not found"
-        if err.Error() == "record not found" {
-            return c.JSON(http.StatusOK, models.Response{
-                StatusCode: http.StatusOK,
-                Message:    "Data tren belum tersedia untuk laporan ini",
-                Data:       nil, // Flutter akan menerima data: null, bukan crash!
-            })
-        }
-        
-        // Error server yang sesungguhnya (misal: database mati)
-        return c.JSON(http.StatusInternalServerError, map[string]string{
-            "error": err.Error(),
-        })
-    }
+	hasil, err := ctrl.trenUsecase.GetHasilAITrenByLaporanLabID(uint(laporanLabID))
+	if err != nil {
+		// ✅ PERBAIKAN: Sama seperti di atas
+		if strings.Contains(strings.ToLower(err.Error()), "not found") {
+			return c.JSON(http.StatusOK, models.Response{
+				StatusCode: http.StatusOK,
+				Message:    "Data tren belum tersedia untuk laporan ini",
+				Data:       nil,
+			})
+		}
+		
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
 
-    return c.JSON(http.StatusOK, models.Response{
-        StatusCode: http.StatusOK,
-        Message:    "Hasil AI Tren dari laporan ditemukan",
-        Data:       hasil,
-    })
+	return c.JSON(http.StatusOK, models.Response{StatusCode: http.StatusOK, Message: "Hasil AI Tren ditemukan", Data: hasil})
 }
 
 // ==========================================

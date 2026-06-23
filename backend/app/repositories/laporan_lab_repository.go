@@ -11,7 +11,7 @@ type LaporanLabRepository interface {
 	GetByID(id uint) (models.LaporanLab, error)
 	GetByUserID(userID uint) ([]models.LaporanLab, error)
 	GetByUserIDAndDate(userID uint, date string) (models.LaporanLab, error)
-	GetPreviousLab(idLaporanLab uint) (models.LaporanLab, error) // ✅ FUNGSI BARU
+	GetPreviousLab(idLaporanLab uint) (models.LaporanLab, error)
 	GetAll() ([]models.LaporanLab, error)
 	Update(id uint, laporan models.LaporanLab) (models.LaporanLab, error)
 	Delete(id uint) error
@@ -45,7 +45,8 @@ func (r *laporanLabRepository) GetByUserID(userID uint) ([]models.LaporanLab, er
 		Preload("Riwayat").
 		Preload("HasilLab").
 		Preload("HasilLab.Parameter").
-		Order("laporan_lab.id_laporan_lab DESC").
+		// ✅ FIX: Diurutkan berdasarkan tanggal periksa, bukan ID insert
+		Order("laporan_lab.tgl_periksa DESC, laporan_lab.id_laporan_lab DESC").
 		Find(&laporanList).Error
 	return laporanList, err
 }
@@ -59,22 +60,23 @@ func (r *laporanLabRepository) GetByUserIDAndDate(userID uint, date string) (mod
 	return laporan, err
 }
 
-// ✅ FUNGSI BARU: Mengambil otomatis 1 data lab terakhir milik user yang sama
+// ✅ FIX BUG: Mengambil 1 data lab sebelumnya berdasarkan TANGGAL PEMERIKSAAN
 func (r *laporanLabRepository) GetPreviousLab(idLaporanLab uint) (models.LaporanLab, error) {
 	var currentLab models.LaporanLab
-	// Ambil IDUser dari laporan saat ini
+	// 1. Ambil IDUser dan Tanggal Periksa dari laporan saat ini
 	if err := r.db.Preload("Riwayat").First(&currentLab, idLaporanLab).Error; err != nil {
 		return currentLab, err
 	}
 
 	var prevLab models.LaporanLab
-	// Cari laporan lab milik user yang sama, dengan ID lebih kecil (<), ambil 1 yang paling baru (DESC)
+	// 2. Cari laporan lab milik user yang sama, dengan TANGGAL lebih lampau (< currentLab.TglPeriksa)
+	// Jika ada yang tanggalnya sama persis, gunakan ID Laporan Lab yang lebih kecil sebagai penentu (tie-breaker)
 	err := r.db.
 		Joins("JOIN riwayat ON riwayat.id_riwayat = laporan_lab.id_riwayat").
-		Where("riwayat.id_user = ? AND laporan_lab.id_laporan_lab < ?", currentLab.Riwayat.IDUser, idLaporanLab).
+		Where("riwayat.id_user = ? AND laporan_lab.tgl_periksa < ?", currentLab.Riwayat.IDUser, currentLab.TglPeriksa).
 		Preload("HasilLab").
 		Preload("HasilLab.Parameter").
-		Order("laporan_lab.id_laporan_lab DESC").
+		Order("laporan_lab.tgl_periksa DESC, laporan_lab.id_laporan_lab DESC").
 		First(&prevLab).Error
 
 	return prevLab, err
