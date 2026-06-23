@@ -28,10 +28,10 @@ type HasilLabController interface {
 
 type hasilLabController struct {
 	usecase   usecases.HasilLabUsecase
-	aiUsecase usecases.LabUsecase // 👇 1. KITA BAWA MESIN AI KE SINI
+	aiUsecase usecases.LabUsecase
 }
 
-func NewHasilLabController(u usecases.HasilLabUsecase, ai usecases.LabUsecase) HasilLabController { // 👇 2. TAMBAHKAN PARAMETER AI
+func NewHasilLabController(u usecases.HasilLabUsecase, ai usecases.LabUsecase) HasilLabController {
 	return &hasilLabController{
 		usecase:   u,
 		aiUsecase: ai,
@@ -65,20 +65,11 @@ func (ctrl *hasilLabController) Create(c echo.Context) error {
 		})
 	}
 
+	// ✅ FIX BUG: Hapus validasi == 0 agar nilai 0.0 (seperti batas bawah TRAb) bisa masuk
 	for i, p := range input.Parameters {
 		if strings.TrimSpace(p.NamaParameter) == "" {
 			return c.JSON(http.StatusBadRequest, map[string]string{
 				"error": "nama_parameter wajib diisi untuk parameter ke-" + strconv.Itoa(i+1),
-			})
-		}
-		if p.NilaiHasil == 0 {
-			return c.JSON(http.StatusBadRequest, map[string]string{
-				"error": "nilai_hasil wajib diisi untuk parameter ke-" + strconv.Itoa(i+1),
-			})
-		}
-		if p.NilaiBatasBawah == 0 || p.NilaiBatasAtas == 0 {
-			return c.JSON(http.StatusBadRequest, map[string]string{
-				"error": "nilai_batas_bawah dan nilai_batas_atas wajib diisi untuk parameter ke-" + strconv.Itoa(i+1),
 			})
 		}
 	}
@@ -97,7 +88,7 @@ func (ctrl *hasilLabController) Create(c echo.Context) error {
 	// 1. Ekstrak ID Laporan
 	reportID := idLaporan
 	if reportID == 0 {
-		// Trik aman ekstrak ID Laporan yang baru saja terbuat (karena kita tidak tahu pasti tipe result-nya)
+		// Trik aman ekstrak ID Laporan yang baru saja terbuat
 		resBytes, _ := json.Marshal(result)
 		var resMap map[string]interface{}
 		if errJSON := json.Unmarshal(resBytes, &resMap); errJSON == nil {
@@ -153,8 +144,6 @@ func (ctrl *hasilLabController) Create(c echo.Context) error {
 		Data:       result,
 	})
 }
-
-// ... Sisanya tetap persis sama seperti kode Mas ...
 
 func (ctrl *hasilLabController) GetByID(c echo.Context) error {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
@@ -372,11 +361,8 @@ func (ctrl *hasilLabController) Update(c echo.Context) error {
 		})
 	}
 
-	if input.NilaiHasil == 0 && input.NilaiBatasBawah == 0 && input.NilaiBatasAtas == 0 {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Minimal satu field harus diisi untuk update",
-		})
-	}
+	// ✅ FIX BUG: Hapus validasi kaku ini agar update nilai menjadi 0.0 tetap diperbolehkan
+	// if input.NilaiHasil == 0 && input.NilaiBatasBawah == 0 && input.NilaiBatasAtas == 0 { ... }
 
 	hasilLab, err := ctrl.usecase.UpdateHasilLab(uint(id), input)
 	if err != nil {
