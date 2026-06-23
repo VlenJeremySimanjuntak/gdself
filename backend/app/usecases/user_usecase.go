@@ -65,11 +65,8 @@ func (u *userUsecase) Authenticate(email, password string) (models.User, error) 
 		return models.User{}, fmt.Errorf("email atau password salah")
 	}
 
-	// ✅ Cek Provider — lebih eksplisit dari cek password kosong
-	if user.Provider == "google" {
-		return models.User{}, fmt.Errorf("akun ini terdaftar menggunakan Google. Silakan masuk dengan tombol 'Masuk dengan Google'")
-	}
-
+	// ✅ FIX: Hapus pengecekan if user.Provider == "google".
+	// Kita HANYA menolak login manual jika password-nya benar-benar KOSONG.
 	if user.Password == "" {
 		return models.User{}, fmt.Errorf("akun ini terdaftar menggunakan Google. Silakan masuk dengan tombol 'Masuk dengan Google'")
 	}
