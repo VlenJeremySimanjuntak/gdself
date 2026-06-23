@@ -239,25 +239,37 @@ func (ctrl *hasilAIController) GetTrenByID(c echo.Context) error {
 }
 
 func (ctrl *hasilAIController) GetTrenByLaporanLabID(c echo.Context) error {
-	laporanLabID, err := strconv.ParseUint(c.Param("laporan_lab_id"), 10, 32)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "laporan_lab_id tidak valid",
-		})
-	}
+    laporanLabID, err := strconv.ParseUint(c.Param("laporan_lab_id"), 10, 32)
+    if err != nil {
+        return c.JSON(http.StatusBadRequest, map[string]string{
+            "error": "laporan_lab_id tidak valid",
+        })
+    }
 
-	hasil, err := ctrl.trenUsecase.GetHasilAITrenByLaporanLabID(uint(laporanLabID))
-	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{
-			"error": "data tren belum tersedia untuk laporan ini",
-		})
-	}
+    hasil, err := ctrl.trenUsecase.GetHasilAITrenByLaporanLabID(uint(laporanLabID))
+    if err != nil {
+        // ✅ PERBAIKAN: Jangan kirim 404. 
+        // Jika errornya adalah "data tidak ditemukan", kirim 200 OK dengan data nil.
+        // Kita asumsikan err.Error() dari Usecase/Repo berisi "record not found"
+        if err.Error() == "record not found" {
+            return c.JSON(http.StatusOK, models.Response{
+                StatusCode: http.StatusOK,
+                Message:    "Data tren belum tersedia untuk laporan ini",
+                Data:       nil, // Flutter akan menerima data: null, bukan crash!
+            })
+        }
+        
+        // Error server yang sesungguhnya (misal: database mati)
+        return c.JSON(http.StatusInternalServerError, map[string]string{
+            "error": err.Error(),
+        })
+    }
 
-	return c.JSON(http.StatusOK, models.Response{
-		StatusCode: http.StatusOK,
-		Message:    "Hasil AI Tren dari laporan ditemukan",
-		Data:       hasil,
-	})
+    return c.JSON(http.StatusOK, models.Response{
+        StatusCode: http.StatusOK,
+        Message:    "Hasil AI Tren dari laporan ditemukan",
+        Data:       hasil,
+    })
 }
 
 // ==========================================
