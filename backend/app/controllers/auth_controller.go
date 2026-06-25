@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"net/http"
-	"os"
 	"time"
 
 	"monitoring-service/app/helpers"
@@ -31,10 +30,6 @@ func NewAuthController(auth usecases.AuthUsecase, user usecases.UserUsecase) Aut
 }
 
 func generateTokenHelper(userID uint, email string) string {
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		return ""
-	}
 	token, err := helpers.GenerateToken(userID, email, 24*time.Hour)
 	if err != nil {
 		return ""

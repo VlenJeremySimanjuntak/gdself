@@ -39,7 +39,6 @@ type GoogleLoginRequest struct {
 	IDToken string `json:"id_token"`
 }
 
-// buildUserResponse membuat response user tanpa CustomDate/struct problem
 func buildUserResponse(user models.User) map[string]interface{} {
 	response := map[string]interface{}{
 		"id_user":       user.IDUser,
@@ -50,7 +49,6 @@ func buildUserResponse(user models.User) map[string]interface{} {
 		"update_at":     user.UpdateAt.Format("2006-01-02 15:04:05"),
 	}
 
-	// Handle tgl_lahir
 	if user.TglLahir != nil {
 		t := time.Time(*user.TglLahir)
 		if !t.IsZero() {
@@ -62,7 +60,6 @@ func buildUserResponse(user models.User) map[string]interface{} {
 		response["tgl_lahir"] = nil
 	}
 
-	// Handle tgl_terdiagnosis
 	if user.TglTerdiagnosis != nil {
 		t := time.Time(*user.TglTerdiagnosis)
 		if !t.IsZero() {
@@ -87,14 +84,12 @@ func (ctrl *userController) Create(c echo.Context) error {
 		})
 	}
 
-	// Validasi field wajib
 	if input.Nama == "" || input.Email == "" || input.Password == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "nama, email, dan password harus diisi",
 		})
 	}
 
-	// Mapping ke model User
 	user := models.User{
 		Nama:            input.Nama,
 		Email:           input.Email,
@@ -111,18 +106,8 @@ func (ctrl *userController) Create(c echo.Context) error {
 		})
 	}
 
-	// Generate JWT token
-	jwtSecret := os.Getenv("JWT_SECRET")
-	var token string
-	if jwtSecret != "" {
-		ttl := 24 * time.Hour
-		tokenStr, err := helpers.GenerateToken(result.IDUser, result.Email, ttl)
-		if err == nil {
-			token = tokenStr
-		}
-	}
+	token, _ := helpers.GenerateToken(result.IDUser, result.Email, 24*time.Hour)
 
-	// ✅ Response manual untuk hindari MarshalJSON error
 	return c.JSON(http.StatusCreated, map[string]interface{}{
 		"status_code": http.StatusCreated,
 		"message":     "User berhasil dibuat",
@@ -162,18 +147,8 @@ func (ctrl *userController) Login(c echo.Context) error {
 		})
 	}
 
-	// Generate JWT token
-	jwtSecret := os.Getenv("JWT_SECRET")
-	var token string
-	if jwtSecret != "" {
-		ttl := 24 * time.Hour
-		tokenStr, err := helpers.GenerateToken(user.IDUser, user.Email, ttl)
-		if err == nil {
-			token = tokenStr
-		}
-	}
+	token, _ := helpers.GenerateToken(user.IDUser, user.Email, 24*time.Hour)
 
-	// ✅ Response manual
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"status_code": http.StatusOK,
 		"message":     "Login berhasil",
@@ -192,6 +167,14 @@ func (ctrl *userController) GetByID(c echo.Context) error {
 		})
 	}
 
+	// 🔒 IDOR Check
+	tokenUserID := c.Get("user_id").(uint)
+	if tokenUserID != uint(id) {
+		return c.JSON(http.StatusForbidden, map[string]string{
+			"error": "Akses ditolak: Anda tidak memiliki izin untuk mengakses data pengguna lain",
+		})
+	}
+
 	user, err := ctrl.usecase.GetUserByID(uint(id))
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{
@@ -199,7 +182,6 @@ func (ctrl *userController) GetByID(c echo.Context) error {
 		})
 	}
 
-	// ✅ Response manual
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"status_code": http.StatusOK,
 		"message":     "User ditemukan",
@@ -215,7 +197,6 @@ func (ctrl *userController) GetAll(c echo.Context) error {
 		})
 	}
 
-	// Build response untuk setiap user
 	var usersData []map[string]interface{}
 	for _, user := range users {
 		usersData = append(usersData, buildUserResponse(user))
@@ -225,7 +206,6 @@ func (ctrl *userController) GetAll(c echo.Context) error {
 		usersData = []map[string]interface{}{}
 	}
 
-	// ✅ Response manual
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"status_code": http.StatusOK,
 		"message":     "Daftar user",
@@ -241,8 +221,15 @@ func (ctrl *userController) Update(c echo.Context) error {
 		})
 	}
 
-	var input models.UpdateUserRequest
+	// 🔒 IDOR Check
+	tokenUserID := c.Get("user_id").(uint)
+	if tokenUserID != uint(id) {
+		return c.JSON(http.StatusForbidden, map[string]string{
+			"error": "Akses ditolak: Anda tidak memiliki izin untuk mengubah data pengguna lain",
+		})
+	}
 
+	var input models.UpdateUserRequest
 	if err := c.Bind(&input); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
 			"error":  constants.MSG_INVALID_PAYLOAD,
@@ -257,7 +244,6 @@ func (ctrl *userController) Update(c echo.Context) error {
 		})
 	}
 
-	// ✅ Response manual
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"status_code": http.StatusOK,
 		"message":     "User berhasil diperbarui",
@@ -273,20 +259,26 @@ func (ctrl *userController) Delete(c echo.Context) error {
 		})
 	}
 
+	// 🔒 IDOR Check
+	tokenUserID := c.Get("user_id").(uint)
+	if tokenUserID != uint(id) {
+		return c.JSON(http.StatusForbidden, map[string]string{
+			"error": "Akses ditolak: Anda tidak memiliki izin untuk menghapus data pengguna lain",
+		})
+	}
+
 	if err := ctrl.usecase.DeleteUser(uint(id)); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": err.Error(),
 		})
 	}
 
-	// ✅ Response manual
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"status_code": http.StatusOK,
 		"message":     "User berhasil dihapus",
 	})
 }
 
-// GoogleLogin tetap sama seperti sebelumnya
 func (ctrl *userController) GoogleLogin(c echo.Context) error {
 	var input GoogleLoginRequest
 
@@ -310,17 +302,8 @@ func (ctrl *userController) GoogleLogin(c echo.Context) error {
 		})
 	}
 
-	jwtSecret := os.Getenv("JWT_SECRET")
-	var token string
-	if jwtSecret != "" {
-		ttl := 24 * time.Hour
-		tokenStr, err := helpers.GenerateToken(user.IDUser, user.Email, ttl)
-		if err == nil {
-			token = tokenStr
-		}
-	}
+	token, _ := helpers.GenerateToken(user.IDUser, user.Email, 24*time.Hour)
 
-	// ✅ Response manual
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"status_code": http.StatusOK,
 		"message":     "Login Google berhasil",
@@ -331,7 +314,6 @@ func (ctrl *userController) GoogleLogin(c echo.Context) error {
 	})
 }
 
-// ✅ Fungsi baru untuk menerima file dari Flutter
 func (ctrl *userController) UploadAvatar(c echo.Context) error {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -340,7 +322,14 @@ func (ctrl *userController) UploadAvatar(c echo.Context) error {
 		})
 	}
 
-	// 1. Ambil file dengan key "avatar" (Sesuai dengan FormData di Flutter)
+	// 🔒 IDOR Check
+	tokenUserID := c.Get("user_id").(uint)
+	if tokenUserID != uint(id) {
+		return c.JSON(http.StatusForbidden, map[string]string{
+			"error": "Akses ditolak: Anda tidak memiliki izin untuk mengubah avatar pengguna lain",
+		})
+	}
+
 	file, err := c.FormFile("avatar")
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
@@ -348,7 +337,6 @@ func (ctrl *userController) UploadAvatar(c echo.Context) error {
 		})
 	}
 
-	// 2. Validasi Ekstensi (Hanya gambar)
 	ext := filepath.Ext(file.Filename)
 	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
 		return c.JSON(http.StatusBadRequest, map[string]string{
@@ -356,7 +344,6 @@ func (ctrl *userController) UploadAvatar(c echo.Context) error {
 		})
 	}
 
-	// 3. Buka File
 	src, err := file.Open()
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
@@ -365,15 +352,12 @@ func (ctrl *userController) UploadAvatar(c echo.Context) error {
 	}
 	defer src.Close()
 
-	// 4. Siapkan folder uploads/avatars di server
 	uploadDir := "./uploads/avatars"
 	os.MkdirAll(uploadDir, os.ModePerm)
 
-	// 5. Buat nama file yang unik (mencegah bentrok)
 	newFilename := "user_" + strconv.FormatUint(id, 10) + "_" + strconv.FormatInt(time.Now().Unix(), 10) + ext
 	dstPath := filepath.Join(uploadDir, newFilename)
 
-	// 6. Buat dan simpan file di server
 	dst, err := os.Create(dstPath)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
@@ -388,10 +372,8 @@ func (ctrl *userController) UploadAvatar(c echo.Context) error {
 		})
 	}
 
-	// 7. Generate URL Publik (Sesuai dengan domain Railway kamu)
 	avatarURL := "https://gdself-production.up.railway.app/uploads/avatars/" + newFilename
 
-	// 8. Simpan URL ke Database melalui Usecase
 	user, err := ctrl.usecase.UploadAvatar(uint(id), avatarURL)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
@@ -399,10 +381,9 @@ func (ctrl *userController) UploadAvatar(c echo.Context) error {
 		})
 	}
 
-	// 9. Kembalikan Response Sukses
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"status_code": http.StatusOK,
 		"message":     "Foto profil berhasil diperbarui",
-		"data":        buildUserResponse(user), // Langsung pakai buildUserResponse yang sudah ada
+		"data":        buildUserResponse(user),
 	})
 }

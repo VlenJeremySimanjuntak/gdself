@@ -101,6 +101,15 @@ func (ctrl *obatController) GetByUserID(c echo.Context) error {
 		})
 	}
 
+	// IDOR Protection: pastikan user yang login sesuai dengan user_id yang diminta
+	loggedInUserID, ok := c.Get("user_id").(uint)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Token tidak valid"})
+	}
+	if uint(userID) != loggedInUserID {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "Akses ditolak: Anda tidak memiliki izin untuk melihat data pengguna lain"})
+	}
+
 	obatList, err := ctrl.usecase.GetObatByUserID(uint(userID))
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
@@ -164,8 +173,8 @@ func (ctrl *obatController) Update(c echo.Context) error {
 	}
 
 	// Validasi minimal ada satu field yang diupdate
-	if input.NamaObat == "" && input.Dosis == "" && input.Frekuensi == "" && 
-	   input.TipeObat == "" && input.TglMulai == nil && input.TglSelesai == nil {
+	if input.NamaObat == "" && input.Dosis == "" && input.Frekuensi == "" &&
+		input.TipeObat == "" && input.TglMulai == nil && input.TglSelesai == nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "Minimal satu field harus diisi untuk update",
 		})

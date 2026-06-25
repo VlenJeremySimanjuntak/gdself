@@ -43,6 +43,15 @@ func (ctrl *monitoringController) GetByUserID(c echo.Context) error {
 		})
 	}
 
+	// IDOR Protection: pastikan user yang login sesuai dengan user_id yang diminta
+	loggedInUserID, ok := c.Get("user_id").(uint)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Token tidak valid"})
+	}
+	if uint(uid) != loggedInUserID {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "Akses ditolak: Anda tidak memiliki izin untuk melihat data pengguna lain"})
+	}
+
 	// Gunakan LabUsecase.GetLabResultsByUserID untuk mendapatkan hasil lab langsung
 	hasilLabList, err := ctrl.labUsecase.GetLabResultsByUserID(uint(uid))
 	if err != nil {

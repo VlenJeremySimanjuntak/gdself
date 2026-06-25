@@ -9,27 +9,29 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func JWTMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		auth := c.Request().Header.Get("Authorization")
-		if auth == "" {
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing authorization header"})
+func JWTMiddleware() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			authHeader := c.Request().Header.Get("Authorization")
+			if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+				return c.JSON(http.StatusUnauthorized, map[string]string{
+					"error": "token tidak ditemukan",
+				})
+			}
+
+			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+			claims, err := helpers.ParseToken(tokenStr)
+			if err != nil {
+				return c.JSON(http.StatusUnauthorized, map[string]string{
+					"error": "token tidak valid atau sudah kedaluwarsa",
+				})
+			}
+
+			// Simpan claims ke context supaya bisa dipakai controller
+			c.Set("user_id", claims.UserID)
+			c.Set("email", claims.Email)
+
+			return next(c)
 		}
-
-		parts := strings.SplitN(auth, " ", 2)
-		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid authorization header"})
-		}
-
-		tokenStr := parts[1]
-		claims, err := helpers.ParseToken(tokenStr)
-		if err != nil {
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid token", "detail": err.Error()})
-		}
-
-		c.Set("user_id", claims.UserID)
-		c.Set("user_email", claims.Email)
-
-		return next(c)
 	}
 }

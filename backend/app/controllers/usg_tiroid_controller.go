@@ -171,6 +171,15 @@ func (ctrl *usgTiroidController) GetByUserID(c echo.Context) error {
 		})
 	}
 
+	// IDOR Protection: pastikan user yang login sesuai dengan user_id yang diminta
+	loggedInUserID, ok := c.Get("user_id").(uint)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Token tidak valid"})
+	}
+	if uint(userID) != loggedInUserID {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "Akses ditolak: Anda tidak memiliki izin untuk melihat data pengguna lain"})
+	}
+
 	usgList, err := ctrl.usecase.GetUsgTiroidByUserID(uint(userID))
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{

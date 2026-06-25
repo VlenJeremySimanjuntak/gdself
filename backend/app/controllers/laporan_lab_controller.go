@@ -7,7 +7,6 @@ import (
 	"monitoring-service/app/constants"
 	"monitoring-service/app/models"
 	"monitoring-service/app/usecases"
-
 	"github.com/labstack/echo/v4"
 )
 
@@ -96,30 +95,41 @@ func (ctrl *laporanLabController) GetByID(c echo.Context) error {
 }
 
 func (ctrl *laporanLabController) GetByUserID(c echo.Context) error {
-    userID, err := strconv.ParseUint(c.Param("user_id"), 10, 32)
-    if err != nil {
-        return c.JSON(http.StatusBadRequest, map[string]string{
-            "error": "user_id tidak valid",
-        })
-    }
+	// 1. Ambil user_id dari URL
+	userIDParam := c.Param("user_id")
+	parsedTargetUserID, err := strconv.ParseUint(userIDParam, 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "user_id tidak valid",
+		})
+	}
 
-    // ✅ Langsung pakai method dedicated, bukan filter di memory
-    laporanList, err := ctrl.usecase.GetLaporanLabByUserID(uint(userID))
-    if err != nil {
-        return c.JSON(http.StatusInternalServerError, map[string]string{
-            "error": err.Error(),
-        })
-    }
+	// 2. Ambil user_id dari token (disimpan oleh JWTMiddleware kita)
+	loggedInUserID, ok := c.Get("user_id").(uint)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, map[string]string{
+			"error": "Token tidak valid",
+		})
+	}
 
-    if laporanList == nil {
-        laporanList = []models.LaporanLab{}
-    }
+	// 3. IDOR Check
+	if uint(parsedTargetUserID) != loggedInUserID {
+		return c.JSON(http.StatusForbidden, map[string]string{
+			"error": "Akses ditolak: Anda tidak memiliki izin untuk melihat data pengguna lain",
+		})
+	}
 
-    return c.JSON(http.StatusOK, models.Response{
-        StatusCode: http.StatusOK,
-        Message:    "Daftar laporan lab user",
-        Data:       laporanList,
-    })
+	// 4. Ambil data
+	results, err := ctrl.usecase.GetLaporanLabByUserID(uint(parsedTargetUserID))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"status_code": http.StatusOK,
+		"message":     "Daftar laporan lab user",
+		"data":        results,
+	})
 }
 
 func (ctrl *laporanLabController) GetAll(c echo.Context) error {

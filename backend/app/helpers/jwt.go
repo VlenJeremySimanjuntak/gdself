@@ -2,7 +2,6 @@ package helpers
 
 import (
 	"errors"
-	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -16,10 +15,8 @@ type JWTClaims struct {
 
 // GenerateToken creates a signed JWT access token.
 func GenerateToken(userID uint, email string, ttl time.Duration) (string, error) {
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		return "", errors.New("JWT_SECRET not set")
-	}
+	// 1. Tanamkan kunci secara manual di sini!
+	secret := "TokenAppSecretGraveDisease" 
 
 	claims := JWTClaims{
 		UserID: userID,
@@ -31,15 +28,14 @@ func GenerateToken(userID uint, email string, ttl time.Duration) (string, error)
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	// 2. Kunci rahasia akan dipakai untuk mencetak token di bawah ini
 	return token.SignedString([]byte(secret))
 }
 
 // ParseToken verifies the token string and returns claims.
 func ParseToken(tokenStr string) (*JWTClaims, error) {
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		return nil, errors.New("JWT_SECRET not set")
-	}
+	// 3. Tanamkan kunci yang sama di sini juga!
+	secret := "TokenAppSecretGraveDisease"
 
 	token, err := jwt.ParseWithClaims(tokenStr, &JWTClaims{}, func(t *jwt.Token) (interface{}, error) {
 		return []byte(secret), nil
