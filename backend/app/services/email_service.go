@@ -20,7 +20,7 @@ type EmailService struct {
 
 func NewEmailService() *EmailService {
     return &EmailService{
-        FromEmail: "gdself@resend.dev", // ✅ Pakai domain resend.dev (gratis, tanpa verifikasi domain)
+        FromEmail: "onboarding@resend.dev", // ✅ Pakai domain resend.dev (gratis, tanpa verifikasi domain)
         FromName:  "GdSelf App",
         APIKey:    os.Getenv("RESEND_API_KEY"),
     }
