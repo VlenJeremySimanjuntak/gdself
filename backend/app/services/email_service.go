@@ -6,6 +6,7 @@ import (
     "math/big"
     "net/smtp"
     "os"
+    "crypto/tls"
 )
 
 type EmailService struct {
@@ -21,7 +22,7 @@ func NewEmailService() *EmailService {
         FromEmail: os.Getenv("SMTP_EMAIL"),
         FromName:  "GdSelf App",
         SMTPHost:  "smtp.gmail.com",
-        SMTPPort:  "587",
+        SMTPPort:  "465",
         Password:  os.Getenv("SMTP_PASSWORD"),
     }
 }
@@ -59,6 +60,40 @@ func (s *EmailService) SendOTPEmail(toEmail, otpCode, emailType string) error {
 
     auth := smtp.PlainAuth("", s.FromEmail, s.Password, s.SMTPHost)
 
+    // Port 465 pakai SSL
+    tlsConfig := &tls.Config{
+        InsecureSkipVerify: false,
+        ServerName:         s.SMTPHost,
+    }
+
+    conn, err := tls.Dial("tcp", s.SMTPHost+":"+s.SMTPPort, tlsConfig)
+    if err != nil {
+        return fmt.Errorf("gagal koneksi SMTP: %v", err)
+    }
+
+    client, err := smtp.NewClient(conn, s.SMTPHost)
+    if err != nil {
+        return fmt.Errorf("gagal buat SMTP client: %v", err)
+    }
+    defer client.Close()
+
+    if err = client.Auth(auth); err != nil {
+        return fmt.Errorf("gagal autentikasi SMTP: %v", err)
+    }
+
+    if err = client.Mail(s.FromEmail); err != nil {
+        return fmt.Errorf("gagal set sender: %v", err)
+    }
+
+    if err = client.Rcpt(toEmail); err != nil {
+        return fmt.Errorf("gagal set recipient: %v", err)
+    }
+
+    wc, err := client.Data()
+    if err != nil {
+        return fmt.Errorf("gagal buka data writer: %v", err)
+    }
+
     msg := "From: " + s.FromName + " <" + s.FromEmail + ">\r\n" +
         "To: " + toEmail + "\r\n" +
         "Subject: " + subject + "\r\n" +
@@ -67,19 +102,15 @@ func (s *EmailService) SendOTPEmail(toEmail, otpCode, emailType string) error {
         "\r\n" +
         body
 
-    err := smtp.SendMail(
-        s.SMTPHost+":"+s.SMTPPort,
-        auth,
-        s.FromEmail,
-        []string{toEmail},
-        []byte(msg),
-    )
+    _, err = fmt.Fprint(wc, msg)
     if err != nil {
-        return fmt.Errorf("gagal mengirim email: %v", err)
+        return fmt.Errorf("gagal tulis pesan: %v", err)
     }
 
+    wc.Close()
     return nil
 }
+
 
 func (s *EmailService) buildRegisterEmailBody(otp string) string {
     return fmt.Sprintf(`<!DOCTYPE html>
