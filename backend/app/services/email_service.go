@@ -1,29 +1,28 @@
 package services
 
 import (
+    "bytes"
     "crypto/rand"
+    "encoding/json"
     "fmt"
+    "io"
     "math/big"
-    "net/smtp"
+    "net/http"
     "os"
-    "crypto/tls"
+    "time"
 )
 
 type EmailService struct {
     FromEmail string
     FromName  string
-    SMTPHost  string
-    SMTPPort  string
-    Password  string
+    APIKey    string
 }
 
 func NewEmailService() *EmailService {
     return &EmailService{
-        FromEmail: os.Getenv("SMTP_EMAIL"),
+        FromEmail: "gdself@resend.dev", // ✅ Pakai domain resend.dev (gratis, tanpa verifikasi domain)
         FromName:  "GdSelf App",
-        SMTPHost:  "smtp.gmail.com",
-        SMTPPort:  "465",
-        Password:  os.Getenv("SMTP_PASSWORD"),
+        APIKey:    os.Getenv("RESEND_API_KEY"),
     }
 }
 
@@ -41,77 +40,62 @@ func GenerateOTP() (string, error) {
 }
 
 func (s *EmailService) SendOTPEmail(toEmail, otpCode, emailType string) error {
-    if s.FromEmail == "" || s.Password == "" {
-        return fmt.Errorf("SMTP_EMAIL atau SMTP_PASSWORD belum diset")
+    if s.APIKey == "" {
+        return fmt.Errorf("RESEND_API_KEY belum diset di environment variable")
     }
 
-    var subject, body string
+    var subject, htmlBody string
     switch emailType {
     case "register":
         subject = "Kode Verifikasi Pendaftaran GdSelf"
-        body = s.buildRegisterEmailBody(otpCode)
+        htmlBody = s.buildRegisterEmailBody(otpCode)
     case "reset_password":
         subject = "Kode Reset Password GdSelf"
-        body = s.buildResetPasswordEmailBody(otpCode)
+        htmlBody = s.buildResetPasswordEmailBody(otpCode)
     default:
         subject = "Kode Verifikasi GdSelf"
-        body = s.buildRegisterEmailBody(otpCode)
+        htmlBody = s.buildRegisterEmailBody(otpCode)
     }
 
-    auth := smtp.PlainAuth("", s.FromEmail, s.Password, s.SMTPHost)
-
-    // Port 465 pakai SSL
-    tlsConfig := &tls.Config{
-        InsecureSkipVerify: false,
-        ServerName:         s.SMTPHost,
+    // ✅ Payload ke Resend API
+    payload := map[string]interface{}{
+        "from":    fmt.Sprintf("%s <%s>", s.FromName, s.FromEmail),
+        "to":      []string{toEmail},
+        "subject": subject,
+        "html":    htmlBody,
     }
 
-    conn, err := tls.Dial("tcp", s.SMTPHost+":"+s.SMTPPort, tlsConfig)
+    payloadBytes, err := json.Marshal(payload)
     if err != nil {
-        return fmt.Errorf("gagal koneksi SMTP: %v", err)
+        return fmt.Errorf("gagal membuat payload email: %v", err)
     }
 
-    client, err := smtp.NewClient(conn, s.SMTPHost)
+    // ✅ HTTP POST ke Resend API dengan timeout 10 detik
+    req, err := http.NewRequest("POST", "https://api.resend.com/emails",
+        bytes.NewReader(payloadBytes))
     if err != nil {
-        return fmt.Errorf("gagal buat SMTP client: %v", err)
-    }
-    defer client.Close()
-
-    if err = client.Auth(auth); err != nil {
-        return fmt.Errorf("gagal autentikasi SMTP: %v", err)
+        return fmt.Errorf("gagal membuat request: %v", err)
     }
 
-    if err = client.Mail(s.FromEmail); err != nil {
-        return fmt.Errorf("gagal set sender: %v", err)
-    }
+    req.Header.Set("Authorization", "Bearer "+s.APIKey)
+    req.Header.Set("Content-Type", "application/json")
 
-    if err = client.Rcpt(toEmail); err != nil {
-        return fmt.Errorf("gagal set recipient: %v", err)
-    }
-
-    wc, err := client.Data()
+    client := &http.Client{Timeout: 10 * time.Second}
+    resp, err := client.Do(req)
     if err != nil {
-        return fmt.Errorf("gagal buka data writer: %v", err)
+        return fmt.Errorf("gagal mengirim email: %v", err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != 200 && resp.StatusCode != 201 {
+        body, _ := io.ReadAll(resp.Body)
+        return fmt.Errorf("Resend API error %d: %s", resp.StatusCode, string(body))
     }
 
-    msg := "From: " + s.FromName + " <" + s.FromEmail + ">\r\n" +
-        "To: " + toEmail + "\r\n" +
-        "Subject: " + subject + "\r\n" +
-        "MIME-Version: 1.0\r\n" +
-        "Content-Type: text/html; charset=UTF-8\r\n" +
-        "\r\n" +
-        body
-
-    _, err = fmt.Fprint(wc, msg)
-    if err != nil {
-        return fmt.Errorf("gagal tulis pesan: %v", err)
-    }
-
-    wc.Close()
     return nil
 }
 
-
+// Template email sama seperti sebelumnya
 func (s *EmailService) buildRegisterEmailBody(otp string) string {
     return fmt.Sprintf(`<!DOCTYPE html>
 <html>
