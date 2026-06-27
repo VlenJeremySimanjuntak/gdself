@@ -2,10 +2,13 @@ package services
 
 import (
 	"crypto/rand"
+	"crypto/tls"
 	"fmt"
 	"math/big"
+	"net"
 	"net/smtp"
 	"os"
+	"time"
 )
 
 type EmailService struct {
@@ -19,12 +22,12 @@ type EmailService struct {
 
 func NewEmailService() *EmailService {
 	return &EmailService{
-		FromEmail: os.Getenv("SMTP_FROM_EMAIL"), // contoh: gdselfapp@gmail.com
+		FromEmail: os.Getenv("SMTP_FROM_EMAIL"), // email yang terverifikasi di SendGrid
 		FromName:  "GdSelf App",
-		SMTPHost:  "smtp.gmail.com",
+		SMTPHost:  "smtp.sendgrid.net",
 		SMTPPort:  "587",
-		SMTPUser:  os.Getenv("SMTP_USER"),     // email gmail kamu
-		SMTPPass:  os.Getenv("SMTP_APP_PASS"), // app password 16 digit dari Google
+		SMTPUser:  "apikey", // ✅ WAJIB literal string "apikey", bukan email — ini standar SendGrid
+		SMTPPass:  os.Getenv("SENDGRID_API_KEY"), // API Key dari SendGrid, bukan password
 	}
 }
 
@@ -42,8 +45,8 @@ func GenerateOTP() (string, error) {
 }
 
 func (s *EmailService) SendOTPEmail(toEmail, otpCode, emailType string) error {
-	if s.SMTPUser == "" || s.SMTPPass == "" {
-		return fmt.Errorf("SMTP_USER atau SMTP_APP_PASS belum diset di environment variable")
+	if s.SMTPPass == "" {
+		return fmt.Errorf("SENDGRID_API_KEY belum diset di environment variable")
 	}
 
 	var subject, htmlBody string
@@ -60,8 +63,6 @@ func (s *EmailService) SendOTPEmail(toEmail, otpCode, emailType string) error {
 	}
 
 	from := fmt.Sprintf("%s <%s>", s.FromName, s.FromEmail)
-
-	// Susun header + body email (MIME, supaya HTML-nya terbaca benar)
 	msg := []byte(
 		"From: " + from + "\r\n" +
 			"To: " + toEmail + "\r\n" +
@@ -71,18 +72,57 @@ func (s *EmailService) SendOTPEmail(toEmail, otpCode, emailType string) error {
 			"\r\n" +
 			htmlBody + "\r\n")
 
-	auth := smtp.PlainAuth("", s.SMTPUser, s.SMTPPass, s.SMTPHost)
-	addr := s.SMTPHost + ":" + s.SMTPPort
-
-	err := smtp.SendMail(addr, auth, s.SMTPUser, []string{toEmail}, msg)
-	if err != nil {
-		return fmt.Errorf("gagal mengirim email via SMTP: %v", err)
-	}
-
-	return nil
+	return s.sendWithTimeout(toEmail, msg, 8*time.Second)
 }
 
-// Template email sama seperti sebelumnya
+// ✅ Kirim dengan timeout manual, supaya kalau port diblokir, gagal CEPAT (8s)
+// bukannya nunggu sampai 30s digantung Railway gateway.
+func (s *EmailService) sendWithTimeout(toEmail string, msg []byte, timeout time.Duration) error {
+	addr := s.SMTPHost + ":" + s.SMTPPort
+
+	conn, err := net.DialTimeout("tcp", addr, timeout)
+	if err != nil {
+		return fmt.Errorf("gagal konek ke %s (kemungkinan port diblokir): %v", addr, err)
+	}
+	defer conn.Close()
+
+	client, err := smtp.NewClient(conn, s.SMTPHost)
+	if err != nil {
+		return fmt.Errorf("gagal membuat SMTP client: %v", err)
+	}
+	defer client.Close()
+
+	if err = client.StartTLS(&tls.Config{ServerName: s.SMTPHost}); err != nil {
+		return fmt.Errorf("gagal StartTLS: %v", err)
+	}
+
+	auth := smtp.PlainAuth("", s.SMTPUser, s.SMTPPass, s.SMTPHost)
+	if err = client.Auth(auth); err != nil {
+		return fmt.Errorf("gagal autentikasi SMTP (cek API Key/App Password): %v", err)
+	}
+
+	if err = client.Mail(s.FromEmail); err != nil {
+		return fmt.Errorf("gagal set From: %v", err)
+	}
+	if err = client.Rcpt(toEmail); err != nil {
+		return fmt.Errorf("gagal set To: %v", err)
+	}
+
+	w, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("gagal membuka data writer: %v", err)
+	}
+	_, err = w.Write(msg)
+	if err != nil {
+		return fmt.Errorf("gagal menulis pesan: %v", err)
+	}
+	if err = w.Close(); err != nil {
+		return fmt.Errorf("gagal menutup data writer: %v", err)
+	}
+
+	return client.Quit()
+}
+
 func (s *EmailService) buildRegisterEmailBody(otp string) string {
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html>
