@@ -1,12 +1,13 @@
 package services
 
 import (
+	"bytes"
 	"crypto/rand"
-	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
-	"net"
-	"net/smtp"
+	"net/http"
 	"os"
 	"time"
 )
@@ -14,20 +15,14 @@ import (
 type EmailService struct {
 	FromEmail string
 	FromName  string
-	SMTPHost  string
-	SMTPPort  string
-	SMTPUser  string
-	SMTPPass  string
+	APIKey    string
 }
 
 func NewEmailService() *EmailService {
 	return &EmailService{
-		FromEmail: os.Getenv("SMTP_FROM_EMAIL"), // email yang terverifikasi di SendGrid
+		FromEmail: "onboarding@resend.dev",
 		FromName:  "GdSelf App",
-		SMTPHost:  "smtp.sendgrid.net",
-		SMTPPort:  "587",
-		SMTPUser:  "apikey", // ✅ WAJIB literal string "apikey", bukan email — ini standar SendGrid
-		SMTPPass:  os.Getenv("SENDGRID_API_KEY"), // API Key dari SendGrid, bukan password
+		APIKey:    os.Getenv("RESEND_API_KEY"),
 	}
 }
 
@@ -45,8 +40,8 @@ func GenerateOTP() (string, error) {
 }
 
 func (s *EmailService) SendOTPEmail(toEmail, otpCode, emailType string) error {
-	if s.SMTPPass == "" {
-		return fmt.Errorf("SENDGRID_API_KEY belum diset di environment variable")
+	if s.APIKey == "" {
+		return fmt.Errorf("RESEND_API_KEY belum diset di environment variable")
 	}
 
 	var subject, htmlBody string
@@ -62,65 +57,40 @@ func (s *EmailService) SendOTPEmail(toEmail, otpCode, emailType string) error {
 		htmlBody = s.buildRegisterEmailBody(otpCode)
 	}
 
-	from := fmt.Sprintf("%s <%s>", s.FromName, s.FromEmail)
-	msg := []byte(
-		"From: " + from + "\r\n" +
-			"To: " + toEmail + "\r\n" +
-			"Subject: " + subject + "\r\n" +
-			"MIME-Version: 1.0\r\n" +
-			"Content-Type: text/html; charset=\"UTF-8\"\r\n" +
-			"\r\n" +
-			htmlBody + "\r\n")
+	payload := map[string]interface{}{
+		"from":    fmt.Sprintf("%s <%s>", s.FromName, s.FromEmail),
+		"to":      []string{toEmail},
+		"subject": subject,
+		"html":    htmlBody,
+	}
 
-	return s.sendWithTimeout(toEmail, msg, 8*time.Second)
-}
-
-// ✅ Kirim dengan timeout manual, supaya kalau port diblokir, gagal CEPAT (8s)
-// bukannya nunggu sampai 30s digantung Railway gateway.
-func (s *EmailService) sendWithTimeout(toEmail string, msg []byte, timeout time.Duration) error {
-	addr := s.SMTPHost + ":" + s.SMTPPort
-
-	conn, err := net.DialTimeout("tcp", addr, timeout)
+	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("gagal konek ke %s (kemungkinan port diblokir): %v", addr, err)
+		return fmt.Errorf("gagal membuat payload email: %v", err)
 	}
-	defer conn.Close()
 
-	client, err := smtp.NewClient(conn, s.SMTPHost)
+	req, err := http.NewRequest("POST", "https://api.resend.com/emails",
+		bytes.NewReader(payloadBytes))
 	if err != nil {
-		return fmt.Errorf("gagal membuat SMTP client: %v", err)
-	}
-	defer client.Close()
-
-	if err = client.StartTLS(&tls.Config{ServerName: s.SMTPHost}); err != nil {
-		return fmt.Errorf("gagal StartTLS: %v", err)
+		return fmt.Errorf("gagal membuat request: %v", err)
 	}
 
-	auth := smtp.PlainAuth("", s.SMTPUser, s.SMTPPass, s.SMTPHost)
-	if err = client.Auth(auth); err != nil {
-		return fmt.Errorf("gagal autentikasi SMTP (cek API Key/App Password): %v", err)
-	}
+	req.Header.Set("Authorization", "Bearer "+s.APIKey)
+	req.Header.Set("Content-Type", "application/json")
 
-	if err = client.Mail(s.FromEmail); err != nil {
-		return fmt.Errorf("gagal set From: %v", err)
-	}
-	if err = client.Rcpt(toEmail); err != nil {
-		return fmt.Errorf("gagal set To: %v", err)
-	}
-
-	w, err := client.Data()
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("gagal membuka data writer: %v", err)
+		return fmt.Errorf("gagal mengirim email: %v", err)
 	}
-	_, err = w.Write(msg)
-	if err != nil {
-		return fmt.Errorf("gagal menulis pesan: %v", err)
-	}
-	if err = w.Close(); err != nil {
-		return fmt.Errorf("gagal menutup data writer: %v", err)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 && resp.StatusCode != 201 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("Resend API error %d: %s", resp.StatusCode, string(body))
 	}
 
-	return client.Quit()
+	return nil
 }
 
 func (s *EmailService) buildRegisterEmailBody(otp string) string {
