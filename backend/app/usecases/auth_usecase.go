@@ -137,7 +137,8 @@ func (u *authUsecase) GoogleCheck(idToken string) (models.GoogleLoginResponse, e
 	}
 
 	return models.GoogleLoginResponse{
-		IsNewUser: false,
+		IsNewUser:   false,
+		GoogleEmail: email,
 	}, nil
 }
 

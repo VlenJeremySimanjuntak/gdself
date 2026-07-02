@@ -97,6 +97,26 @@ func (u *labUsecase) GetLabResultsByUserID(userID uint) ([]models.HasilLab, erro
 	return u.repo.GetByUserID(userID)
 }
 
+// ────────────────────────────────────────────────────────────────
+// ✅ Helper baru: bedakan "Tidak Diketahui" (param sekarang gak ada)
+// vs "Data Belum Cukup" (param sekarang ada, tapi belum ada pembanding lama)
+// ────────────────────────────────────────────────────────────────
+func resolveTrenStatus(prevHas, currHas bool, namaParam, currentTren, currentReminder string) (string, string) {
+	if !currHas {
+		// Parameter tidak diisi di laporan SEKARANG → memang tidak bisa dianalisis
+		return "Tidak Diketahui", ""
+	}
+	if !prevHas {
+		// Parameter baru pertama kali diperiksa → bukan error, cuma belum ada pembanding
+		return "Data Belum Cukup", fmt.Sprintf(
+			"Parameter %s baru pertama kali diperiksa. Tren akan muncul setelah pemeriksaan berikutnya.",
+			namaParam,
+		)
+	}
+	// Keduanya ada → biarkan hasil asli dari AnalyzeTren
+	return currentTren, currentReminder
+}
+
 func (u *labUsecase) Assess(input models.AssessmentInput) (models.AssessmentResult, error) {
 	var res models.AssessmentResult
 
@@ -110,7 +130,7 @@ func (u *labUsecase) Assess(input models.AssessmentInput) (models.AssessmentResu
 		return res, fmt.Errorf("minimal parameter TSHs harus diisi")
 	}
 
-	// ✅ FIX BUG 1: FT4 sekarang murni opsional. Hanya TSHs yang wajib.
+	// FT4 opsional, hanya TSHs yang wajib.
 	hasTSH := false
 	for _, p := range input.Lab.Parameters {
 		key := strings.ToUpper(strings.TrimSpace(p.NamaParameter))
@@ -144,7 +164,6 @@ func (u *labUsecase) Assess(input models.AssessmentInput) (models.AssessmentResu
 	// ── Analisis AI Lab ──────────────────────────────────────────
 	currResult := AnalyzeLabResults(input.Lab.Parameters)
 
-	// ✅ SELALU upsert — bukan hanya insert jika belum ada
 	if u.hasilAILab != nil && input.Lab.IDLaporanLab != 0 {
 		_, err := u.hasilAILab.UpsertFromAssessment(
 			input.Lab.IDLaporanLab,
@@ -172,26 +191,28 @@ func (u *labUsecase) Assess(input models.AssessmentInput) (models.AssessmentResu
 			return false
 		}
 
-		// ✅ FIX BUG 2: Cek di KEDUA sisi (Lab Lama & Lab Sekarang). 
-		// Jika salah satunya tidak ada, set jadi "Tidak Diketahui" secara paksa.
-		if !hasParam(input.PrevLab.Parameters, "TSH") || !hasParam(input.Lab.Parameters, "TSH") {
-			trenResult.TrenTSH = "Tidak Diketahui"
-			trenResult.ReminderTrenTSH = ""
-		}
-		if !hasParam(input.PrevLab.Parameters, "FT3") || !hasParam(input.Lab.Parameters, "FT3") {
-			trenResult.TrenFT3 = "Tidak Diketahui"
-			trenResult.ReminderTrenFT3 = ""
-		}
-		if !hasParam(input.PrevLab.Parameters, "FT4") || !hasParam(input.Lab.Parameters, "FT4") {
-			trenResult.TrenFT4 = "Tidak Diketahui"
-			trenResult.ReminderTrenFT4 = ""
-		}
-		if !hasParam(input.PrevLab.Parameters, "TRAB") || !hasParam(input.Lab.Parameters, "TRAB") {
-			trenResult.TrenTRAb = "Tidak Diketahui"
-			trenResult.ReminderTrenTRAb = ""
-		}
+		// ✅ FIX: bedakan "Tidak Diketahui" vs "Data Belum Cukup"
+		trenResult.TrenTSH, trenResult.ReminderTrenTSH = resolveTrenStatus(
+			hasParam(input.PrevLab.Parameters, "TSH"),
+			hasParam(input.Lab.Parameters, "TSH"),
+			"TSHs", trenResult.TrenTSH, trenResult.ReminderTrenTSH,
+		)
+		trenResult.TrenFT3, trenResult.ReminderTrenFT3 = resolveTrenStatus(
+			hasParam(input.PrevLab.Parameters, "FT3"),
+			hasParam(input.Lab.Parameters, "FT3"),
+			"FT3", trenResult.TrenFT3, trenResult.ReminderTrenFT3,
+		)
+		trenResult.TrenFT4, trenResult.ReminderTrenFT4 = resolveTrenStatus(
+			hasParam(input.PrevLab.Parameters, "FT4"),
+			hasParam(input.Lab.Parameters, "FT4"),
+			"FT4", trenResult.TrenFT4, trenResult.ReminderTrenFT4,
+		)
+		trenResult.TrenTRAb, trenResult.ReminderTrenTRAb = resolveTrenStatus(
+			hasParam(input.PrevLab.Parameters, "TRAB"),
+			hasParam(input.Lab.Parameters, "TRAB"),
+			"TRAb", trenResult.TrenTRAb, trenResult.ReminderTrenTRAb,
+		)
 
-		// ✅ Tren juga perlu upsert — cek dulu apakah sudah ada
 		existingTren, _ := u.hasilAITren.GetHasilAITrenByLaporanLabID(input.Lab.IDLaporanLab)
 
 		tren := models.HasilAITren{
@@ -207,14 +228,12 @@ func (u *labUsecase) Assess(input models.AssessmentInput) (models.AssessmentResu
 		}
 
 		if existingTren.IDHasilAITren != 0 {
-			// ✅ Sudah ada → update
 			tren.IDHasilAITren = existingTren.IDHasilAITren
 			_, err := u.hasilAITren.UpdateHasilAITren(tren)
 			if err != nil {
 				fmt.Printf("Warning: gagal update AI Tren: %v\n", err)
 			}
 		} else {
-			// Belum ada → insert
 			_, err := u.hasilAITren.CreateHasilAITren(tren)
 			if err != nil {
 				fmt.Printf("Warning: gagal simpan AI Tren: %v\n", err)

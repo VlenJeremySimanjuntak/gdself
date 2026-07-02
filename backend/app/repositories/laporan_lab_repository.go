@@ -12,6 +12,7 @@ type LaporanLabRepository interface {
 	GetByUserID(userID uint) ([]models.LaporanLab, error)
 	GetByUserIDAndDate(userID uint, date string) (models.LaporanLab, error)
 	GetPreviousLab(idLaporanLab uint) (models.LaporanLab, error)
+	GetNextLab(idLaporanLab uint) (models.LaporanLab, error)
 	GetAll() ([]models.LaporanLab, error)
 	Update(id uint, laporan models.LaporanLab) (models.LaporanLab, error)
 	Delete(id uint) error
@@ -98,4 +99,22 @@ func (r *laporanLabRepository) Update(id uint, laporan models.LaporanLab) (model
 
 func (r *laporanLabRepository) Delete(id uint) error {
 	return r.db.Delete(&models.LaporanLab{}, id).Error
+}
+
+func (r *laporanLabRepository) GetNextLab(idLaporanLab uint) (models.LaporanLab, error) {
+    var currentLab models.LaporanLab
+    if err := r.db.Preload("Riwayat").First(&currentLab, idLaporanLab).Error; err != nil {
+        return currentLab, err
+    }
+
+    var nextLab models.LaporanLab
+    err := r.db.
+        Joins("JOIN riwayat ON riwayat.id_riwayat = laporan_lab.id_riwayat").
+        Where("riwayat.id_user = ? AND laporan_lab.tgl_periksa > ?",
+            currentLab.Riwayat.IDUser, currentLab.TglPeriksa).
+        Preload("HasilLab").
+        Preload("HasilLab.Parameter").
+        Order("laporan_lab.tgl_periksa ASC").
+        First(&nextLab).Error
+    return nextLab, err
 }

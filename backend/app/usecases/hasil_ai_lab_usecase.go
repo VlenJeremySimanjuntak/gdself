@@ -9,9 +9,12 @@ import (
 type HasilAILabUsecase interface {
 	CreateHasilAILab(lab models.HasilAILab) (models.HasilAILab, error)
 	CreateFromAssessment(laporanLabID uint, params []models.AssessmentParamInput) (models.HasilAILab, error)
-	UpsertFromAssessment(laporanLabID uint, params []models.AssessmentParamInput) (models.HasilAILab, error) // ✅ PASTIKAN BARIS INI ADA
+	UpsertFromAssessment(laporanLabID uint, params []models.AssessmentParamInput) (models.HasilAILab, error)
 	GetHasilAILabByID(id uint) (models.HasilAILab, error)
 	GetHasilAILabByLaporanLabID(laporanLabID uint) (models.HasilAILab, error)
+
+	// ✅ TAMBAHAN BARU: ambil status valid terbaru per parameter
+	GetLatestValidByUserAndParam(userID uint, paramKey string) (models.HasilAILab, error)
 }
 
 type hasilAILabUsecase struct {
@@ -52,7 +55,6 @@ func (u *hasilAILabUsecase) CreateFromAssessment(laporanLabID uint, params []mod
 	return u.repo.Create(lab)
 }
 
-// ✅ PASTIKAN FUNGSI INI ADA
 func (u *hasilAILabUsecase) UpsertFromAssessment(laporanLabID uint, params []models.AssessmentParamInput) (models.HasilAILab, error) {
 	if laporanLabID == 0 {
 		return models.HasilAILab{}, fmt.Errorf("id_laporan_lab tidak boleh kosong")
@@ -82,4 +84,19 @@ func (u *hasilAILabUsecase) GetHasilAILabByID(id uint) (models.HasilAILab, error
 
 func (u *hasilAILabUsecase) GetHasilAILabByLaporanLabID(laporanLabID uint) (models.HasilAILab, error) {
 	return u.repo.GetByLaporanLabID(laporanLabID)
+}
+
+// ✅ TAMBAHAN BARU
+func (u *hasilAILabUsecase) GetLatestValidByUserAndParam(userID uint, paramKey string) (models.HasilAILab, error) {
+	columnMap := map[string]string{
+		"TSH":  "status_tsh",
+		"FT3":  "status_ft3",
+		"FT4":  "status_ft4",
+		"TRAB": "status_trab",
+	}
+	column, ok := columnMap[paramKey]
+	if !ok {
+		return models.HasilAILab{}, fmt.Errorf("parameter tidak dikenal: %s", paramKey)
+	}
+	return u.repo.GetLatestValidByUserAndParam(userID, column)
 }

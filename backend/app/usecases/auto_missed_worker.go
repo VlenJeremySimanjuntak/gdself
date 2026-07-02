@@ -43,7 +43,7 @@ func StartMissedDoseChecker(db *gorm.DB) {
 				targetWaktu := time.Date(now.Year(), now.Month(), now.Day(), jamJadwal.Hour(), jamJadwal.Minute(), 0, 0, loc)
 				
 				// TESTING: Batas toleransi 3 Menit
-				batasToleransi := targetWaktu.Add(3 * time.Minute)
+				batasToleransi := targetWaktu.Add(5 * time.Minute)
 
 				if now.After(batasToleransi) {
 					var count int64

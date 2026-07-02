@@ -83,7 +83,7 @@ func (m *Main) Init() error {
     // 5. Inisialisasi layer
     m.repo = repositories.Init(repositories.Options{Config: m.cfg, DB: m.database.MySQL})
     m.usecase = usecases.Init(usecases.Options{Config: m.cfg, Repository: m.repo})
-    m.controller = controllers.Init(controllers.Options{Config: m.cfg, UseCases: m.usecase})
+    m.controller = controllers.Init(controllers.Options{Config: m.cfg, UseCases: m.usecase, Repositories: m.repo,})
 
     m.router = e
     routes.ConfigureRouter(e, m.controller)

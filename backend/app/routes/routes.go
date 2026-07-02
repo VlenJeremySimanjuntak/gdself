@@ -142,6 +142,9 @@ func ConfigureRouter(e *echo.Echo, controller *controllers.Main) {
 	protected.GET("/hasil-ai/tren/laporan/:laporan_lab_id", controller.HasilAI.GetTrenByLaporanLabID)
 	protected.GET("/hasil-ai/tren/:id", controller.HasilAI.GetTrenByID)
 	protected.POST("/hasil-ai/assess", controller.HasilAI.ProcessAssessment)
+	protected.GET("/hasil-ai/lab/user/:user_id/param/:param", controller.HasilAI.GetLatestValidByUserAndParam) // ✅ pindah ke sini, pakai controller.HasilAI
+
+
 
 	// ========================
 	// Jadwal Obat Endpoints

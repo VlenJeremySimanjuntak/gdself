@@ -36,7 +36,7 @@ func (cd CustomDate) MarshalJSON() ([]byte, error) {
 
 // Value untuk GORM - ubah ke time.Time untuk database
 func (cd CustomDate) Value() (driver.Value, error) {
-	return time.Time(cd), nil
+    return time.Time(cd).Format(dateFormat), nil // ✅ Kirim string, bukan time.Time
 }
 
 // Scan untuk GORM - baca dari database

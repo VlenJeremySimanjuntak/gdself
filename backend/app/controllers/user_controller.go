@@ -2,9 +2,9 @@ package controllers
 
 import (
 	"io"
-	"path/filepath"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -372,7 +372,11 @@ func (ctrl *userController) UploadAvatar(c echo.Context) error {
 		})
 	}
 
-	avatarURL := "https://gdself-production.up.railway.app/uploads/avatars/" + newFilename
+	baseURL := os.Getenv("APP_BASE_URL")
+	if baseURL == "" {
+		baseURL = "https://gdself-production.up.railway.app" // fallback
+	}
+	avatarURL := baseURL + "/uploads/avatars/" + newFilename
 
 	user, err := ctrl.usecase.UploadAvatar(uint(id), avatarURL)
 	if err != nil {

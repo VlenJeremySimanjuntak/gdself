@@ -26,6 +26,9 @@ type HasilAIController interface {
 	GetTrenByID(c echo.Context) error
 	GetTrenByLaporanLabID(c echo.Context) error
 
+	GetLatestValidByUserAndParam(c echo.Context) error
+
+
 	// Endpoint untuk memproses assessment (menggantikan Create yang lama)
 	ProcessAssessment(c echo.Context) error
 }
@@ -296,6 +299,33 @@ func (ctrl *hasilAIController) ProcessAssessment(c echo.Context) error {
 	return c.JSON(http.StatusOK, models.Response{
 		StatusCode: http.StatusOK,
 		Message:    "Assessment berhasil diproses",
+		Data:       result,
+	})
+}
+
+func (ctrl *hasilAIController) GetLatestValidByUserAndParam(c echo.Context) error {
+	userID, err := strconv.ParseUint(c.Param("user_id"), 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "user_id tidak valid"})
+	}
+
+	paramKey := strings.ToUpper(c.Param("param")) // TSH | FT3 | FT4 | TRAB
+
+	result, err := ctrl.labUsecase.GetLatestValidByUserAndParam(uint(userID), paramKey)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "not found") {
+			return c.JSON(http.StatusOK, models.Response{
+				StatusCode: http.StatusOK,
+				Message:    "Belum ada data valid untuk parameter ini",
+				Data:       nil,
+			})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, models.Response{
+		StatusCode: http.StatusOK,
+		Message:    "Data ditemukan",
 		Data:       result,
 	})
 }

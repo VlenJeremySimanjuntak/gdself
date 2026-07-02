@@ -9,6 +9,7 @@ import (
 
 	"monitoring-service/app/constants"
 	"monitoring-service/app/models"
+	"monitoring-service/app/repositories"
 	"monitoring-service/app/usecases"
 
 	"github.com/labstack/echo/v4"
@@ -27,14 +28,16 @@ type HasilLabController interface {
 }
 
 type hasilLabController struct {
-	usecase   usecases.HasilLabUsecase
-	aiUsecase usecases.LabUsecase
+	usecase     usecases.HasilLabUsecase
+	aiUsecase   usecases.LabUsecase
+	laporanRepo repositories.LaporanLabRepository
 }
 
-func NewHasilLabController(u usecases.HasilLabUsecase, ai usecases.LabUsecase) HasilLabController {
+func NewHasilLabController(u usecases.HasilLabUsecase, ai usecases.LabUsecase, laporanRepo repositories.LaporanLabRepository) HasilLabController {
 	return &hasilLabController{
-		usecase:   u,
-		aiUsecase: ai,
+		usecase:     u,
+		aiUsecase:   ai,
+		laporanRepo: laporanRepo,
 	}
 }
 
@@ -65,7 +68,6 @@ func (ctrl *hasilLabController) Create(c echo.Context) error {
 		})
 	}
 
-	// ✅ FIX BUG: Hapus validasi == 0 agar nilai 0.0 (seperti batas bawah TRAb) bisa masuk
 	for i, p := range input.Parameters {
 		if strings.TrimSpace(p.NamaParameter) == "" {
 			return c.JSON(http.StatusBadRequest, map[string]string{
@@ -81,14 +83,9 @@ func (ctrl *hasilLabController) Create(c echo.Context) error {
 		})
 	}
 
-	// =======================================================
-	// 👇 MULAI TRIGGER AI OTOMATIS 👇
-	// =======================================================
-
-	// 1. Ekstrak ID Laporan
+	// Ekstrak ID Laporan
 	reportID := idLaporan
 	if reportID == 0 {
-		// Trik aman ekstrak ID Laporan yang baru saja terbuat
 		resBytes, _ := json.Marshal(result)
 		var resMap map[string]interface{}
 		if errJSON := json.Unmarshal(resBytes, &resMap); errJSON == nil {
@@ -105,7 +102,6 @@ func (ctrl *hasilLabController) Create(c echo.Context) error {
 		}
 	}
 
-	// 2. Siapkan parameter input untuk dibaca Mesin AI
 	var aiParams []models.AssessmentParamInput
 	for _, p := range input.Parameters {
 		aiParams = append(aiParams, models.AssessmentParamInput{
@@ -124,19 +120,46 @@ func (ctrl *hasilLabController) Create(c echo.Context) error {
 		},
 	}
 
-	// 3. Panggil Mesin AI berjalan di belakang layar (Goroutine)
-	go func(data models.AssessmentInput) {
+	// ✅ Goroutine dengan reassess laporan berikutnya
+	go func(data models.AssessmentInput, laporanID uint) {
 		_, aiErr := ctrl.aiUsecase.Assess(data)
 		if aiErr != nil {
-			log.Println("⚠️ [AI FAILED] Gagal memproses AI otomatis:", aiErr)
-		} else {
-			log.Println("✅ [AI SUCCESS] AI otomatis berhasil memproses data untuk Laporan ID:", data.Lab.IDLaporanLab)
+			log.Println("⚠️ [AI FAILED]:", aiErr)
+			return
 		}
-	}(aiInput)
+		log.Println("✅ [AI SUCCESS] Laporan ID:", laporanID)
 
-	// =======================================================
-	// 👆 TRIGGER AI OTOMATIS SELESAI 👆
-	// =======================================================
+		// 🔄 Reassess laporan berikutnya agar tren diperbarui
+		nextLap, err := ctrl.laporanRepo.GetNextLab(laporanID)
+		if err == nil && nextLap.IDLaporanLab != 0 {
+			var nextParams []models.AssessmentParamInput
+			for _, h := range nextLap.HasilLab {
+				if h.Parameter != nil {
+					nextParams = append(nextParams, models.AssessmentParamInput{
+						NamaParameter:   h.Parameter.NamaParameter,
+						NilaiHasil:      h.NilaiHasil,
+						NilaiBatasBawah: h.NilaiBatasBawah,
+						NilaiBatasAtas:  h.NilaiBatasAtas,
+					})
+				}
+			}
+			if len(nextParams) > 0 {
+				nextInput := models.AssessmentInput{
+					IsLabDay: true,
+					Lab: models.AssessmentLabInput{
+						IDLaporanLab: nextLap.IDLaporanLab,
+						Parameters:   nextParams,
+					},
+				}
+				_, reassessErr := ctrl.aiUsecase.Assess(nextInput)
+				if reassessErr != nil {
+					log.Println("⚠️ [REASSESS FAILED]:", reassessErr)
+				} else {
+					log.Println("✅ [REASSESS SUCCESS] Next Laporan ID:", nextLap.IDLaporanLab)
+				}
+			}
+		}
+	}(aiInput, reportID)
 
 	return c.JSON(http.StatusCreated, models.Response{
 		StatusCode: http.StatusCreated,

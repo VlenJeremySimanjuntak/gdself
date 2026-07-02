@@ -48,7 +48,7 @@ func seedParameter(db *gorm.DB) {
 		defaultParams := []Parameter{
 			{NamaParameter: "FT3", Satuan: "pmol/L", Kategori: "Thyroid", TipeRujukan: "range"},
 			{NamaParameter: "FT4", Satuan: "pmol/L", Kategori: "Thyroid", TipeRujukan: "range"},
-			{NamaParameter: "TSH", Satuan: "mIU/L", Kategori: "Thyroid", TipeRujukan: "range"},
+			{NamaParameter: "TSHs", Satuan: "mIU/L", Kategori: "Thyroid", TipeRujukan: "range"}, // ✅ Diubah di sini
 			{NamaParameter: "TRAb", Satuan: "IU/L", Kategori: "Thyroid", TipeRujukan: "treshold"},
 		}
 

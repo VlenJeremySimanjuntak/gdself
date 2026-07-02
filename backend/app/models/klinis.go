@@ -29,9 +29,9 @@ type HasilLab struct {
 	IDHasilLab      uint      `json:"id_hasil_lab" gorm:"column:id_hasil_lab;type:int unsigned;primaryKey;autoIncrement"`
 	IDLaporanLab    uint      `json:"id_laporan_lab" gorm:"column:id_laporan_lab;type:int unsigned;not null;index"`
 	IDParameter     uint      `json:"id_parameter" gorm:"column:id_parameter;type:int unsigned;not null;index"`
-	NilaiHasil      float64   `json:"nilai_hasil" gorm:"column:nilai_hasil;type:decimal(10,2)"`
-	NilaiBatasBawah float64   `json:"nilai_batas_bawah" gorm:"column:nilai_batas_bawah;type:decimal(10,2)"`
-	NilaiBatasAtas  float64   `json:"nilai_batas_atas" gorm:"column:nilai_batas_atas;type:decimal(10,2)"`
+	NilaiHasil      float64   `json:"nilai_hasil" gorm:"column:nilai_hasil;type:decimal(10,3)"`
+	NilaiBatasBawah float64   `json:"nilai_batas_bawah" gorm:"column:nilai_batas_bawah;type:decimal(10,3)"`
+	NilaiBatasAtas  float64   `json:"nilai_batas_atas" gorm:"column:nilai_batas_atas;type:decimal(10,3	)"`
 	CreatedAt       time.Time `json:"created_at" gorm:"column:created_at;autoCreateTime:milli"`
 
 	// Relationships

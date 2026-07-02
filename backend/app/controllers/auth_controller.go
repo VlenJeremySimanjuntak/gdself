@@ -80,7 +80,6 @@ func (ctrl *authController) VerifyOTP(c echo.Context) error {
 }
 
 // ── POST /api/auth/google/check ──────────────────────────────────────────────
-// Cek apakah user Google sudah ada atau belum
 func (ctrl *authController) GoogleCheck(c echo.Context) error {
 	var input struct {
 		IDToken string `json:"id_token"`
@@ -89,22 +88,18 @@ func (ctrl *authController) GoogleCheck(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "payload tidak valid"})
 	}
 
-	// 1. Verifikasi Token Google ke Usecase
 	result, err := ctrl.usecase.GoogleCheck(input.IDToken)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
 
-	// 2. Cek langsung ke database apakah email ini sudah terdaftar
-	existingUser, loginErr := ctrl.userUsecase.GetUserByEmail(result.GoogleEmail)
-
-	// 3. LOGIKA UTAMA: Jika terjadi error (misal: Record Not Found), anggap sebagai USER BARU
-	if loginErr != nil {
+	// ✅ Gunakan Flag dari Usecase
+	if result.IsNewUser {
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"status_code": http.StatusOK,
 			"message":     "User belum terdaftar, silakan lengkapi data",
 			"data": map[string]interface{}{
-				"is_new_user":  true, // ✅ Flag dikirim sebagai TRUE
+				"is_new_user":  true,
 				"google_email": result.GoogleEmail,
 				"google_name":  result.GoogleName,
 				"google_photo": result.GooglePhoto,
@@ -112,15 +107,21 @@ func (ctrl *authController) GoogleCheck(c echo.Context) error {
 		})
 	}
 
-	// 4. JIKA USER DITEMUKAN (Sudah Terdaftar sebelumnya)
+	// USER SUDAH ADA
+	// Ambil data user secara lengkap dari DB menggunakan email yang DIJAMIN ada (dari Usecase)
+	existingUser, loginErr := ctrl.userUsecase.GetUserByEmail(result.GoogleEmail)
+	if loginErr != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Gagal mengambil data user"})
+	}
+
 	token := generateTokenHelper(existingUser.IDUser, existingUser.Email)
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"status_code": http.StatusOK,
 		"message":     "Login Google berhasil",
 		"data": map[string]interface{}{
-			"is_new_user": false, // ✅ Flag dikirim sebagai FALSE
+			"is_new_user": false,
 			"token":       token,
-			"user":        buildUserResponse(existingUser), // Menggunakan helper yang sudah ada di controller Mas
+			"user":        buildUserResponse(existingUser),
 		},
 	})
 }

@@ -177,129 +177,142 @@ func AnalyzeLabResults(params []models.AssessmentParamInput) LabAssessmentResult
 // ==========================================
 
 func trenTSH(prevNilai, currNilai float64, prevStatus, currStatus string) (tren, reminder string) {
-	// 1. Pemulihan dari Rendah/Tinggi ke Normal
-	if prevStatus != "Normal" && currStatus == "Normal" {
+	// Pemulihan dari Rendah ke Normal
+	if prevStatus == "Rendah" && currStatus == "Normal" {
 		return "Mendekati normal", "TSHs anda telah mencapai rentang normal. Tren menunjukkan perbaikan yang sangat baik dari kondisi sebelumnya."
 	}
-	
-	// 2. Kondisi Memburuk (Dari Normal keluar rentang)
+
+	// Memburuk dari Normal
 	if prevStatus == "Normal" && currStatus != "Normal" {
 		return "Menjauhi normal", "TSHs anda keluar dari rentang normal dibandingkan pemeriksaan sebelumnya. Harap konsultasikan dengan dokter."
 	}
 
-	// 3. Kondisi Tetap Normal
+	// Tetap Normal — dibedakan naik/turun/tetap
 	if prevStatus == "Normal" && currStatus == "Normal" {
-		return "Tetap normal", "Berdasarkan hasil pemeriksaan, TSHs saat ini tetap berada dalam rentang normal."
+		if currNilai > prevNilai {
+			return "Tetap normal", "Berdasarkan hasil pemeriksaan, TSHs saat ini berada dalam rentang normal dibandingkan sebelumnya. Terjadi peningkatan nilai dari pemeriksaan sebelumnya, namun kondisi tetap berada dalam rentang normal."
+		} else if currNilai < prevNilai {
+			return "Tetap normal", "Berdasarkan hasil pemeriksaan, TSHs saat ini berada dalam rentang normal dibandingkan sebelumnya. Terjadi penurunan nilai dari pemeriksaan sebelumnya, namun kondisi tetap berada dalam rentang normal."
+		}
+		return "Tetap normal", "Berdasarkan hasil pemeriksaan, TSHs saat ini berada dalam rentang normal. Nilai TSHs tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, sehingga kondisi tetap berada dalam rentang normal."
 	}
 
-	// 4. Kondisi Khas Graves (Masih Rendah)
+	// Masih Rendah
 	if currStatus == "Rendah" {
 		if currNilai > prevNilai {
-			return "Mendekati normal", "Berdasarkan hasil pemeriksaan, TSHs saat ini masih berada di bawah rentang normal. Namun, terjadi peningkatan nilai dari pemeriksaan sebelumnya, sehingga kondisi mulai mendekati rentang normal."
+			return "Mendekati normal", "Berdasarkan hasil pemeriksaan, TSHs saat ini masih berada di bawah rentang normal dibandingkan sebelumnya. Terjadi peningkatan nilai dari pemeriksaan sebelumnya, sehingga kondisi mulai mendekati rentang normal."
 		} else if currNilai < prevNilai {
-			return "Menjauhi normal", "Berdasarkan hasil pemeriksaan, TSHs saat ini masih berada di bawah rentang normal. Terjadi penurunan nilai dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi rentang normal."
+			return "Menjauhi normal", "Berdasarkan hasil pemeriksaan, TSHs saat ini masih berada di bawah rentang normal dibandingkan sebelumnya. Terjadi penurunan nilai dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi rentang normal."
 		}
-		return "Tidak berubah", "Berdasarkan hasil pemeriksaan, TSHs saat ini masih berada di bawah rentang normal. Nilai TSHs tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya."
+		return "Tidak berubah", "Berdasarkan hasil pemeriksaan, TSHs saat ini masih berada di bawah rentang normal. Nilai TSHs tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, sehingga kondisi masih berada di bawah rentang normal dan belum menunjukkan perubahan menuju rentang normal."
 	}
 
-	// 5. Kondisi Over-treatment / Hipotiroid (Masih Tinggi)
-	if currStatus == "Tinggi" {
-		if currNilai < prevNilai {
-			return "Mendekati normal", "TSHs saat ini masih berada di atas rentang normal. Namun, terjadi penurunan nilai dari pemeriksaan sebelumnya, sehingga kondisi mulai mendekati rentang normal."
-		} else if currNilai > prevNilai {
-			return "Menjauhi normal", "TSHs saat ini masih berada di atas rentang normal. Terjadi peningkatan nilai dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi rentang normal."
-		}
-		return "Tidak berubah", "TSHs saat ini masih berada di atas rentang normal dan tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya."
-	}
-
-	return "Tidak diketahui", "Kondisi TSHs saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem."
+	// Tinggi → Tidak diketahui (sesuai Tabel 4.23)
+	return "Tidak diketahui", "Kondisi TSHs saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 }
 
 func trenFT3(prevNilai, currNilai float64, prevStatus, currStatus string) (tren, reminder string) {
-	if prevStatus != "Normal" && currStatus == "Normal" {
+	// Pemulihan dari Tinggi ke Normal
+	if prevStatus == "Tinggi" && currStatus == "Normal" {
 		return "Mendekati normal", "FT3 anda telah mencapai rentang normal. Tren menunjukkan perbaikan yang sangat baik dari kondisi sebelumnya."
 	}
+
+	// Memburuk dari Normal
 	if prevStatus == "Normal" && currStatus != "Normal" {
 		return "Menjauhi normal", "FT3 anda keluar dari rentang normal dibandingkan pemeriksaan sebelumnya. Harap konsultasikan dengan dokter."
 	}
+
+	// Tetap Normal — dibedakan naik/turun/tetap
 	if prevStatus == "Normal" && currStatus == "Normal" {
-		return "Tetap normal", "Berdasarkan hasil pemeriksaan, FT3 saat ini tetap berada dalam rentang normal."
-	}
-
-	if currStatus == "Tinggi" {
-		if currNilai < prevNilai {
-			return "Mendekati normal", "Berdasarkan hasil pemeriksaan, FT3 saat ini masih berada di atas rentang normal. Namun, terjadi penurunan nilai dari pemeriksaan sebelumnya, sehingga kondisi mulai mendekati rentang normal."
-		} else if currNilai > prevNilai {
-			return "Menjauhi normal", "Berdasarkan hasil pemeriksaan, FT3 saat ini masih berada di atas rentang normal. Terjadi peningkatan nilai dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi rentang normal."
-		}
-		return "Tidak berubah", "Berdasarkan hasil pemeriksaan, FT3 saat ini masih berada di atas rentang normal dan tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya."
-	}
-
-	if currStatus == "Rendah" {
 		if currNilai > prevNilai {
-			return "Mendekati normal", "FT3 saat ini masih berada di bawah rentang normal. Namun, terjadi peningkatan nilai dari pemeriksaan sebelumnya, sehingga kondisi mulai mendekati rentang normal."
+			return "Tetap normal", "Berdasarkan hasil pemeriksaan, FT3 saat ini berada dalam rentang normal dibandingkan sebelumnya. Terjadi peningkatan nilai dari pemeriksaan sebelumnya, namun kondisi tetap berada dalam rentang normal."
 		} else if currNilai < prevNilai {
-			return "Menjauhi normal", "FT3 saat ini masih berada di bawah rentang normal. Terjadi penurunan nilai dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi rentang normal."
+			return "Tetap normal", "Berdasarkan hasil pemeriksaan, FT3 saat ini berada dalam rentang normal dibandingkan sebelumnya. Terjadi penurunan nilai dari pemeriksaan sebelumnya, namun kondisi tetap berada dalam rentang normal."
 		}
-		return "Tidak berubah", "FT3 saat ini masih berada di bawah rentang normal dan tidak mengalami perubahan."
+		return "Tetap normal", "Berdasarkan hasil pemeriksaan, FT3 saat ini berada dalam rentang normal. Nilai FT3 tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, sehingga kondisi tetap berada dalam rentang normal."
 	}
 
-	return "Tidak diketahui", "Kondisi FT3 saat ini tidak sesuai dengan pola interpretasi yang tersedia."
+	// Masih Tinggi
+	if currStatus == "Tinggi" {
+		if currNilai > prevNilai {
+			return "Menjauhi normal", "Berdasarkan hasil pemeriksaan, FT3 saat ini masih berada di atas rentang normal dibandingkan sebelumnya. Terjadi peningkatan nilai dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi rentang normal."
+		} else if currNilai < prevNilai {
+			return "Mendekati normal", "Berdasarkan hasil pemeriksaan, FT3 saat ini berada di atas rentang normal dibandingkan sebelumnya. Terjadi penurunan nilai dari pemeriksaan sebelumnya, sehingga kondisi mulai mendekati rentang normal."
+		}
+		return "Tidak berubah", "Berdasarkan hasil pemeriksaan, FT3 saat ini masih berada di atas rentang normal. Nilai FT3 tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, sehingga kondisi masih berada di atas rentang normal."
+	}
+
+	// Rendah → Tidak diketahui (sesuai Tabel 4.24)
+	return "Tidak diketahui", "Kondisi FT3 saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 }
 
 func trenFT4(prevNilai, currNilai float64, prevStatus, currStatus string) (tren, reminder string) {
-	if prevStatus != "Normal" && currStatus == "Normal" {
+	// Pemulihan dari Tinggi ke Normal
+	if prevStatus == "Tinggi" && currStatus == "Normal" {
 		return "Mendekati normal", "FT4 anda telah mencapai rentang normal. Tren menunjukkan perbaikan yang sangat baik dari kondisi sebelumnya."
 	}
+
+	// Memburuk dari Normal
 	if prevStatus == "Normal" && currStatus != "Normal" {
 		return "Menjauhi normal", "FT4 anda keluar dari rentang normal dibandingkan pemeriksaan sebelumnya. Harap konsultasikan dengan dokter."
 	}
+
+	// Tetap Normal — dibedakan naik/turun/tetap
 	if prevStatus == "Normal" && currStatus == "Normal" {
-		return "Tetap normal", "Berdasarkan hasil pemeriksaan, FT4 saat ini tetap berada dalam rentang normal."
-	}
-
-	if currStatus == "Tinggi" {
-		if currNilai < prevNilai {
-			return "Mendekati normal", "Berdasarkan hasil pemeriksaan, FT4 saat ini masih berada di atas rentang normal. Namun, terjadi penurunan nilai dari pemeriksaan sebelumnya, sehingga kondisi mulai mendekati rentang normal."
-		} else if currNilai > prevNilai {
-			return "Menjauhi normal", "Berdasarkan hasil pemeriksaan, FT4 saat ini masih berada di atas rentang normal. Terjadi peningkatan nilai dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi rentang normal."
-		}
-		return "Tidak berubah", "Berdasarkan hasil pemeriksaan, FT4 saat ini masih berada di atas rentang normal dan tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya."
-	}
-
-	if currStatus == "Rendah" {
 		if currNilai > prevNilai {
-			return "Mendekati normal", "FT4 saat ini masih berada di bawah rentang normal. Namun, terjadi peningkatan nilai dari pemeriksaan sebelumnya, sehingga kondisi mulai mendekati rentang normal."
+			return "Tetap normal", "Berdasarkan hasil pemeriksaan, FT4 saat ini berada dalam rentang normal dibandingkan sebelumnya. Terjadi peningkatan nilai dari pemeriksaan sebelumnya, namun kondisi tetap berada dalam rentang normal."
 		} else if currNilai < prevNilai {
-			return "Menjauhi normal", "FT4 saat ini masih berada di bawah rentang normal. Terjadi penurunan nilai dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi rentang normal."
+			return "Tetap normal", "Berdasarkan hasil pemeriksaan, FT4 saat ini berada dalam rentang normal dibandingkan sebelumnya. Terjadi penurunan nilai dari pemeriksaan sebelumnya, namun kondisi tetap berada dalam rentang normal."
 		}
-		return "Tidak berubah", "FT4 saat ini masih berada di bawah rentang normal dan tidak mengalami perubahan."
+		return "Tetap normal", "Berdasarkan hasil pemeriksaan, FT4 saat ini berada dalam rentang normal. Nilai FT4 tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, sehingga kondisi tetap berada dalam rentang normal."
 	}
 
-	return "Tidak diketahui", "Kondisi FT4 saat ini tidak sesuai dengan pola interpretasi yang tersedia."
+	// Masih Tinggi
+	if currStatus == "Tinggi" {
+		if currNilai > prevNilai {
+			return "Menjauhi normal", "Berdasarkan hasil pemeriksaan, FT4 saat ini masih berada di atas rentang normal dibandingkan sebelumnya. Terjadi peningkatan nilai dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi rentang normal."
+		} else if currNilai < prevNilai {
+			return "Mendekati normal", "Berdasarkan hasil pemeriksaan, FT4 saat ini berada di atas rentang normal dibandingkan sebelumnya. Terjadi penurunan nilai dari pemeriksaan sebelumnya, sehingga kondisi mulai mendekati rentang normal."
+		}
+		return "Tidak berubah", "Berdasarkan hasil pemeriksaan, FT4 saat ini masih berada di atas rentang normal. Nilai FT4 tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, sehingga kondisi masih berada di atas rentang normal."
+	}
+
+	// Rendah → Tidak diketahui (sesuai Tabel 4.25)
+	return "Tidak diketahui", "Kondisi FT4 saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 }
 
 func trenTRAb(prevNilai, currNilai float64, prevStatus, currStatus string) (tren, reminder string) {
+	// Pemulihan dari Positif ke Negatif
 	if prevStatus == "Positif" && currStatus == "Negatif" {
 		return "Mendekati normal", "TRAb anda telah mencapai rentang negatif (normal). Tren menunjukkan perbaikan yang sangat baik dari kondisi sebelumnya."
 	}
+
+	// Memburuk dari Negatif ke Positif
 	if prevStatus == "Negatif" && currStatus == "Positif" {
 		return "Menjauhi normal", "TRAb anda berubah menjadi Positif. Harap konsultasikan dengan dokter terkait hasil ini."
 	}
+
+	// Tetap Negatif — dibedakan naik/turun/tetap
 	if prevStatus == "Negatif" && currStatus == "Negatif" {
-		return "Tetap normal", "Berdasarkan hasil pemeriksaan, TRAb saat ini tetap negatif (tidak menunjukkan penanda autoimun)."
-	}
-
-	if currStatus == "Positif" {
-		if currNilai < prevNilai {
-			return "Mendekati normal", "Berdasarkan hasil pemeriksaan, TRAb saat ini masih menunjukkan penanda autoimun (positif). Terjadi penurunan nilai dari pemeriksaan sebelumnya, sehingga kondisi mulai mendekati kategori negatif."
-		} else if currNilai > prevNilai {
-			return "Menjauhi normal", "Berdasarkan hasil pemeriksaan, TRAb saat ini masih menunjukkan penanda autoimun (positif). Terjadi peningkatan nilai dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi kategori negatif."
+		if currNilai > prevNilai {
+			return "Tetap normal", "Berdasarkan hasil pemeriksaan, TRAb saat ini tidak menunjukkan penanda autoimun (negatif) dibandingkan sebelumnya. Terjadi peningkatan nilai dari pemeriksaan sebelumnya, namun kondisi tetap berada dalam kategori negatif."
+		} else if currNilai < prevNilai {
+			return "Tetap normal", "Berdasarkan hasil pemeriksaan, TRAb saat ini tidak menunjukkan penanda autoimun (negatif) dibandingkan sebelumnya. Terjadi penurunan nilai dari pemeriksaan sebelumnya, namun kondisi tetap berada dalam kategori negatif."
 		}
-		return "Tidak berubah", "Berdasarkan hasil pemeriksaan, TRAb saat ini masih menunjukkan penanda autoimun (positif) dan nilainya tidak mengalami perubahan."
+		return "Tetap normal", "Berdasarkan hasil pemeriksaan, TRAb saat ini tidak menunjukkan penanda autoimun (negatif). Nilai TRAb tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, sehingga kondisi tetap berada dalam kategori negatif."
 	}
 
-	return "Tidak diketahui", "Kondisi TRAb saat ini tidak sesuai dengan pola interpretasi yang tersedia."
+	// Masih Positif — dibedakan naik/turun/tetap
+	if currStatus == "Positif" {
+		if currNilai > prevNilai {
+			return "Menjauhi normal", "Berdasarkan hasil pemeriksaan, TRAb saat ini masih menunjukkan penanda autoimun (positif) dibandingkan sebelumnya. Terjadi peningkatan nilai dari pemeriksaan sebelumnya, sehingga kondisi semakin menjauhi kategori negatif."
+		} else if currNilai < prevNilai {
+			return "Mendekati normal", "Berdasarkan hasil pemeriksaan, TRAb saat ini masih menunjukkan penanda autoimun (positif) dibandingkan sebelumnya. Terjadi penurunan nilai dari pemeriksaan sebelumnya, sehingga kondisi mulai mendekati kategori negatif."
+		}
+		return "Tidak berubah", "Berdasarkan hasil pemeriksaan, TRAb saat ini masih menunjukkan penanda autoimun (positif). Nilai TRAb tidak mengalami perubahan dibandingkan pemeriksaan sebelumnya, sehingga kondisi masih berada dalam kategori positif."
+	}
+
+	return "Tidak diketahui", "Kondisi TRAb saat ini tidak sesuai dengan pola interpretasi yang tersedia dalam sistem sehingga tren tidak dapat ditentukan."
 }
 
 // ==========================================

@@ -1,13 +1,12 @@
 package services
 
 import (
-	"bytes"
 	"crypto/rand"
-	"encoding/json"
+	"crypto/tls"
 	"fmt"
-	"io"
 	"math/big"
-	"net/http"
+	"net"
+	"net/smtp"
 	"os"
 	"time"
 )
@@ -15,14 +14,20 @@ import (
 type EmailService struct {
 	FromEmail string
 	FromName  string
-	APIKey    string
+	SMTPHost  string
+	SMTPPort  string
+	SMTPUser  string
+	SMTPPass  string
 }
 
 func NewEmailService() *EmailService {
 	return &EmailService{
-		FromEmail: "onboarding@resend.dev",
+		FromEmail: os.Getenv("SMTP_FROM_EMAIL"), // sama dengan SMTP_USER
 		FromName:  "GdSelf App",
-		APIKey:    os.Getenv("RESEND_API_KEY"),
+		SMTPHost:  "smtp.gmail.com",
+		SMTPPort:  "587",
+		SMTPUser:  os.Getenv("SMTP_USER"),     // email Gmail kamu
+		SMTPPass:  os.Getenv("SMTP_APP_PASS"), // App Password 16 digit dari Google
 	}
 }
 
@@ -40,8 +45,8 @@ func GenerateOTP() (string, error) {
 }
 
 func (s *EmailService) SendOTPEmail(toEmail, otpCode, emailType string) error {
-	if s.APIKey == "" {
-		return fmt.Errorf("RESEND_API_KEY belum diset di environment variable")
+	if s.SMTPUser == "" || s.SMTPPass == "" {
+		return fmt.Errorf("SMTP_USER atau SMTP_APP_PASS belum diset di environment variable")
 	}
 
 	var subject, htmlBody string
@@ -57,40 +62,64 @@ func (s *EmailService) SendOTPEmail(toEmail, otpCode, emailType string) error {
 		htmlBody = s.buildRegisterEmailBody(otpCode)
 	}
 
-	payload := map[string]interface{}{
-		"from":    fmt.Sprintf("%s <%s>", s.FromName, s.FromEmail),
-		"to":      []string{toEmail},
-		"subject": subject,
-		"html":    htmlBody,
-	}
+	from := fmt.Sprintf("%s <%s>", s.FromName, s.FromEmail)
+	msg := []byte(
+		"From: " + from + "\r\n" +
+			"To: " + toEmail + "\r\n" +
+			"Subject: " + subject + "\r\n" +
+			"MIME-Version: 1.0\r\n" +
+			"Content-Type: text/html; charset=\"UTF-8\"\r\n" +
+			"\r\n" +
+			htmlBody + "\r\n")
 
-	payloadBytes, err := json.Marshal(payload)
+	return s.sendWithTimeout(toEmail, msg, 8*time.Second)
+}
+
+// ✅ Timeout manual 8 detik, supaya kalau port diblokir, gagal cepat dan jelas
+func (s *EmailService) sendWithTimeout(toEmail string, msg []byte, timeout time.Duration) error {
+	addr := s.SMTPHost + ":" + s.SMTPPort
+
+	conn, err := net.DialTimeout("tcp", addr, timeout)
 	if err != nil {
-		return fmt.Errorf("gagal membuat payload email: %v", err)
+		return fmt.Errorf("gagal konek ke %s (kemungkinan port diblokir): %v", addr, err)
 	}
+	defer conn.Close()
 
-	req, err := http.NewRequest("POST", "https://api.resend.com/emails",
-		bytes.NewReader(payloadBytes))
+	client, err := smtp.NewClient(conn, s.SMTPHost)
 	if err != nil {
-		return fmt.Errorf("gagal membuat request: %v", err)
+		return fmt.Errorf("gagal membuat SMTP client: %v", err)
+	}
+	defer client.Close()
+
+	if err = client.StartTLS(&tls.Config{ServerName: s.SMTPHost}); err != nil {
+		return fmt.Errorf("gagal StartTLS: %v", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+s.APIKey)
-	req.Header.Set("Content-Type", "application/json")
+	auth := smtp.PlainAuth("", s.SMTPUser, s.SMTPPass, s.SMTPHost)
+	if err = client.Auth(auth); err != nil {
+		return fmt.Errorf("gagal autentikasi SMTP (cek email/App Password): %v", err)
+	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	if err = client.Mail(s.FromEmail); err != nil {
+		return fmt.Errorf("gagal set From: %v", err)
+	}
+	if err = client.Rcpt(toEmail); err != nil {
+		return fmt.Errorf("gagal set To: %v", err)
+	}
+
+	w, err := client.Data()
 	if err != nil {
-		return fmt.Errorf("gagal mengirim email: %v", err)
+		return fmt.Errorf("gagal membuka data writer: %v", err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 && resp.StatusCode != 201 {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("Resend API error %d: %s", resp.StatusCode, string(body))
+	_, err = w.Write(msg)
+	if err != nil {
+		return fmt.Errorf("gagal menulis pesan: %v", err)
+	}
+	if err = w.Close(); err != nil {
+		return fmt.Errorf("gagal menutup data writer: %v", err)
 	}
 
-	return nil
+	return client.Quit()
 }
 
 func (s *EmailService) buildRegisterEmailBody(otp string) string {

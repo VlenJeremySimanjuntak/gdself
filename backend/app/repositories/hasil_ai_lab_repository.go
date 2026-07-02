@@ -3,13 +3,15 @@ package repositories
 import (
 	"monitoring-service/app/models"
 	"gorm.io/gorm"
+	"fmt"
 )
 
 type HasilAILabRepository interface {
 	Create(lab models.HasilAILab) (models.HasilAILab, error)
+	Upsert(lab models.HasilAILab) (models.HasilAILab, error)
 	GetByID(id uint) (models.HasilAILab, error)
 	GetByLaporanLabID(laporanLabID uint) (models.HasilAILab, error)
-	Upsert(lab models.HasilAILab) (models.HasilAILab, error) // ✅ Tambah ini
+	GetLatestValidByUserAndParam(userID uint, statusColumn string) (models.HasilAILab, error)
 }
 
 type hasilAILabRepository struct {
@@ -62,4 +64,27 @@ func (r *hasilAILabRepository) Upsert(lab models.HasilAILab) (models.HasilAILab,
 	// Belum ada → INSERT
 	err = r.db.Create(&lab).Error
 	return lab, err
+}
+
+func (r *hasilAILabRepository) GetLatestValidByUserAndParam(userID uint, statusColumn string) (models.HasilAILab, error) {
+	var result models.HasilAILab
+
+	allowedColumns := map[string]bool{
+		"status_tsh":  true,
+		"status_ft3":  true,
+		"status_ft4":  true,
+		"status_trab": true,
+	}
+	if !allowedColumns[statusColumn] {
+		return result, fmt.Errorf("kolom status tidak valid: %s", statusColumn)
+	}
+
+	err := r.db.
+		Joins("JOIN laporan_lab ON laporan_lab.id_laporan_lab = hasil_ai_lab.id_laporan_lab").
+		Joins("JOIN riwayat ON riwayat.id_riwayat = laporan_lab.id_riwayat").
+		Where("riwayat.id_user = ? AND hasil_ai_lab."+statusColumn+" != ?", userID, "Tidak Diketahui").
+		Order("laporan_lab.tgl_periksa DESC").
+		First(&result).Error
+
+	return result, err
 }
