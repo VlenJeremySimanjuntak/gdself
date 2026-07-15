@@ -14,6 +14,7 @@ type ObatRepository interface {
 	GetAll() ([]models.Obat, error)
 	Update(id uint, obat models.Obat) (models.Obat, error)
 	Delete(id uint) error
+	GetKepatuhanByID(obatID uint) (models.Obat, int64, []string, error)
 }
 
 type obatRepository struct {
@@ -61,7 +62,6 @@ func (r *obatRepository) GetAll() ([]models.Obat, error) {
 }
 
 func (r *obatRepository) Update(id uint, obat models.Obat) (models.Obat, error) {
-	// ✅ BARU: Build updates map menyesuaikan dengan ERD terbaru
 	updates := map[string]interface{}{
 		"nama_obat": obat.NamaObat,
 		"dosis":     obat.Dosis,
@@ -72,15 +72,51 @@ func (r *obatRepository) Update(id uint, obat models.Obat) (models.Obat, error) 
 	if obat.TglMulai != nil {
 		updates["tgl_mulai"] = obat.TglMulai
 	}
-	if obat.TglSelesai != nil {
-		updates["tgl_selesai"] = obat.TglSelesai
-	}
 
 	err := r.db.Model(&models.Obat{}).Where("id_obat = ?", id).Updates(updates).Error
 	if err == nil {
 		obat, err = r.GetByID(id)
 	}
 	return obat, err
+}
+
+func (r *obatRepository) GetKepatuhanByID(obatID uint) (models.Obat, int64, []string, error) {
+	obat, err := r.GetByID(obatID)
+	if err != nil {
+		return models.Obat{}, 0, nil, err
+	}
+
+	var statDiminum int64
+	err = r.db.Table("log_konsumsi_obat").
+		Joins("JOIN jadwal_obat ON jadwal_obat.id_jadwal_obat = log_konsumsi_obat.id_jadwal_obat").
+		Where("jadwal_obat.id_obat = ? AND log_konsumsi_obat.status = ?", obatID, "Diminum").
+		Count(&statDiminum).Error
+	if err != nil {
+		return models.Obat{}, 0, nil, err
+	}
+
+	type statusRow struct {
+		Status string `gorm:"column:status"`
+	}
+
+	var rows []statusRow
+	err = r.db.Table("log_konsumsi_obat").
+		Select("log_konsumsi_obat.status").
+		Joins("JOIN jadwal_obat ON jadwal_obat.id_jadwal_obat = log_konsumsi_obat.id_jadwal_obat").
+		Where("jadwal_obat.id_obat = ?", obatID).
+		Order("log_konsumsi_obat.tgl_konsumsi DESC, log_konsumsi_obat.id_log DESC").
+		Limit(3).
+		Scan(&rows).Error
+	if err != nil {
+		return models.Obat{}, 0, nil, err
+	}
+
+	statusLogs := make([]string, 3)
+	for i, row := range rows {
+		statusLogs[i] = row.Status
+	}
+
+	return obat, statDiminum, statusLogs, nil
 }
 
 func (r *obatRepository) Delete(id uint) error {

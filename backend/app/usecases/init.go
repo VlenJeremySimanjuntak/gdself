@@ -6,16 +6,17 @@ import (
 )
 
 type Main struct {
-	User        UserUsecase
-	Auth        AuthUsecase // ✅ BARU: Usecase untuk Auth (OTP, Google, Lupa Sandi)
-	Riwayat     RiwayatUsecase
-	LaporanLab  LaporanLabUsecase
-	Obat        ObatUsecase
-	Wearable    WearableUsecase
-	HasilLab    HasilLabUsecase
-	JadwalObat  JadwalObatUsecase
-	LogKonsumsi LogKonsumsiUsecase
-	Lab         LabUsecase // Untuk backward compatibility dengan lab operations
+	User          UserUsecase
+	Auth          AuthUsecase // ✅ BARU: Usecase untuk Auth (OTP, Google, Lupa Sandi)
+	Riwayat       RiwayatUsecase
+	LaporanLab    LaporanLabUsecase
+	Obat          ObatUsecase
+	KepatuhanObat KepatuhanObatUsecase
+	Wearable      WearableUsecase
+	HasilLab      HasilLabUsecase
+	JadwalObat    JadwalObatUsecase
+	LogKonsumsi   LogKonsumsiUsecase
+	Lab           LabUsecase // Untuk backward compatibility dengan lab operations
 
 	// Usecase AI yang sudah dipecah dan USG Tiroid
 	HasilAIHarian HasilAIHarianUsecase
@@ -36,14 +37,15 @@ func Init(opts Options) *Main {
 	hasilAITren := NewHasilAITrenUsecase(opts.Repository.HasilAITren)
 
 	return &Main{
-		User:        NewUserUsecase(opts.Repository.User),
-		Auth:        NewAuthUsecase(opts.Repository.User, opts.Repository.OTP), // ✅ BARU: Inisialisasi Auth
-		Riwayat:     NewRiwayatUsecase(opts.Repository.Riwayat),
-		LaporanLab:  NewLaporanLabUsecase(opts.Repository.LaporanLab, opts.Repository.Riwayat),
-		Obat:        NewObatUsecase(opts.Repository.Obat),
-		Wearable:    NewWearableUsecase(opts.Repository.Wearable),
-		JadwalObat:  NewJadwalObatUsecase(opts.Repository.JadwalObat),
-		LogKonsumsi: NewLogKonsumsiUsecase(opts.Repository.LogKonsumsi),
+		User:          NewUserUsecase(opts.Repository.User),
+		Auth:          NewAuthUsecase(opts.Repository.User, opts.Repository.OTP), // ✅ BARU: Inisialisasi Auth
+		Riwayat:       NewRiwayatUsecase(opts.Repository.Riwayat),
+		LaporanLab:    NewLaporanLabUsecase(opts.Repository.LaporanLab, opts.Repository.Riwayat),
+		Obat:          NewObatUsecase(opts.Repository.Obat),
+		KepatuhanObat: NewKepatuhanObatUsecase(opts.Repository.KepatuhanObat, opts.Repository.Obat),
+		Wearable:      NewWearableUsecase(opts.Repository.Wearable),
+		JadwalObat:    NewJadwalObatUsecase(opts.Repository.JadwalObat),
+		LogKonsumsi:   NewLogKonsumsiUsecase(opts.Repository.LogKonsumsi),
 
 		// 2. Daftarkan Usecase baru ke dalam Main struct
 		HasilAIHarian: hasilAIHarian,
@@ -53,7 +55,7 @@ func Init(opts Options) *Main {
 
 		// 3. Update parameter injeksi untuk HasilLab dan Lab (menggantikan HasilAI lama)
 		HasilLab: NewHasilLabUsecase(opts.Repository.HasilLab, opts.Repository.Parameter, opts.Repository.LaporanLab, opts.Repository.Wearable, hasilAILab, hasilAITren),
-		
-		Lab:      NewLabUsecase(opts.Repository.Lab, opts.Repository.Parameter, hasilAILab, hasilAITren, opts.Repository.LaporanLab),
+
+		Lab: NewLabUsecase(opts.Repository.Lab, opts.Repository.Parameter, hasilAILab, hasilAITren, opts.Repository.LaporanLab),
 	}
 }

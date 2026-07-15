@@ -37,8 +37,9 @@ func (r *jadwalObatRepository) Create(jadwalObat models.JadwalObat) (models.Jadw
 
 func (r *jadwalObatRepository) GetByID(id uint) (models.JadwalObat, error) {
 	var jadwalObat models.JadwalObat
-	// ✅ Tambahan Preload LogKonsumsi siapa tahu frontend butuh riwayat centang minum obat
-	err := r.db.Preload("LogKonsumsi").First(&jadwalObat, id).Error
+	err := r.db.Preload("LogKonsumsi", func(db *gorm.DB) *gorm.DB {
+		return db.Order("tgl_konsumsi DESC, id_log DESC")
+	}).First(&jadwalObat, id).Error
 	return jadwalObat, err
 }
 
@@ -59,7 +60,9 @@ func (r *jadwalObatRepository) GetByObatID(obatID uint) ([]models.JadwalObat, er
 
 func (r *jadwalObatRepository) GetAll() ([]models.JadwalObat, error) {
 	var jadwalObat []models.JadwalObat
-	err := r.db.Preload("LogKonsumsi").Find(&jadwalObat).Error
+	err := r.db.Preload("LogKonsumsi", func(db *gorm.DB) *gorm.DB {
+		return db.Order("tgl_konsumsi DESC, id_log DESC")
+	}).Find(&jadwalObat).Error
 	return jadwalObat, err
 }
 

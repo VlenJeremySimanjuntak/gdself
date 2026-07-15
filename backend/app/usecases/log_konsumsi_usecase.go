@@ -14,6 +14,7 @@ type LogKonsumsiUsecase interface {
 	GetByJadwalIDAndDate(jadwalID uint, tgl models.CustomDate) (models.LogKonsumsiObat, error)
 	UpdateStatus(id uint, status string) (models.LogKonsumsiObat, error)
 	HapusLog(id uint) error
+	GetKepatuhanByObatID(obatID uint) (int64, []string, error)
 }
 
 type logKonsumsiUsecase struct {
@@ -34,9 +35,9 @@ func (u *logKonsumsiUsecase) CatatKonsumsi(jadwalID uint, tgl models.CustomDate,
 		"Diminum":  true, // user tap "Sudah Diminum"
 		"Terlewat": true, // sistem auto-catat setelah batal 2x
 	}
-	
+
 	if !validStatus[status] {
-		return models.LogKonsumsiObat{}, fmt.Errorf("status tidak valid, gunakan: Diminum / Dilewati / Terlambat")
+		return models.LogKonsumsiObat{}, fmt.Errorf("status tidak valid, gunakan: Diminum / Terlewat")
 	}
 
 	// Kalau tanggal kosong, pakai hari ini
@@ -76,7 +77,7 @@ func (u *logKonsumsiUsecase) UpdateStatus(id uint, status string) (models.LogKon
 		return models.LogKonsumsiObat{}, fmt.Errorf("id tidak valid")
 	}
 
-	validStatus := map[string]bool{"Diminum": true, "Dilewati": true, "Terlambat": true}
+	validStatus := map[string]bool{"Diminum": true, "Terlewat": true}
 	if !validStatus[status] {
 		return models.LogKonsumsiObat{}, fmt.Errorf("status tidak valid")
 	}
@@ -99,4 +100,12 @@ func (u *logKonsumsiUsecase) HapusLog(id uint) error {
 		return fmt.Errorf("log tidak ditemukan")
 	}
 	return u.repo.Delete(id)
+}
+
+func (u *logKonsumsiUsecase) GetKepatuhanByObatID(obatID uint) (int64, []string, error) {
+	if obatID == 0 {
+		return 0, nil, fmt.Errorf("id obat tidak valid")
+	}
+
+	return u.repo.GetKepatuhanByObatID(obatID)
 }

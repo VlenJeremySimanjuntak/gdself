@@ -15,6 +15,7 @@ import (
 type ObatController interface {
 	Create(c echo.Context) error
 	GetByID(c echo.Context) error
+	GetKepatuhan(c echo.Context) error
 	GetByUserID(c echo.Context) error
 	GetAll(c echo.Context) error
 	Update(c echo.Context) error
@@ -48,13 +49,12 @@ func (ctrl *obatController) Create(c echo.Context) error {
 
 	// Mapping ke model Obat sesuai struktur terbaru
 	obat := models.Obat{
-		IDUser:     input.IDUser,
-		NamaObat:   input.NamaObat,
-		TglMulai:   input.TglMulai,
-		TglSelesai: input.TglSelesai,
-		TipeObat:   input.TipeObat,
-		Dosis:      input.Dosis,
-		Frekuensi:  input.Frekuensi,
+		IDUser:    input.IDUser,
+		NamaObat:  input.NamaObat,
+		TglMulai:  input.TglMulai,
+		TipeObat:  input.TipeObat,
+		Dosis:     input.Dosis,
+		Frekuensi: input.Frekuensi,
 	}
 
 	result, err := ctrl.usecase.CreateObat(obat)
@@ -90,6 +90,28 @@ func (ctrl *obatController) GetByID(c echo.Context) error {
 		StatusCode: http.StatusOK,
 		Message:    "Obat ditemukan",
 		Data:       obat,
+	})
+}
+
+func (ctrl *obatController) GetKepatuhan(c echo.Context) error {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "ID tidak valid",
+		})
+	}
+
+	kepatuhan, err := ctrl.usecase.GetKepatuhanObat(uint(id))
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, models.Response{
+		StatusCode: http.StatusOK,
+		Message:    "Data kepatuhan obat ditemukan",
+		Data:       kepatuhan,
 	})
 }
 
@@ -174,7 +196,7 @@ func (ctrl *obatController) Update(c echo.Context) error {
 
 	// Validasi minimal ada satu field yang diupdate
 	if input.NamaObat == "" && input.Dosis == "" && input.Frekuensi == "" &&
-		input.TipeObat == "" && input.TglMulai == nil && input.TglSelesai == nil {
+		input.TipeObat == "" && input.TglMulai == nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "Minimal satu field harus diisi untuk update",
 		})

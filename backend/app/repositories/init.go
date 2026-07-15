@@ -15,6 +15,7 @@ type Main struct {
 	Riwayat       RiwayatRepository
 	LaporanLab    LaporanLabRepository
 	Obat          ObatRepository
+	KepatuhanObat KepatuhanObatRepository
 	Wearable      WearableRepository
 	HasilLab      HasilLabRepository
 	Parameter     ParameterRepository
@@ -43,6 +44,7 @@ func Init(opts Options) *Main {
 		Riwayat:       NewRiwayatRepository(opts.DB),
 		LaporanLab:    NewLaporanLabRepository(opts.DB),
 		Obat:          NewObatRepository(opts.DB),
+		KepatuhanObat: NewKepatuhanObatRepository(opts.DB),
 		Wearable:      NewWearableRepository(opts.DB),
 		HasilLab:      NewHasilLabRepository(opts.DB),
 		Parameter:     NewParameterRepository(opts.DB),

@@ -2,10 +2,20 @@ package usecases
 
 import (
 	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
 
 	"monitoring-service/app/models"
 	"monitoring-service/app/repositories"
 )
+
+type ObatKepatuhanResponse struct {
+	StatDiminum int      `json:"stat_diminum"`
+	StatTotal   int      `json:"stat_total"`
+	StatusLog   []string `json:"status_log"`
+}
 
 type ObatUsecase interface {
 	CreateObat(obat models.Obat) (models.Obat, error)
@@ -14,6 +24,7 @@ type ObatUsecase interface {
 	GetAllObat() ([]models.Obat, error)
 	UpdateObat(id uint, input models.UpdateObatRequest) (models.Obat, error)
 	DeleteObat(id uint) error
+	GetKepatuhanObat(id uint) (ObatKepatuhanResponse, error)
 }
 
 type obatUsecase struct {
@@ -81,20 +92,78 @@ func (u *obatUsecase) UpdateObat(id uint, input models.UpdateObatRequest) (model
 	if input.TipeObat != "" {
 		obat.TipeObat = input.TipeObat
 	}
-    
-	// ✅ Karena TglMulai & TglSelesai di model adalah *CustomDate, 
-    // kita bisa langsung assign dari input
+
+	// TglMulai tetap bisa diupdate jika dikirim
 	if input.TglMulai != nil {
 		obat.TglMulai = input.TglMulai
-	}
-	if input.TglSelesai != nil {
-		obat.TglSelesai = input.TglSelesai
 	}
 
 	// 3. Simpan kembali ke repository
 	return u.repo.Update(id, obat)
 }
 
+func (u *obatUsecase) GetKepatuhanObat(id uint) (ObatKepatuhanResponse, error) {
+	if id == 0 {
+		return ObatKepatuhanResponse{}, fmt.Errorf("id tidak valid")
+	}
+
+	obat, statDiminum, statusLogs, err := u.repo.GetKepatuhanByID(id)
+	if err != nil || obat.IDObat == 0 {
+		return ObatKepatuhanResponse{}, fmt.Errorf("obat tidak ditemukan")
+	}
+
+	return ObatKepatuhanResponse{
+		StatDiminum: int(statDiminum),
+		StatTotal:   calculateStatTotal(obat.TglMulai, obat.Frekuensi),
+		StatusLog:   statusLogs,
+	}, nil
+}
+
+func calculateStatTotal(tglMulai *models.CustomDate, frekuensi string) int {
+	if tglMulai == nil {
+		return 0
+	}
+
+	startTime := time.Time(*tglMulai)
+	startDate := time.Date(startTime.Year(), startTime.Month(), startTime.Day(), 0, 0, 0, 0, startTime.Location())
+	todayTime := time.Now()
+	todayDate := time.Date(todayTime.Year(), todayTime.Month(), todayTime.Day(), 0, 0, 0, 0, todayTime.Location())
+	if todayDate.Before(startDate) {
+		return 0
+	}
+
+	days := int(todayDate.Sub(startDate).Hours()/24) + 1
+	if days <= 0 {
+		return 0
+	}
+
+	dailyFrequency := parseDailyFrequency(frekuensi)
+	if dailyFrequency <= 0 {
+		dailyFrequency = 1
+	}
+
+	return days * dailyFrequency
+}
+
+func parseDailyFrequency(frekuensi string) int {
+	frekuensi = strings.TrimSpace(frekuensi)
+	if frekuensi == "" {
+		return 1
+	}
+
+	re := regexp.MustCompile(`\d+`)
+	match := re.FindString(frekuensi)
+	if match == "" {
+		return 1
+	}
+
+	nilai, err := strconv.Atoi(match)
+	if err != nil || nilai <= 0 {
+		return 1
+	}
+
+	return nilai
+}
 
 func (u *obatUsecase) DeleteObat(id uint) error {
 	if id == 0 {

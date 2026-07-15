@@ -12,13 +12,14 @@ type Wearable struct {
 	WaktuData     *CustomTime `json:"waktu_data" gorm:"column:waktu_data;type:time"`
 	HeartRateHr   int         `json:"heart_rate_hr" gorm:"column:heart_rate_hr"`
 	SleepDuration int         `json:"sleep_duration" gorm:"column:sleep_duration"` // dalam menit
-	Sistolik      int         `json:"sistolik" gorm:"column:sistolik"`             // ✅ Ditambahkan
-	Diastolik     int         `json:"diastolik" gorm:"column:diastolik"`           // ✅ Ditambahkan
+	Sistolik      int         `json:"sistolik" gorm:"column:sistolik"`             
+	Diastolik     int         `json:"diastolik" gorm:"column:diastolik"`           
 	CreatedAt     time.Time   `json:"created_at" gorm:"column:created_at;autoCreateTime:milli"`
 
 	// Relationships
 	Riwayat       *Riwayat        `json:"riwayat,omitempty" gorm:"foreignKey:IDRiwayat;references:IDRiwayat;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	HasilAIHarian []HasilAIHarian `json:"hasil_ai_harian,omitempty" gorm:"foreignKey:IDWearable;references:IDWearable;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	// ✅ PERBAIKAN: Hapus constraint:- di baris bawah ini
+	HasilAIHarian []HasilAIHarian `json:"hasil_ai_harian,omitempty" gorm:"foreignKey:IDWearable;references:IDWearable"`
 }
 
 func (Wearable) TableName() string {
@@ -36,8 +37,8 @@ type CreateWearableRequest struct {
 	WaktuData     *CustomTime `json:"waktu_data"`
 	HeartRateHr   int         `json:"heart_rate_hr" binding:"required"`
 	SleepDuration int         `json:"sleep_duration" binding:"required"`
-	Sistolik      int         `json:"sistolik"`  // ✅ Ditambahkan
-	Diastolik     int         `json:"diastolik"` // ✅ Ditambahkan
+	Sistolik      int         `json:"sistolik"`  
+	Diastolik     int         `json:"diastolik"` 
 }
 
 type UpdateWearableRequest struct {
@@ -45,16 +46,16 @@ type UpdateWearableRequest struct {
 	WaktuData     *CustomTime `json:"waktu_data"`
 	HeartRateHr   int         `json:"heart_rate_hr"`
 	SleepDuration int         `json:"sleep_duration"`
-	Sistolik      int         `json:"sistolik"`  // ✅ Ditambahkan
-	Diastolik     int         `json:"diastolik"` // ✅ Ditambahkan
+	Sistolik      int         `json:"sistolik"`  
+	Diastolik     int         `json:"diastolik"` 
 }
 
 // Struct tambahan untuk kebutuhan Kalkulasi Mesin AI (Tidak masuk Database)
 type WearableData struct {
 	HR           float64 `json:"hr"`
 	SleepMinutes float64 `json:"sleep_minutes"`
-	Sys          float64 `json:"sys"` // ✅ Ditambahkan
-	Dia          float64 `json:"dia"` // ✅ Ditambahkan
+	Sys          float64 `json:"sys"` 
+	Dia          float64 `json:"dia"` 
 
 	BaselineHRMin    float64 `json:"baseline_hr_min"`
 	BaselineHRMax    float64 `json:"baseline_hr_max"`

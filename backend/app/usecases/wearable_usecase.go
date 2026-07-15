@@ -174,7 +174,6 @@ func (u *wearableUsecase) updateOrCreateHasilAI(tx *gorm.DB, wearable models.Wea
 	// Tabel 4.21 Aturan Analisis Tekanan Darah
 	// -------------------------------------------------------------
 	if wearable.Sistolik > 0 && wearable.Diastolik > 0 {
-		// ✅ PERBAIKAN: Ubah >= 80 menjadi > 80 agar 120/80 terdeteksi Normal
 		if wearable.Sistolik >= 130 || wearable.Diastolik > 80 {
 			hasilAI.StatusTd = "Tinggi"
 			hasilAI.ReminderTd = "Tekanan darah berada di atas batas normal. Disarankan pengurangan asupan garam dan pemantauan berkala."
@@ -182,7 +181,6 @@ func (u *wearableUsecase) updateOrCreateHasilAI(tx *gorm.DB, wearable models.Wea
 			hasilAI.StatusTd = "Rendah"
 			hasilAI.ReminderTd = "Tekanan darah berada di bawah batas normal. Disarankan untuk memantau kondisi fisik."
 		} else {
-			// ✅ 120/80 akan jatuh ke blok "Normal" ini
 			hasilAI.StatusTd = "Normal"
 			hasilAI.ReminderTd = "Tekanan darah berada dalam kondisi normal. Pertahankan pola hidup sehat."
 		}

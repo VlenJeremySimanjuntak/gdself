@@ -1,11 +1,12 @@
 package routes
 
 import (
-	"time"
+	"monitoring-service/app/controllers"
 	appmiddleware "monitoring-service/app/middleware"
+	"time"
+
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"monitoring-service/app/controllers"
 )
 
 func ConfigureRouter(e *echo.Echo, controller *controllers.Main) {
@@ -42,11 +43,10 @@ func ConfigureRouter(e *echo.Echo, controller *controllers.Main) {
 	api.POST("/auth/login", controller.User.Login)
 	api.POST("/auth/register", controller.User.Create)
 	api.POST("/auth/google", controller.User.GoogleLogin)
-	
+
 	// Alias User Auth (Sesuai kode awal Mas)
 	api.POST("/login", controller.User.Login)
 	api.POST("/users", controller.User.Create)
-
 
 	// =======================================================
 	// 🔴 PROTECTED ENDPOINTS (Wajib Pakai Token JWT)
@@ -96,9 +96,15 @@ func ConfigureRouter(e *echo.Echo, controller *controllers.Main) {
 	protected.POST("/obat", controller.Obat.Create)
 	protected.GET("/obat", controller.Obat.GetAll)
 	protected.GET("/obat/user/:user_id", controller.Obat.GetByUserID)
+	protected.GET("/obat/:id/kepatuhan", controller.Obat.GetKepatuhan)
 	protected.GET("/obat/:id", controller.Obat.GetByID)
 	protected.PUT("/obat/:id", controller.Obat.Update)
 	protected.DELETE("/obat/:id", controller.Obat.Delete)
+
+	// ========================
+	// Rule-Based Kepatuhan Obat
+	// ========================
+	protected.GET("/kepatuhan-obat/:obat_id", controller.KepatuhanObat.GetByObatID)
 
 	// ========================
 	// Rekapan Obat
@@ -143,8 +149,6 @@ func ConfigureRouter(e *echo.Echo, controller *controllers.Main) {
 	protected.GET("/hasil-ai/tren/:id", controller.HasilAI.GetTrenByID)
 	protected.POST("/hasil-ai/assess", controller.HasilAI.ProcessAssessment)
 	protected.GET("/hasil-ai/lab/user/:user_id/param/:param", controller.HasilAI.GetLatestValidByUserAndParam) // ✅ pindah ke sini, pakai controller.HasilAI
-
-
 
 	// ========================
 	// Jadwal Obat Endpoints

@@ -26,9 +26,9 @@ func NewLogKonsumsiController(u usecases.LogKonsumsiUsecase) LogKonsumsiControll
 }
 
 type catatKonsumsiRequest struct {
-	IDJadwalObat uint              `json:"id_jadwal_obat"`
+	IDJadwalObat uint               `json:"id_jadwal_obat"`
 	TglKonsumsi  *models.CustomDate `json:"tgl_konsumsi"`
-	Status       string            `json:"status"` // Diminum / Dilewati / Terlambat
+	Status       string             `json:"status"` // Diminum / Terlewat
 }
 
 func (ctrl *logKonsumsiController) CatatKonsumsi(c echo.Context) error {
@@ -41,7 +41,7 @@ func (ctrl *logKonsumsiController) CatatKonsumsi(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id_jadwal_obat harus diisi"})
 	}
 	if input.Status == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "status harus diisi (Diminum/Dilewati/Terlambat)"})
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "status harus diisi (Diminum/Terlewat)"})
 	}
 
 	var tgl models.CustomDate

@@ -13,9 +13,10 @@ type LaporanLab struct {
 
 	// Relationships
 	Riwayat     *Riwayat      `json:"riwayat,omitempty" gorm:"foreignKey:IDRiwayat;references:IDRiwayat;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	HasilLab    []HasilLab    `json:"hasil_lab,omitempty" gorm:"foreignKey:IDLaporanLab;references:IDLaporanLab;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	HasilAILab  []HasilAILab  `json:"hasil_ai_lab,omitempty" gorm:"foreignKey:IDLaporanLab;references:IDLaporanLab;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	HasilAITren []HasilAITren `json:"hasil_ai_tren,omitempty" gorm:"foreignKey:IDLaporanLab;references:IDLaporanLab;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	// ✅ PERBAIKAN: Hapus constraint:- di ketiga baris bawah ini
+	HasilLab    []HasilLab    `json:"hasil_lab,omitempty" gorm:"foreignKey:IDLaporanLab;references:IDLaporanLab"`
+	HasilAILab  []HasilAILab  `json:"hasil_ai_lab,omitempty" gorm:"foreignKey:IDLaporanLab;references:IDLaporanLab"`
+	HasilAITren []HasilAITren `json:"hasil_ai_tren,omitempty" gorm:"foreignKey:IDLaporanLab;references:IDLaporanLab"`
 }
 
 func (LaporanLab) TableName() string {

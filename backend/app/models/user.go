@@ -5,7 +5,7 @@ import "time"
 type User struct {
 	IDUser          uint        `json:"id_user" gorm:"column:id_user;type:int unsigned;primaryKey;autoIncrement"`
 	Nama            string      `json:"nama" gorm:"column:nama;size:100;not null"`
-	Email           string      `json:"email" gorm:"column:email;size:100;uniqueIndex;not null"`
+	Email           string      `json:"email" gorm:"column:email;size:100;uniqueIndex;not null"` 
 	Password        string      `json:"password" gorm:"column:password;size:255;not null"`
 	Provider        string      `json:"provider" gorm:"column:provider;size:20;default:'local'"`
 	TglLahir        *CustomDate `json:"tgl_lahir" gorm:"column:tgl_lahir;type:date"`
@@ -14,9 +14,9 @@ type User struct {
 	FotoProfil      string      `json:"foto_profil" gorm:"column:foto_profil;type:varchar(255)"`
 	UpdateAt        time.Time   `json:"update_at" gorm:"column:update_at;autoUpdateTime:milli"`
 
-	// Relationships
-	Riwayat []Riwayat `json:"riwayat,omitempty" gorm:"foreignKey:IDUser;references:IDUser;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	Obat    []Obat    `json:"obat,omitempty" gorm:"foreignKey:IDUser;references:IDUser;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	// ✅ PERBAIKAN: Hapus constraint:- agar relasi terbentuk di database
+	Riwayat []Riwayat `json:"riwayat,omitempty" gorm:"foreignKey:IDUser;references:IDUser"`
+	Obat    []Obat    `json:"obat,omitempty" gorm:"foreignKey:IDUser;references:IDUser"`
 }
 
 func (User) TableName() string {
