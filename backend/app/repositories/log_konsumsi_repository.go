@@ -11,6 +11,8 @@ type LogKonsumsiRepository interface {
 	GetByID(id uint) (models.LogKonsumsiObat, error)
 	GetByJadwalID(jadwalID uint) ([]models.LogKonsumsiObat, error)
 	GetByJadwalIDAndDate(jadwalID uint, tgl models.CustomDate) (models.LogKonsumsiObat, error)
+	GetByJadwalIDAndToday(jadwalID uint) (models.LogKonsumsiObat, error)
+	GetByUserID(userID uint) ([]models.LogKonsumsiObat, error)
 	Update(id uint, log models.LogKonsumsiObat) (models.LogKonsumsiObat, error)
 	Delete(id uint) error
 	GetKepatuhanByObatID(obatID uint) (int64, []string, error)
@@ -48,6 +50,25 @@ func (r *logKonsumsiRepository) GetByJadwalIDAndDate(jadwalID uint, tgl models.C
 	err := r.db.Where("id_jadwal_obat = ? AND tgl_konsumsi = ?", jadwalID, tgl).
 		First(&log).Error
 	return log, err
+}
+
+func (r *logKonsumsiRepository) GetByJadwalIDAndToday(jadwalID uint) (models.LogKonsumsiObat, error) {
+	var log models.LogKonsumsiObat
+	err := r.db.Where("id_jadwal_obat = ? AND DATE(tgl_konsumsi) = CURRENT_DATE", jadwalID).
+		First(&log).Error
+	return log, err
+}
+
+func (r *logKonsumsiRepository) GetByUserID(userID uint) ([]models.LogKonsumsiObat, error) {
+	var logs []models.LogKonsumsiObat
+	err := r.db.Table("log_konsumsi_obat").
+		Select("log_konsumsi_obat.*").
+		Joins("JOIN jadwal_obat ON jadwal_obat.id_jadwal_obat = log_konsumsi_obat.id_jadwal_obat").
+		Joins("JOIN obat ON obat.id_obat = jadwal_obat.id_obat").
+		Where("obat.id_user = ?", userID).
+		Order("log_konsumsi_obat.tgl_konsumsi DESC, log_konsumsi_obat.id_log DESC").
+		Scan(&logs).Error
+	return logs, err
 }
 
 func (r *logKonsumsiRepository) Update(id uint, log models.LogKonsumsiObat) (models.LogKonsumsiObat, error) {
@@ -90,7 +111,7 @@ func (r *logKonsumsiRepository) GetKepatuhanByObatID(obatID uint) (int64, []stri
 		return 0, nil, err
 	}
 
-	statusLog := make([]string, 3)
+	statusLog := make([]string, len(rows)) // Berubah di sini: dinamis sesuai jumlah rows
 	for i, row := range rows {
 		statusLog[i] = row.Status
 	}

@@ -7,7 +7,7 @@
     "variable": [
         {
             "key": "base_url",
-            "value": "https://gdself-production.up.railway.app/api",
+            "value": "https://engaged-kick-utilize.ngrok-free.dev/api",
             "type": "string"
         },
         {
@@ -609,7 +609,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"id_laporan_lab\": 1,\n  \"parameters\": [\n    {\n      \"nama_parameter\": \"TSH\",\n      \"nilai_hasil\": 0.01,\n      \"nilai_batas_bawah\": 0.4,\n      \"nilai_batas_atas\": 4.0,\n      \"satuan\": \"mIU/L\",\n      \"kategori\": \"Tiroid\"\n    }\n  ]\n}"
+                            "raw": "{\n  \"id_laporan_lab\": 1,\n  \"parameters\": [\n    {\n      \"nama_parameter\": \"TSH\",\n      \"nilai_hasil\": 0.01,\n      \"nilai_batas_bawah\": 0.4,\n      \"nilai_batas_atas\": 4.0,\n      \"satuan\": \"mIU/L\",\n      \"kategori\": \"Tiroid\"\n    },\n    {\n      \"nama_parameter\": \"TRAb\",\n      \"nilai_hasil\": 2.5,\n      \"nilai_batas_bawah\": 1.75,\n      \"nilai_batas_atas\": 1.75,\n      \"satuan\": \"IU/L\",\n      \"kategori\": \"Tiroid\"\n    }\n  ]\n}"
                         },
                         "url": "{{base_url}}/hasil-lab"
                     }
@@ -885,7 +885,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"id_user\": 1,\n  \"nama_obat\": \"Methimazole\",\n  \"tipe_obat\": \"Anti-tiroid\",\n  \"dosis\": \"10mg\",\n  \"frekuensi\": \"2x Sehari\",\n  \"tgl_mulai\": \"2024-05-17\"\n}"
+                            "raw": "{\n  \"id_user\": 1,\n  \"nama_obat\": \"Methimazole\",\n  \"tipe_obat\": \"Anti-tiroid\",\n  \"dosis\": \"10mg\",\n  \"frekuensi\": \"2x Sehari\",\n  \"tgl_mulai\": \"2026-07-22\",\n  \"tgl_selesai\": \"2026-10-22\"\n}"
                         },
                         "url": "{{base_url}}/obat"
                     }
@@ -971,7 +971,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"dosis\": \"15mg\"\n}"
+                            "raw": "{\n  \"nama_obat\": \"Methimazole\",\n  \"tipe_obat\": \"Anti-tiroid\",\n  \"dosis\": \"15mg\",\n  \"frekuensi\": \"2x Sehari\",\n  \"tgl_mulai\": \"2026-07-22\",\n  \"tgl_selesai\": \"2026-10-22\"\n}"
                         },
                         "url": "{{base_url}}/obat/1"
                     }

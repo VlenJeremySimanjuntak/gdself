@@ -87,15 +87,29 @@ func (ctrl *monitoringController) GetByUserID(c echo.Context) error {
 			tgl = hasil.CreatedAt
 		}
 
+		// ==========================================================
+		// EKSTRAKSI NILAI POINTER DENGAN AMAN
+		// ==========================================================
+		var nilaiHasil, batasBawah, batasAtas float64
+		if hasil.NilaiHasil != nil {
+			nilaiHasil = *hasil.NilaiHasil
+		}
+		if hasil.NilaiBatasBawah != nil {
+			batasBawah = *hasil.NilaiBatasBawah
+		}
+		if hasil.NilaiBatasAtas != nil {
+			batasAtas = *hasil.NilaiBatasAtas
+		}
+
 		entry := map[string]interface{}{
 			"tgl":         tgl.Format("2006-01-02"),
 			"month":       strings.ToUpper(tgl.Format("Jan")),
 			"date":        tgl.Format("02 Jan 2006"),
-			"val":         fmt.Sprintf("%.2f", hasil.NilaiHasil),
-			"value_raw":   hasil.NilaiHasil,
+			"val":         fmt.Sprintf("%.2f", nilaiHasil), // Menggunakan variabel yang sudah diekstrak
+			"value_raw":   nilaiHasil,                      // Aman untuk di-type assert nanti
 			"unit":        hasil.Parameter.Satuan,
-			"rujukan_min": hasil.NilaiBatasBawah,
-			"rujukan_max": hasil.NilaiBatasAtas,
+			"rujukan_min": batasBawah,                      // Aman
+			"rujukan_max": batasAtas,                       // Aman
 		}
 
 		grouped[name] = append(grouped[name], entry)

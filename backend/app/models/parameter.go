@@ -11,8 +11,8 @@ type Parameter struct {
 	HasilLabs []HasilLab `json:"hasil_labs,omitempty" gorm:"foreignKey:IDParameter;references:IDParameter;-:migration"`
 
 	// Legacy payload fields used by assessment/input compatibility.
-	IDHasilLab uint    `json:"id_hasil_lab,omitempty" gorm:"-"`
-	Nilai      float64 `json:"nilai,omitempty" gorm:"-"`
+	IDHasilLab uint     `json:"id_hasil_lab,omitempty" gorm:"-"`
+	Nilai      *float64 `json:"nilai,omitempty" gorm:"-"` // ✅ Pointer
 }
 
 func (Parameter) TableName() string {
@@ -21,11 +21,18 @@ func (Parameter) TableName() string {
 
 // DTO Parameter
 type CreateParameterRequest struct {
-	NamaParameter   string  `json:"nama_parameter" binding:"required"`
-	Satuan          string  `json:"satuan"`
-	Kategori        string  `json:"kategori"`
-	Nilai           float64 `json:"nilai,omitempty"`
-	NilaiHasil      float64 `json:"nilai_hasil,omitempty"`
-	NilaiBatasBawah float64 `json:"nilai_batas_bawah,omitempty"`
-	NilaiBatasAtas  float64 `json:"nilai_batas_atas,omitempty"`
+	NamaParameter         string   `json:"nama_parameter" binding:"required"`
+	Satuan                string   `json:"satuan"`
+	Kategori              string   `json:"kategori"`
+	
+	// ✅ PERBAIKAN: Gunakan pointer (*float64) agar angka 0 dan null bisa dibedakan
+	Nilai                 *float64 `json:"nilai,omitempty"`
+	NilaiHasil            *float64 `json:"nilai_hasil,omitempty"`
+	NilaiBatasBawah       *float64 `json:"nilai_batas_bawah,omitempty"`
+	NilaiBatasAtas        *float64 `json:"nilai_batas_atas,omitempty"`
+	
+	// ✅ PERBAIKAN: Field untuk menerima status tremor dari Flutter
+	MeasurementStatus     string   `json:"measurement_status,omitempty"`
+	PhysicalConditionCode string   `json:"physical_condition_code,omitempty"`
+	PhysicalConditionNote string   `json:"physical_condition_note,omitempty"`
 }

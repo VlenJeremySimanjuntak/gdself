@@ -2,175 +2,124 @@ package usecases
 
 import (
 	"testing"
-
 	"monitoring-service/app/models"
 )
 
-// ==========================================
-// 1. MOCK REPOSITORIES & USECASES
-// ==========================================
 
-type mockLabRepository struct{}
-
-func (m *mockLabRepository) Create(input models.HasilLab) (models.HasilLab, error) { return input, nil }
-func (m *mockLabRepository) GetAll() ([]models.HasilLab, error)                    { return []models.HasilLab{}, nil }
-func (m *mockLabRepository) GetByUserID(userID uint) ([]models.HasilLab, error)    { return []models.HasilLab{}, nil }
-
-type mockParameterRepository struct{}
-
-func (m *mockParameterRepository) Create(input models.Parameter) (models.Parameter, error) {
-	return input, nil
-}
-func (m *mockParameterRepository) GetByNamaParameter(nama string) (models.Parameter, error) {
-	return models.Parameter{IDParameter: 1, NamaParameter: nama}, nil
-}
-func (m *mockParameterRepository) GetByID(id uint) (models.Parameter, error) {
-	return models.Parameter{}, nil
-}
-func (m *mockParameterRepository) GetAll() ([]models.Parameter, error) {
-	return []models.Parameter{}, nil
-}
-func (m *mockParameterRepository) Update(id uint, input models.Parameter) (models.Parameter, error) {
-	return input, nil
-}
-func (m *mockParameterRepository) Delete(id uint) error { return nil }
-
-type mockHasilAILabUsecase struct{}
-
-func (m *mockHasilAILabUsecase) CreateHasilAILab(lab models.HasilAILab) (models.HasilAILab, error) {
-	return lab, nil
-}
-func (m *mockHasilAILabUsecase) GetHasilAILabByID(id uint) (models.HasilAILab, error) {
-	return models.HasilAILab{}, nil
-}
-func (m *mockHasilAILabUsecase) GetHasilAILabByLaporanLabID(laporanLabID uint) (models.HasilAILab, error) {
-	return models.HasilAILab{}, nil
-}
-
-type mockHasilAITrenUsecase struct{}
-
-func (m *mockHasilAITrenUsecase) CreateHasilAITren(tren models.HasilAITren) (models.HasilAITren, error) {
-	return tren, nil
-}
-func (m *mockHasilAITrenUsecase) GetHasilAITrenByID(id uint) (models.HasilAITren, error) {
-	return models.HasilAITren{}, nil
-}
-func (m *mockHasilAITrenUsecase) GetHasilAITrenByLaporanLabID(laporanLabID uint) (models.HasilAITren, error) {
-	return models.HasilAITren{}, nil
-}
-
-// ==========================================
-// 2. HELPER FUNCTIONS UNTUK TESTING
-// ==========================================
-
-// createParameters membuat dummy data parameter dengan mengisi field Nilai
-func createParameters(ft3, ft4, tsh float64) []models.Parameter {
-	return []models.Parameter{
-		{IDParameter: 1, NamaParameter: "FT3", Nilai: ft3},
-		{IDParameter: 2, NamaParameter: "FT4", Nilai: ft4},
-		{IDParameter: 3, NamaParameter: "TSH", Nilai: tsh},
+func buatParams(tsh, ft3, ft4, trab float64) []models.AssessmentParamInput {
+	return []models.AssessmentParamInput{
+		{NamaParameter: "TSH", NilaiHasil: tsh, NilaiBatasBawah: 0.4, NilaiBatasAtas: 4.0},
+		{NamaParameter: "FT3", NilaiHasil: ft3, NilaiBatasBawah: 2.0, NilaiBatasAtas: 4.2},
+		{NamaParameter: "FT4", NilaiHasil: ft4, NilaiBatasBawah: 9.0, NilaiBatasAtas: 15.0},
+		{NamaParameter: "TRAb", NilaiHasil: trab, NilaiBatasBawah: 0.0, NilaiBatasAtas: 1.75},
 	}
 }
 
 // ==========================================
-// 3. UNIT TESTS: RULE-BASED LOGIC (lab_rules.go)
+// 2. TEST LAPIS KEAMANAN (ANTI-TREMOR)
 // ==========================================
+func TestAnalyzeLabResults_LapisKeamananTremor(t *testing.T) {
+	t.Run("Kasus 1: Data Normal Harus Lolos", func(t *testing.T) {
+		params := buatParams(1.5, 3.0, 12.0, 1.0)
+		res := AnalyzeLabResults(params)
+		
+		if res.StatusTSH == "Perlu Verifikasi" {
+			t.Errorf("GAGAL: data normal malah ditandai Perlu Verifikasi")
+		}
+	})
 
+	t.Run("Kasus 2: Deteksi Tremor Desimal 135.0", func(t *testing.T) {
+		// Batas atas TSH adalah 4.0. Menurut kode Mas, > (4.0 * 10) = 40.0 akan ditolak
+		params := []models.AssessmentParamInput{
+			{NamaParameter: "TSH", NilaiHasil: 135.0, NilaiBatasBawah: 0.4, NilaiBatasAtas: 4.0},
+		}
+		res := AnalyzeLabResults(params)
+		
+		if res.StatusTSH != "Perlu Verifikasi" {
+			t.Errorf("GAGAL: angka absurd 135.0 seharusnya terdeteksi (karena > 40.0), didapat %q", res.StatusTSH)
+		}
+	})
+
+	t.Run("Kasus 3: Deteksi Batas Acuan Terbalik", func(t *testing.T) {
+		// Batas Bawah (4.0) >= Batas Atas (0.4)
+		params := []models.AssessmentParamInput{
+			{NamaParameter: "TSH", NilaiHasil: 2.0, NilaiBatasBawah: 4.0, NilaiBatasAtas: 0.4},
+		}
+		res := AnalyzeLabResults(params)
+		
+		if res.StatusTSH != "Perlu Verifikasi" {
+			t.Errorf("GAGAL: batas acuan terbalik seharusnya terdeteksi, didapat %q", res.StatusTSH)
+		}
+	})
+}
+
+// ==========================================
+// 3. TEST INTERPRETASI KESELURUHAN (RULE BASE)
+// ==========================================
 func TestAnalyzeLabResults_Normal(t *testing.T) {
-	// Kasus Normal: TSH 1.5, FT3 3.0, FT4 10.0 (Semua dalam rentang constants)
-	params := createParameters(3.0, 10.0, 1.5)
+	// Semua dalam rentang normal
+	params := buatParams(1.5, 3.0, 12.0, 0.5)
+	res := AnalyzeLabResults(params)
+
+	if res.Interpretasi != "Normal" {
+		t.Errorf("Interpretasi: diharapkan \"Normal\", didapat %q", res.Interpretasi)
+	}
+}
+
+func TestAnalyzeLabResults_BelumNormal(t *testing.T) {
+	// TSH Rendah (<0.4), FT3 Tinggi (>4.2), FT4 Tinggi (>15.0)
+	params := buatParams(0.1, 5.0, 16.0, 1.0)
+	res := AnalyzeLabResults(params)
+
+	if res.Interpretasi != "Belum Normal" {
+		t.Errorf("Interpretasi: diharapkan \"Belum Normal\", didapat %q", res.Interpretasi)
+	}
+}
+
+func TestAnalyzeLabResults_PolaBelumSesuai(t *testing.T) {
+	// TSH Normal tapi FT4 Tinggi -> Tidak masuk Aturan 1 maupun Aturan 2-5
+	params := buatParams(2.0, 3.0, 16.0, 1.0)
+	res := AnalyzeLabResults(params)
+
+	expected := "Pola Hormon Belum Sesuai Graves Disease"
+	if res.Interpretasi != expected {
+		t.Errorf("Interpretasi: diharapkan %q, didapat %q", expected, res.Interpretasi)
+	}
+}
+
+// ==========================================
+// 4. TEST ANALISIS TREN HISTORIS
+// ==========================================
+func TestAnalyzeTren_MendekatiNormal(t *testing.T) {
+	prev := LabAssessmentResult{NilaiTSH: 0.1, StatusTSH: "Rendah"}
+	curr := LabAssessmentResult{NilaiTSH: 1.5, StatusTSH: "Normal"}
 	
-	res := AnalyzeLabResults(params)
+	tren := AnalyzeTren(prev, curr)
 
-	if res.StatusTSH != "Normal" {
-		t.Errorf("Diharapkan StatusTSH Normal, didapat %s", res.StatusTSH)
-	}
-	if res.Interpretasi != "Kondisi tiroid stabil (Normal)." {
-		t.Errorf("Diharapkan Normal, didapat: %s", res.Interpretasi)
+	if tren.TrenTSH != "Mendekati normal" {
+		t.Errorf("TrenTSH: diharapkan \"Mendekati normal\", didapat %q", tren.TrenTSH)
 	}
 }
 
-func TestAnalyzeLabResults_OvertGraves(t *testing.T) {
-	// Kasus Overt Graves: TSH Rendah (<0.4), FT3 Tinggi (>4.2), FT4 Tinggi (>15.0)
-	params := createParameters(5.0, 16.0, 0.1)
+func TestAnalyzeTren_MenjauhiNormal(t *testing.T) {
+	prev := LabAssessmentResult{NilaiFT3: 3.0, StatusFT3: "Normal"}
+	curr := LabAssessmentResult{NilaiFT3: 5.0, StatusFT3: "Tinggi"}
+	
+	tren := AnalyzeTren(prev, curr)
 
-	res := AnalyzeLabResults(params)
-
-	if res.StatusTSH != "Rendah" {
-		t.Errorf("Diharapkan StatusTSH Rendah, didapat %s", res.StatusTSH)
-	}
-	expected := "Indikasi Overt Graves Disease (Hipertiroid nyata). Harap segera ke dokter."
-	if res.Interpretasi != expected {
-		t.Errorf("Diharapkan Overt Graves, didapat: %s", res.Interpretasi)
+	if tren.TrenFT3 != "Menjauhi normal" {
+		t.Errorf("TrenFT3: diharapkan \"Menjauhi normal\", didapat %q", tren.TrenFT3)
 	}
 }
 
-func TestAnalyzeLabResults_T3Dominant(t *testing.T) {
-	// Kasus T3-Toxicosis: TSH Rendah, FT3 Tinggi, FT4 Normal
-	params := createParameters(5.0, 10.0, 0.1)
+func TestAnalyzeTren_TetapNegatif_TRAb(t *testing.T) {
+	prev := LabAssessmentResult{NilaiTRAb: 0.5, StatusTRAb: "Negatif"}
+	curr := LabAssessmentResult{NilaiTRAb: 1.0, StatusTRAb: "Negatif"}
+	
+	tren := AnalyzeTren(prev, curr)
 
-	res := AnalyzeLabResults(params)
-
-	expected := "Indikasi Graves Disease dominan T3 (T3-toxicosis)."
-	if res.Interpretasi != expected {
-		t.Errorf("Diharapkan T3 Dominan, didapat: %s", res.Interpretasi)
-	}
-}
-
-func TestAnalyzeLabResults_T4Dominant(t *testing.T) {
-	// Kasus T4 Dominan: TSH Rendah, FT3 Normal, FT4 Tinggi
-	params := createParameters(3.0, 16.0, 0.1)
-
-	res := AnalyzeLabResults(params)
-
-	expected := "Indikasi Graves Disease dominan T4."
-	if res.Interpretasi != expected {
-		t.Errorf("Diharapkan T4 Dominan, didapat: %s", res.Interpretasi)
-	}
-}
-
-func TestAnalyzeLabResults_Unknown(t *testing.T) {
-	// Kasus Ambigu: TSH Normal, tapi FT3 dan FT4 Tinggi (Pola tidak biasa)
-	params := createParameters(6.0, 20.0, 2.0)
-
-	res := AnalyzeLabResults(params)
-
-	expected := "Kondisi tiroid tidak menentu atau di luar pola standar Graves. Perlu evaluasi medis lebih lanjut."
-	if res.Interpretasi != expected {
-		t.Errorf("Diharapkan Evaluasi Medis, didapat: %s", res.Interpretasi)
-	}
-}
-
-// ==========================================
-// 4. UNIT TESTS: USECASE ASSESS (lab_usecase.go)
-// ==========================================
-
-func TestLabUsecase_Assess(t *testing.T) {
-	// Setup Mocks & Usecase
-	repo := &mockLabRepository{}
-	paramRepo := &mockParameterRepository{}
-	aiLabUsecase := &mockHasilAILabUsecase{}
-	aiTrenUsecase := &mockHasilAITrenUsecase{}
-
-	usecase := NewLabUsecase(repo, paramRepo, aiLabUsecase, aiTrenUsecase)
-
-	// Persiapkan Input Assessment (Simulasi Hasil Lab TSH normal)
-	input := models.AssessmentInput{
-		Lab: models.HasilLab{
-			IDLaporanLab: 1,
-			Parameters:   createParameters(3.5, 12.0, 2.0),
-		},
-	}
-
-	// Eksekusi Assess
-	result, err := usecase.Assess(input)
-
-	if err != nil {
-		t.Fatalf("Assess mengembalikan error yang tidak diharapkan: %v", err)
-	}
-
-	// Verifikasi apakah Assessment memanggil AnalyzeLabResults dengan benar
-	if result.Interpretation != "Kondisi tiroid stabil (Normal)." {
-		t.Errorf("Interpretasi akhir salah, didapat: %s", result.Interpretation)
+	// Kode Mas membedakan kalimat berdasarkan naik/turun, tapi status tren-nya tetap "Tetap normal"
+	if tren.TrenTRAb != "Tetap normal" {
+		t.Errorf("TrenTRAb: diharapkan \"Tetap normal\", didapat %q", tren.TrenTRAb)
 	}
 }

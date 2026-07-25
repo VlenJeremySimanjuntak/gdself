@@ -9,7 +9,9 @@ import (
 )
 
 type KepatuhanObatUsecase interface {
-	GetKepatuhanObat(obatID uint) (models.HasilKepatuhanObat, error)
+	GetNotifikasiObat(obatID uint) (models.HasilNotifikasiObat, error)
+	GetRekapObat(obatID uint) (models.HasilKepatuhanObat, error)
+	GetNotifikasiObatUser(userID uint) ([]models.HasilNotifikasiObat, error)
 }
 
 type kepatuhanObatUsecase struct {
@@ -24,96 +26,149 @@ func NewKepatuhanObatUsecase(kepatuhanRepo repositories.KepatuhanObatRepository,
 	}
 }
 
-func (u *kepatuhanObatUsecase) GetKepatuhanObat(obatID uint) (models.HasilKepatuhanObat, error) {
+// ===== AI 1: Early Warning =====
+func (u *kepatuhanObatUsecase) GetNotifikasiObat(obatID uint) (models.HasilNotifikasiObat, error) {
 	if obatID == 0 {
-		return models.HasilKepatuhanObat{}, fmt.Errorf("id_obat tidak valid")
+		return models.HasilNotifikasiObat{}, fmt.Errorf("id_obat tidak valid")
 	}
 
 	obat, err := u.obatRepo.GetByID(obatID)
 	if err != nil || obat.IDObat == 0 {
-		return models.HasilKepatuhanObat{}, fmt.Errorf("obat tidak ditemukan")
+		return models.HasilNotifikasiObat{}, fmt.Errorf("obat tidak ditemukan")
 	}
 
-	statDiminum, err := u.kepatuhanRepo.GetStatDiminum(obatID)
+	detailLog, err := u.kepatuhanRepo.GetStatusLogDetailed(obatID)
 	if err != nil {
-		return models.HasilKepatuhanObat{}, err
+		return models.HasilNotifikasiObat{}, err
 	}
 
-	statusLog, err := u.kepatuhanRepo.GetStatusLog(obatID)
-	if err != nil {
-		return models.HasilKepatuhanObat{}, err
-	}
-
-	var tglMulai time.Time
-	if obat.TglMulai != nil {
-		tglMulai = time.Time(*obat.TglMulai)
-	}
-
-	statTotal, err := u.kepatuhanRepo.GetStatTotal(obatID, tglMulai, obat.Frekuensi)
-	if err != nil {
-		return models.HasilKepatuhanObat{}, err
-	}
-
-	return evaluateKepatuhanObat(obat, statDiminum, statTotal, statusLog), nil
+	return evaluateNotifikasiObat(obat, detailLog), nil
 }
 
-func evaluateKepatuhanObat(obat models.Obat, statDiminum int, statTotal int, statusLog []string) models.HasilKepatuhanObat {
-    result := models.HasilKepatuhanObat{
-        IDObat:      obat.IDObat,
-        NamaObat:    obat.NamaObat,
-        StatDiminum: statDiminum,
-        StatTotal:   statTotal,
-        StatusLog:   statusLog,
+// ===== AI 2: Compliance Rate =====
+func (u *kepatuhanObatUsecase) GetRekapObat(obatID uint) (models.HasilKepatuhanObat, error) {
+    if obatID == 0 {
+        return models.HasilKepatuhanObat{}, fmt.Errorf("id_obat tidak valid")
     }
 
-    // ===== GERBANG AKTIVASI =====
-    jumlahDataValid := 0
-    hitungTerlewat := 0
-    for _, status := range statusLog {
-        if status != "" {
-            jumlahDataValid++
+    obat, err := u.obatRepo.GetByID(obatID)
+    if err != nil || obat.IDObat == 0 {
+        return models.HasilKepatuhanObat{}, fmt.Errorf("obat tidak ditemukan")
+    }
+
+    statDiminum, err := u.kepatuhanRepo.GetStatDiminum(obatID)
+    if err != nil {
+        return models.HasilKepatuhanObat{}, err
+    }
+
+    var tglMulai time.Time
+    if obat.TglMulai != nil {
+        tglMulai = time.Time(*obat.TglMulai)
+    }
+
+    now := time.Now()
+    todayDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+
+    var statTotal int
+
+    if obat.TglSelesai != nil {
+        endDate := time.Date(obat.TglSelesai.Year(), obat.TglSelesai.Month(), obat.TglSelesai.Day(), 0, 0, 0, 0, time.Local)
+
+        if endDate.Before(todayDate) {
+            statTotal, err = u.kepatuhanRepo.HitungStatTotalRekap(obatID, tglMulai, *obat.TglSelesai)
+        } else {
+            statTotal, err = u.kepatuhanRepo.GetStatTotal(obatID, tglMulai)
         }
+    } else {
+        statTotal, err = u.kepatuhanRepo.GetStatTotal(obatID, tglMulai)
     }
 
-    if jumlahDataValid < 3 {
-        result.StatusKepatuhan = "Menunggu Data"
-        result.PesanEdukasi = "Evaluasi kepatuhan akan dimulai setelah " +
-            "3 jadwal minum obat pertama tercatat."
-        return result
+    if err != nil {
+        return models.HasilKepatuhanObat{}, err
     }
 
-    // ===== LAPIS 1: Deteksi Cepat =====
-    for _, status := range statusLog {
-        if status == "Terlewat" {
-            hitungTerlewat++
-        }
+    detailLog, err := u.kepatuhanRepo.GetStatusLogDetailed(obatID)
+    if err == nil && len(detailLog) == 0 {
+        statTotal = 0 
     }
+    // =========================================================================
 
-    if hitungTerlewat >= 2 {
-        result.StatusKepatuhan = "Belum Konsisten"
-        result.PesanEdukasi = "Konsumsi obat belum berjalan secara konsisten. " +
-            "Perhatikan kembali jadwal obat untuk menjaga keteraturan terapi."
-        return result
-    }
+    return evaluateRekapObat(obat, statDiminum, statTotal), nil
+}
 
-    // ===== LAPIS 2: Tinjauan Kumulatif =====
-    if statTotal <= 0 {
-        result.StatusKepatuhan = "Menunggu Data"
-        result.PesanEdukasi = "Evaluasi kepatuhan akan aktif setelah " +
-            "tiga jadwal konsumsi obat tercatat."
-        return result
-    }
+func evaluateNotifikasiObat(obat models.Obat, detailLog []models.DetailLogKonsumsi) models.HasilNotifikasiObat {
+	result := models.HasilNotifikasiObat{
+		IDObat:          obat.IDObat,
+		NamaObat:        obat.NamaObat,
+		Detail:          detailLog,
+		PerluNotifikasi: false,
+	}
 
-    rasioKumulatif := (float64(statDiminum) / float64(statTotal)) * 100
-    if rasioKumulatif < 80.0 {
-        result.StatusKepatuhan = "Perlu Peninjauan"
-        result.PesanEdukasi = "Kepatuhan konsumsi obat perlu ditingkatkan. " +
-            "Pastikan obat diminum sesuai jadwal."
-        return result
-    }
+	if len(detailLog) < 3 {
+		return result
+	}
 
-    result.StatusKepatuhan = "Baik"
-    result.PesanEdukasi = "Kepatuhan konsumsi obat Anda sudah baik. " +
-        "Pertahankan konsistensi jadwal obat."
-    return result
+	jumlahTerlewat := 0
+	for _, log := range detailLog {
+		if log.Status == "Terlewat" {
+			jumlahTerlewat++
+		}
+	}
+
+	if jumlahTerlewat >= 2 {
+		result.Status = "Belum Rutin"
+		result.Ringkasan = fmt.Sprintf("%d dari 3 konsumsi terakhir terlewat", jumlahTerlewat)
+		result.PerluNotifikasi = true
+	}
+
+	return result
+}
+
+func evaluateRekapObat(obat models.Obat, statDiminum int, statTotal int) models.HasilKepatuhanObat {
+	result := models.HasilKepatuhanObat{
+		IDObat:      obat.IDObat,
+		NamaObat:    obat.NamaObat,
+		StatDiminum: statDiminum,
+		StatTotal:   statTotal,
+	}
+
+	if statTotal <= 0 {
+		result.StatusKepatuhan = "Menunggu Data"
+		result.PesanEdukasi = "Belum ada jadwal konsumsi obat yang tercatat."
+		return result
+	}
+
+	result.Persentase = (float64(statDiminum) / float64(statTotal)) * 100
+
+	if result.Persentase >= 80.0 {
+		result.StatusKepatuhan = "Kepatuhan Baik"
+		result.PesanEdukasi = "Tingkat kepatuhan minum obat berada pada kategori baik. Pertahankan keteraturan minum obat sesuai jadwal."
+	} else {
+		result.StatusKepatuhan = "Perlu Peninjauan"
+		result.PesanEdukasi = "Tingkat kepatuhan minum obat masih perlu diperhatikan untuk meningkatkan keteraturan minum obat. "
+	}
+
+	return result
+}
+
+func (u *kepatuhanObatUsecase) GetNotifikasiObatUser(userID uint) ([]models.HasilNotifikasiObat, error) {
+	obatList, err := u.obatRepo.GetByUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []models.HasilNotifikasiObat
+	for _, obat := range obatList {
+		detailLog, err := u.kepatuhanRepo.GetStatusLogDetailed(obat.IDObat)
+		if err != nil {
+			continue
+		}
+
+		eval := evaluateNotifikasiObat(obat, detailLog)
+		if eval.PerluNotifikasi {
+			results = append(results, eval)
+		}
+	}
+
+	return results, nil
 }

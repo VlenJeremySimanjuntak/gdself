@@ -6,51 +6,55 @@ import (
 	"time"
 )
 
-// CustomDate adalah tipe custom untuk handle format YYYY-MM-DD dari JSON
 type CustomDate time.Time
 
-const dateFormat = "2006-01-02" // YYYY-MM-DD
+const dateFormat = "2006-01-02"
 
-// UnmarshalJSON mengubah string JSON YYYY-MM-DD menjadi time.Time
 func (cd *CustomDate) UnmarshalJSON(data []byte) error {
-	// Buang quote dari JSON string
 	dateStr := string(data)
 	if len(dateStr) > 2 && dateStr[0] == '"' && dateStr[len(dateStr)-1] == '"' {
 		dateStr = dateStr[1 : len(dateStr)-1]
 	}
-
-	// Parse dengan format YYYY-MM-DD
-	parsedTime, err := time.Parse(dateFormat, dateStr)
+	wib := time.FixedZone("WIB", 7*3600)
+	parsedTime, err := time.ParseInLocation(dateFormat, dateStr, wib)
 	if err != nil {
 		return fmt.Errorf("invalid date format. Expected YYYY-MM-DD, got: %s", dateStr)
 	}
-
 	*cd = CustomDate(parsedTime)
 	return nil
 }
 
-// MarshalJSON mengubah CustomDate menjadi string JSON format YYYY-MM-DD
 func (cd CustomDate) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf(`"%s"`, time.Time(cd).Format(dateFormat))), nil
+	wib := time.FixedZone("WIB", 7*3600)
+	return []byte(fmt.Sprintf(`"%s"`, time.Time(cd).In(wib).Format(dateFormat))), nil
 }
 
-// Value untuk GORM - ubah ke time.Time untuk database
+// Value dengan perbaikan Timezone WIB
 func (cd CustomDate) Value() (driver.Value, error) {
-    return time.Time(cd).Format(dateFormat), nil // ✅ Kirim string, bukan time.Time
+	wib := time.FixedZone("WIB", 7*3600)
+	return time.Time(cd).In(wib).Format(dateFormat), nil
 }
 
-// Scan untuk GORM - baca dari database
+// Scan dengan perbaikan Timezone WIB
 func (cd *CustomDate) Scan(value interface{}) error {
 	if value == nil {
 		return nil
 	}
+	wib := time.FixedZone("WIB", 7*3600)
 
 	switch v := value.(type) {
 	case time.Time:
-		*cd = CustomDate(v)
+		*cd = CustomDate(v.In(wib))
 		return nil
 	case string:
-		parsedTime, err := time.Parse(dateFormat, v)
+		parsedTime, err := time.ParseInLocation(dateFormat, v, wib)
+		if err != nil {
+			return err
+		}
+		*cd = CustomDate(parsedTime)
+		return nil
+	case []byte:
+		parsedTime, err := time.ParseInLocation(dateFormat, string(v), wib)
 		if err != nil {
 			return err
 		}
@@ -61,7 +65,7 @@ func (cd *CustomDate) Scan(value interface{}) error {
 	}
 }
 
-// String mengembalikan format YYYY-MM-DD
 func (cd CustomDate) String() string {
-	return time.Time(cd).Format(dateFormat)
+	wib := time.FixedZone("WIB", 7*3600)
+	return time.Time(cd).In(wib).Format(dateFormat)
 }

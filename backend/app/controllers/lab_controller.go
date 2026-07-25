@@ -50,9 +50,13 @@ func (ctrl *labController) Create(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Minimal 1 parameter harus ada"})
 	}
 
-	if input.NilaiHasil < 0 {
+	// =========================================================================
+	// PERBAIKAN: Cek apakah pointer tidak nil, lalu lakukan dereference (*)
+	// =========================================================================
+	if input.NilaiHasil != nil && *input.NilaiHasil < 0 {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": constants.ERR_NEGATIVE_VALUE})
 	}
+	// =========================================================================
 
 	// 2. Oper ke Usecase (Otak) untuk simpan ke DB
 	result, err := ctrl.usecase.SaveLabResult(input)

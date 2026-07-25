@@ -3,6 +3,7 @@ package controllers
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"monitoring-service/app/constants"
 	"monitoring-service/app/models"
@@ -38,7 +39,6 @@ func (ctrl *jadwalObatController) Create(c echo.Context) error {
 		})
 	}
 
-	// Validasi field wajib
 	if input.IDObat == 0 {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "id_obat harus diisi",
@@ -57,7 +57,15 @@ func (ctrl *jadwalObatController) Create(c echo.Context) error {
 		})
 	}
 
-	// Mapping ke model JadwalObat sesuai struktur terbaru
+	// 🔥 FIX ZONA WAKTU: Paksa menjadi zona Jakarta
+	loc, _ := time.LoadLocation("Asia/Jakarta")
+	if input.WaktuMinumObat != nil {
+		t := time.Time(*input.WaktuMinumObat)
+		waktuLokal := time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), 0, loc)
+		customLokal := models.CustomTime(waktuLokal)
+		input.WaktuMinumObat = &customLokal
+	}
+
 	jadwalObat := models.JadwalObat{
 		IDObat:         input.IDObat,
 		Hari:           input.Hari,
@@ -115,7 +123,6 @@ func (ctrl *jadwalObatController) GetByObatID(c echo.Context) error {
 		})
 	}
 
-	// Jika tidak ada jadwal, kembalikan array kosong
 	if jadwalList == nil {
 		jadwalList = []models.JadwalObat{}
 	}
@@ -135,7 +142,6 @@ func (ctrl *jadwalObatController) GetAll(c echo.Context) error {
 		})
 	}
 
-	// Jika tidak ada jadwal, kembalikan array kosong
 	if jadwalList == nil {
 		jadwalList = []models.JadwalObat{}
 	}
@@ -164,11 +170,19 @@ func (ctrl *jadwalObatController) Update(c echo.Context) error {
 		})
 	}
 
-	// Validasi minimal ada satu field yang diupdate
 	if input.Hari == "" && input.WaktuMinumObat == nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Minimal satu field (hari atau waktu_minum_obat) harus diisi untuk update",
+			"error": "Minimal satu field harus diisi",
 		})
+	}
+
+	// 🔥 FIX ZONA WAKTU: Paksa menjadi zona Jakarta
+	loc, _ := time.LoadLocation("Asia/Jakarta")
+	if input.WaktuMinumObat != nil {
+		t := time.Time(*input.WaktuMinumObat)
+		waktuLokal := time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), 0, loc)
+		customLokal := models.CustomTime(waktuLokal)
+		input.WaktuMinumObat = &customLokal
 	}
 
 	jadwalObat, err := ctrl.usecase.UpdateJadwalObat(uint(id), input)

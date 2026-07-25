@@ -42,7 +42,6 @@ func StartMissedDoseChecker(db *gorm.DB) {
 				jamJadwal := time.Time(*jadwal.WaktuMinumObat)
 				targetWaktu := time.Date(now.Year(), now.Month(), now.Day(), jamJadwal.Hour(), jamJadwal.Minute(), 0, 0, loc)
 				
-				// TESTING: Batas toleransi 3 Menit
 				batasToleransi := targetWaktu.Add(5 * time.Minute)
 
 				if now.After(batasToleransi) {
@@ -73,9 +72,9 @@ func StartMissedDoseChecker(db *gorm.DB) {
 						}
 						
 						if err := db.Create(&logBaru).Error; err == nil {
-							fmt.Printf("✅ [SUCCESS] Jadwal %d otomatis ditandai 'Terlewat' ke Database!\n", jadwal.IDJadwalObat)
+							fmt.Printf("[SUCCESS] Jadwal %d otomatis ditandai 'Terlewat' ke Database!\n", jadwal.IDJadwalObat)
 						} else {
-							fmt.Printf("❌ [ERROR INSERT] Gagal menyimpan ke DB: %v\n", err)
+							fmt.Printf("[ERROR INSERT] Gagal menyimpan ke DB: %v\n", err)
 						}
 					}
 				}

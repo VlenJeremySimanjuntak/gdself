@@ -51,6 +51,75 @@ func NewHasilLabUsecase(
 }
 
 func (u *hasilLabUsecase) CreateHasilLab(input models.CreateHasilLabRequest) (models.HasilLab, error) {
+	if len(input.Parameters) == 0 {
+		return models.HasilLab{}, fmt.Errorf("minimal 1 parameter harus diisi")
+	}
+
+	var isTshHigh, isFt4High bool
+
+	// ==========================================
+	// BLOK VALIDASI SEBELUM SIMPAN KE DB
+	// ==========================================
+	for _, param := range input.Parameters {
+		paramNameUpper := strings.ToUpper(strings.TrimSpace(param.NamaParameter))
+
+		// Ambil nilai yang dikirim (bisa dari .Nilai atau .NilaiHasil)
+		nilai := param.Nilai
+		if nilai == nil {
+			nilai = param.NilaiHasil
+		}
+
+		if nilai != nil {
+			// ✅ ATURAN 2: PHYSIOLOGICAL ABSURDITY LIMITS (Tolak Mutlak, tidak peduli ForceSave)
+			if (paramNameUpper == "TSH" || paramNameUpper == "TSHS") && *nilai < 0 {
+				return models.HasilLab{}, fmt.Errorf("ABSURDITY_ERROR: Nilai %s tidak boleh negatif. Mohon periksa kembali input Anda.", paramNameUpper)
+			}
+			if paramNameUpper == "FT4" && *nilai > 77.2 {
+				return models.HasilLab{}, fmt.Errorf("ABSURDITY_ERROR: Nilai FT4 melampaui rentang pengukuran alat immunoassay standar (> 77.2 pmol/L). Mohon periksa kembali satuan/nilai yang diinput.")
+			}
+
+			// ✅ ATURAN 1 & ANTI-TREMOR (Bisa di-bypass dengan ForceSave)
+			if !input.ForceSave {
+				// Deteksi TSH dan FT4 Tinggi untuk Uji Konsistensi
+				if param.NilaiBatasAtas != nil && *param.NilaiBatasAtas > 0 {
+					if (paramNameUpper == "TSH" || paramNameUpper == "TSHS") && *nilai > *param.NilaiBatasAtas {
+						isTshHigh = true
+					}
+					if paramNameUpper == "FT4" && *nilai > *param.NilaiBatasAtas {
+						isFt4High = true
+					}
+				}
+
+				// Cek nilai melompat jauh (> 10x batas atas)
+				if param.NilaiBatasAtas != nil && *param.NilaiBatasAtas > 0 {
+					if *nilai > (*param.NilaiBatasAtas * 10.0) {
+						return models.HasilLab{}, fmt.Errorf("TREMOR_WARNING: Nilai %s tampak sangat jauh dari batas rujukan atas. Mohon periksa kembali angka yang diketik.", param.NamaParameter)
+					}
+				}
+			}
+		}
+
+		// Cek batas terbalik atau sama
+		if !input.ForceSave && param.NilaiBatasBawah != nil && param.NilaiBatasAtas != nil {
+			if *param.NilaiBatasBawah > 0 && *param.NilaiBatasAtas > 0 && *param.NilaiBatasBawah >= *param.NilaiBatasAtas {
+				// 🛠️ DISPENSASI TRAB
+				if paramNameUpper == "TRAB" && *param.NilaiBatasBawah == *param.NilaiBatasAtas {
+					// Loloskan
+				} else {
+					return models.HasilLab{}, fmt.Errorf("TREMOR_WARNING: Rentang batas %s terbalik atau sama (Batas Bawah >= Batas Atas).", param.NamaParameter)
+				}
+			}
+		}
+	}
+
+	// Evaluasi Uji Konsistensi
+	if !input.ForceSave && isTshHigh && isFt4High {
+		return models.HasilLab{}, fmt.Errorf("CONSISTENCY_ERROR: TSH dan FT4 tercatat sama-sama tinggi. Secara fisiologis ini paradoks. Mohon periksa kembali sampel atau kemungkinan interferensi alat.")
+	}
+
+	// ==========================================
+	// BLOK PROSES DATABASE
+	// ==========================================
 	tx := repositories.DB.Begin()
 	if tx.Error != nil {
 		return models.HasilLab{}, tx.Error
@@ -62,26 +131,18 @@ func (u *hasilLabUsecase) CreateHasilLab(input models.CreateHasilLabRequest) (mo
 		}
 	}()
 
-	if len(input.Parameters) == 0 {
-		tx.Rollback()
-		return models.HasilLab{}, fmt.Errorf("minimal 1 parameter harus diisi")
-	}
-
 	// 1. Cek atau Buat LaporanLab
 	idLaporan := input.IDLaporanLab
-
 	if idLaporan == 0 {
 		if input.IDUser == 0 {
 			tx.Rollback()
 			return models.HasilLab{}, fmt.Errorf("id_user harus diisi untuk membuat laporan baru")
 		}
 
-		// ✅ PERBAIKAN: Gunakan tanggal dari input Flutter jika ada!
 		var targetDate models.CustomDate
 		if input.TglPeriksa != nil {
 			targetDate = *input.TglPeriksa
 		} else {
-			// Fallback ke hari ini HANYA jika Flutter tidak mengirimkan tanggal
 			now := time.Now()
 			dateOnly := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 			targetDate = models.CustomDate(dateOnly)
@@ -112,7 +173,7 @@ func (u *hasilLabUsecase) CreateHasilLab(input models.CreateHasilLabRequest) (mo
 		laporan := models.LaporanLab{
 			IDRiwayat:  riwayat.IDRiwayat,
 			NamaLab:    input.NamaLab,
-			TglPeriksa: &targetDate, // ✅ Sekarang menyimpan 2025 sesuai pilihan user!
+			TglPeriksa: &targetDate,
 		}
 		if err := tx.Create(&laporan).Error; err != nil {
 			tx.Rollback()
@@ -151,20 +212,19 @@ func (u *hasilLabUsecase) CreateHasilLab(input models.CreateHasilLabRequest) (mo
 		}
 
 		nilai := param.Nilai
-		if nilai == 0 {
+		if nilai == nil {
 			nilai = param.NilaiHasil
-		}
-		if nilai == 0 {
-			tx.Rollback()
-			return models.HasilLab{}, fmt.Errorf("nilai untuk parameter %s harus diisi", paramName)
 		}
 
 		created := models.HasilLab{
-			IDLaporanLab:    idLaporan,
-			IDParameter:     masterParam.IDParameter,
-			NilaiHasil:      nilai,
-			NilaiBatasBawah: param.NilaiBatasBawah,
-			NilaiBatasAtas:  param.NilaiBatasAtas,
+			IDLaporanLab:          idLaporan,
+			IDParameter:           masterParam.IDParameter,
+			NilaiHasil:            nilai,
+			NilaiBatasBawah:       param.NilaiBatasBawah,
+			NilaiBatasAtas:        param.NilaiBatasAtas,
+			MeasurementStatus:     param.MeasurementStatus,
+			PhysicalConditionCode: param.PhysicalConditionCode,
+			PhysicalConditionNote: param.PhysicalConditionNote,
 		}
 
 		if err := tx.Create(&created).Error; err != nil {
@@ -187,25 +247,8 @@ func (u *hasilLabUsecase) CreateHasilLab(input models.CreateHasilLabRequest) (mo
 		return models.HasilLab{}, err
 	}
 
-	// 3. Konversi CreateParameterRequest ke AssessmentParamInput lalu jalankan AI async
-	assessParams := make([]models.AssessmentParamInput, 0, len(input.Parameters))
-	for _, p := range input.Parameters {
-		nilai := p.Nilai
-		if nilai == 0 {
-			nilai = p.NilaiHasil
-		}
-		assessParams = append(assessParams, models.AssessmentParamInput{
-			NamaParameter:   p.NamaParameter,
-			NilaiHasil:      nilai,
-			NilaiBatasBawah: p.NilaiBatasBawah,
-			NilaiBatasAtas:  p.NilaiBatasAtas,
-		})
-	}
-
 	return u.repoHasilLab.GetByID(firstCreatedID)
 }
-
-// ── Sisanya tidak berubah ────────────────────────────────────────────────────
 
 func (u *hasilLabUsecase) GetHasilLabByID(id uint) (models.HasilLab, error) {
 	if id == 0 {
@@ -271,15 +314,98 @@ func (u *hasilLabUsecase) UpdateHasilLab(id uint, input models.UpdateHasilLabReq
 	if err != nil || hasilLab.IDHasilLab == 0 {
 		return models.HasilLab{}, fmt.Errorf("hasil lab tidak ditemukan")
 	}
-	if input.NilaiHasil != 0 {
+
+	var nilai, batasAtas, batasBawah float64
+
+	// Resolusi nilai untuk validasi (gabungan input baru dan data lama)
+	if input.NilaiHasil != nil {
+		nilai = *input.NilaiHasil
+	} else if hasilLab.NilaiHasil != nil {
+		nilai = *hasilLab.NilaiHasil
+	}
+
+	if input.NilaiBatasAtas != nil {
+		batasAtas = *input.NilaiBatasAtas
+	} else if hasilLab.NilaiBatasAtas != nil {
+		batasAtas = *hasilLab.NilaiBatasAtas
+	}
+
+	if input.NilaiBatasBawah != nil {
+		batasBawah = *input.NilaiBatasBawah
+	} else if hasilLab.NilaiBatasBawah != nil {
+		batasBawah = *hasilLab.NilaiBatasBawah
+	}
+
+	paramNameUpper := strings.ToUpper(strings.TrimSpace(hasilLab.Parameter.NamaParameter))
+
+	// ✅ ATURAN 2: PHYSIOLOGICAL ABSURDITY LIMITS SAAT EDIT (Tolak Mutlak)
+	if (paramNameUpper == "TSH" || paramNameUpper == "TSHS") && nilai < 0 {
+		return models.HasilLab{}, fmt.Errorf("ABSURDITY_ERROR: Nilai %s tidak boleh negatif. Mohon periksa kembali input Anda.", paramNameUpper)
+	}
+	if paramNameUpper == "FT4" && nilai > 77.2 {
+		return models.HasilLab{}, fmt.Errorf("ABSURDITY_ERROR: Nilai FT4 melampaui rentang pengukuran alat immunoassay standar (> 77.2 pmol/L). Mohon periksa kembali satuan/nilai yang diinput.")
+	}
+
+	if !input.ForceSave {
+		// ✅ ATURAN 1: VALIDASI CONSISTENCY CHECK SAAT EDIT
+		if batasAtas > 0 && nilai > batasAtas {
+			if paramNameUpper == "TSH" || paramNameUpper == "TSHS" {
+				siblingLabs, _ := u.repoHasilLab.GetByLaporanLabID(hasilLab.IDLaporanLab)
+				for _, sib := range siblingLabs {
+					if strings.ToUpper(strings.TrimSpace(sib.Parameter.NamaParameter)) == "FT4" && sib.NilaiBatasAtas != nil && sib.NilaiHasil != nil {
+						if *sib.NilaiHasil > *sib.NilaiBatasAtas {
+							return models.HasilLab{}, fmt.Errorf("CONSISTENCY_ERROR: Mengubah TSH menjadi setinggi ini bertentangan dengan nilai FT4 yang sudah tercatat tinggi di laporan yang sama.")
+						}
+					}
+				}
+			}
+
+			if paramNameUpper == "FT4" {
+				siblingLabs, _ := u.repoHasilLab.GetByLaporanLabID(hasilLab.IDLaporanLab)
+				for _, sib := range siblingLabs {
+					if (strings.ToUpper(strings.TrimSpace(sib.Parameter.NamaParameter)) == "TSH" || strings.ToUpper(strings.TrimSpace(sib.Parameter.NamaParameter)) == "TSHS") && sib.NilaiBatasAtas != nil && sib.NilaiHasil != nil {
+						if *sib.NilaiHasil > *sib.NilaiBatasAtas {
+							return models.HasilLab{}, fmt.Errorf("CONSISTENCY_ERROR: Mengubah FT4 menjadi setinggi ini bertentangan dengan nilai TSH yang sudah tercatat tinggi di laporan yang sama.")
+						}
+					}
+				}
+			}
+		}
+
+		// ✅ VALIDASI ANTI-TREMOR SAAT EDIT
+		if batasAtas > 0 && nilai > (batasAtas*10.0) {
+			return models.HasilLab{}, fmt.Errorf("TREMOR_WARNING: Nilai hasil tampak sangat jauh dari batas rujukan atas. Mohon periksa kembali angka yang diketik.")
+		}
+
+		if batasBawah > 0 && batasAtas > 0 && batasBawah >= batasAtas {
+			if paramNameUpper == "TRAB" && batasBawah == batasAtas {
+				// Loloskan
+			} else {
+				return models.HasilLab{}, fmt.Errorf("TREMOR_WARNING: Rentang batas terbalik atau sama (Batas Bawah >= Batas Atas).")
+			}
+		}
+	}
+
+	// Update record
+	if input.NilaiHasil != nil {
 		hasilLab.NilaiHasil = input.NilaiHasil
 	}
-	if input.NilaiBatasBawah != 0 {
+	if input.NilaiBatasBawah != nil {
 		hasilLab.NilaiBatasBawah = input.NilaiBatasBawah
 	}
-	if input.NilaiBatasAtas != 0 {
+	if input.NilaiBatasAtas != nil {
 		hasilLab.NilaiBatasAtas = input.NilaiBatasAtas
 	}
+	if input.MeasurementStatus != "" {
+		hasilLab.MeasurementStatus = input.MeasurementStatus
+	}
+	if input.PhysicalConditionCode != "" {
+		hasilLab.PhysicalConditionCode = input.PhysicalConditionCode
+	}
+	if input.PhysicalConditionNote != "" {
+		hasilLab.PhysicalConditionNote = input.PhysicalConditionNote
+	}
+
 	return u.repoHasilLab.Update(id, hasilLab)
 }
 

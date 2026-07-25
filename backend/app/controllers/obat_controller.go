@@ -1,9 +1,12 @@
 package controllers
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"monitoring-service/app/constants"
 	"monitoring-service/app/models"
@@ -16,6 +19,7 @@ type ObatController interface {
 	Create(c echo.Context) error
 	GetByID(c echo.Context) error
 	GetKepatuhan(c echo.Context) error
+	GetRekapan(c echo.Context) error
 	GetByUserID(c echo.Context) error
 	GetAll(c echo.Context) error
 	Update(c echo.Context) error
@@ -46,15 +50,30 @@ func (ctrl *obatController) Create(c echo.Context) error {
 			"error": "id_user dan nama_obat harus diisi",
 		})
 	}
+	if input.TglMulai == nil || input.TglSelesai == nil || strings.TrimSpace(*input.TglSelesai) == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "tgl_mulai dan tgl_selesai harus diisi",
+		})
+	}
 
 	// Mapping ke model Obat sesuai struktur terbaru
+	tglSelesai, err := time.Parse("2006-01-02", strings.TrimSpace(*input.TglSelesai))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "tgl_selesai harus berformat YYYY-MM-DD"})
+	}
+
 	obat := models.Obat{
-		IDUser:    input.IDUser,
-		NamaObat:  input.NamaObat,
-		TglMulai:  input.TglMulai,
-		TipeObat:  input.TipeObat,
-		Dosis:     input.Dosis,
-		Frekuensi: input.Frekuensi,
+		IDUser:     input.IDUser,
+		NamaObat:   input.NamaObat,
+		TglMulai:   input.TglMulai,
+		TglSelesai: &tglSelesai,
+		TipeObat:   input.TipeObat,
+		Dosis:      input.Dosis,
+		Frekuensi:  input.Frekuensi,
+	}
+
+	if err := validateTglSelesaiAgainstTglMulai(obat.TglMulai, obat.TglSelesai); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
 	result, err := ctrl.usecase.CreateObat(obat)
@@ -112,6 +131,28 @@ func (ctrl *obatController) GetKepatuhan(c echo.Context) error {
 		StatusCode: http.StatusOK,
 		Message:    "Data kepatuhan obat ditemukan",
 		Data:       kepatuhan,
+	})
+}
+
+func (ctrl *obatController) GetRekapan(c echo.Context) error {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "ID tidak valid",
+		})
+	}
+
+	rekapan, err := ctrl.usecase.GetRekapanObat(uint(id))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, models.Response{
+		StatusCode: http.StatusOK,
+		Message:    "Data rekapan obat ditemukan",
+		Data:       rekapan,
 	})
 }
 
@@ -193,13 +234,14 @@ func (ctrl *obatController) Update(c echo.Context) error {
 			"detail": err.Error(),
 		})
 	}
-
-	// Validasi minimal ada satu field yang diupdate
-	if input.NamaObat == "" && input.Dosis == "" && input.Frekuensi == "" &&
-		input.TipeObat == "" && input.TglMulai == nil {
+	if input.TglMulai == nil || input.TglSelesai == nil || strings.TrimSpace(*input.TglSelesai) == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Minimal satu field harus diisi untuk update",
+			"error": "tgl_mulai dan tgl_selesai harus diisi",
 		})
+	}
+
+	if _, err := time.Parse("2006-01-02", strings.TrimSpace(*input.TglSelesai)); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "tgl_selesai harus berformat YYYY-MM-DD"})
 	}
 
 	obat, err := ctrl.usecase.UpdateObat(uint(id), input)
@@ -214,6 +256,21 @@ func (ctrl *obatController) Update(c echo.Context) error {
 		Message:    "Obat berhasil diperbarui",
 		Data:       obat,
 	})
+}
+
+func validateTglSelesaiAgainstTglMulai(tglMulai *models.CustomDate, tglSelesai *time.Time) error {
+	if tglMulai == nil || tglSelesai == nil {
+		return fmt.Errorf("tgl_mulai dan tgl_selesai harus diisi")
+	}
+
+	startTime := time.Time(*tglMulai)
+	startDate := time.Date(startTime.Year(), startTime.Month(), startTime.Day(), 0, 0, 0, 0, startTime.Location())
+	endDate := time.Date(tglSelesai.Year(), tglSelesai.Month(), tglSelesai.Day(), 0, 0, 0, 0, tglSelesai.Location())
+	if endDate.Before(startDate) {
+		return fmt.Errorf("tgl_selesai tidak boleh lebih awal dari tgl_mulai")
+	}
+
+	return nil
 }
 
 func (ctrl *obatController) Delete(c echo.Context) error {

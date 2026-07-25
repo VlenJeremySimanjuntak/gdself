@@ -39,7 +39,12 @@ func Init(opts Options) *Main {
 		Obat:          NewObatController(opts.UseCases.Obat),
 		KepatuhanObat: NewKepatuhanObatController(opts.UseCases.KepatuhanObat),
 		Wearable:      NewWearableController(opts.UseCases.Wearable),
-		HasilLab:      NewHasilLabController(opts.UseCases.HasilLab, opts.UseCases.Lab, opts.Repositories.LaporanLab), // ✅ tambah repo
+		
+		// =========================================================================
+		// PERBAIKAN: Hanya 1 parameter yang dikirim ke NewHasilLabController
+		// =========================================================================
+		HasilLab:      NewHasilLabController(opts.UseCases.HasilLab),
+		
 		HasilAI:       NewHasilAIController(opts.UseCases.HasilAIHarian, opts.UseCases.HasilAILab, opts.UseCases.HasilAITren, opts.UseCases.Lab),
 		JadwalObat:    NewJadwalObatController(opts.UseCases.JadwalObat),
 		LogKonsumsi:   NewLogKonsumsiController(opts.UseCases.LogKonsumsi),

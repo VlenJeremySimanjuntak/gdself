@@ -64,6 +64,7 @@
         id_obat INT PRIMARY KEY AUTO_INCREMENT,
         id_user INT,
         nama_obat VARCHAR(100),
+        tgl_selesai DATE NULL,
         dosis VARCHAR(50),
         frekuensi VARCHAR(50),
         status_aktif TINYINT(1) DEFAULT 1,

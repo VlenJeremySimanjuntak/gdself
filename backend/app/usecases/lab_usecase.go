@@ -242,5 +242,46 @@ func (u *labUsecase) Assess(input models.AssessmentInput) (models.AssessmentResu
 	}
 
 	res.Interpretation = currResult.Interpretasi
+
+	// ============================================================
+	// 🔥 FORWARD UPDATE: EFEK DOMINO UNTUK DATA MASA DEPAN
+	// ============================================================
+	if input.IsLabDay && input.Lab.IDLaporanLab != 0 {
+		// Cari apakah ada data laporan SETELAH tanggal data yang saat ini diinput
+		nextLab, err := u.laporanRepo.GetNextLab(input.Lab.IDLaporanLab)
+		
+		// Jika ditemukan (artinya user menginput data masa lalu, misal Mei setelah Juli)
+		if err == nil && nextLab.IDLaporanLab != 0 {
+			
+			// Siapkan parameter dari nextLab menggunakan trik konversi JSON
+			// yang sama persis dengan PrevLab agar terhindar dari panic pointer *float64
+			dbParams := []map[string]interface{}{}
+			for _, h := range nextLab.HasilLab {
+				dbParams = append(dbParams, map[string]interface{}{
+					"nama_parameter":    h.Parameter.NamaParameter,
+					"nilai_hasil":       h.NilaiHasil,
+					"nilai_batas_bawah": h.NilaiBatasBawah,
+					"nilai_batas_atas":  h.NilaiBatasAtas,
+				})
+			}
+			
+			var nextLabInput models.AssessmentLabInput
+			paramBytes, _ := json.Marshal(map[string]interface{}{
+				"id_laporan_lab": nextLab.IDLaporanLab,
+				"parameters":     dbParams,
+			})
+			json.Unmarshal(paramBytes, &nextLabInput)
+
+			_, errAssessNext := u.Assess(models.AssessmentInput{
+				IsLabDay: true,
+				Lab:      nextLabInput,
+			})
+			
+			if errAssessNext != nil {
+				fmt.Printf("Warning: gagal forward-update AI Tren untuk Laporan ID %d: %v\n", nextLab.IDLaporanLab, errAssessNext)
+			}
+		}
+	}
+
 	return res, nil
 }

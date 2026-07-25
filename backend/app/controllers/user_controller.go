@@ -43,7 +43,7 @@ func buildUserResponse(user models.User) map[string]interface{} {
 	response := map[string]interface{}{
 		"id_user":       user.IDUser,
 		"nama":          user.Nama,
-		"email":         user.Email,
+		"email":         user.Email,	
 		"jenis_kelamin": user.JenisKelamin,
 		"foto_profil":   user.FotoProfil,
 		"update_at":     user.UpdateAt.Format("2006-01-02 15:04:05"),

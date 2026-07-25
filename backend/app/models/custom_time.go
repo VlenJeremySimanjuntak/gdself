@@ -9,30 +9,25 @@ import (
 	"gorm.io/gorm/schema"
 )
 
-// CustomTime handles time-only values like "15:04:05"
 type CustomTime time.Time
 
 const timeFormat = "15:04:05"
+const shortTimeFormat = "15:04"
 
-func normalizeCustomTime(hour, minute, second int, loc *time.Location) time.Time {
-	if loc == nil {
-		loc = time.Local
-	}
-
-	return time.Date(2000, time.January, 1, hour, minute, second, 0, loc)
+// ✅ KODE BARU: Gunakan WIB sejak awal, bukan UTC
+func normalizeCustomTime(hour, minute, second int) time.Time {
+	wib := time.FixedZone("WIB", 7*3600)
+	return time.Date(2000, time.January, 1, hour, minute, second, 0, wib)
 }
 
-// GormDataType ensures GORM treats this field as time-only.
 func (CustomTime) GormDataType() string {
 	return "time"
 }
 
-// GormDBDataType ensures MySQL migrations use TIME instead of DATETIME.
 func (CustomTime) GormDBDataType(db *gorm.DB, field *schema.Field) string {
 	return "TIME"
 }
 
-// UnmarshalJSON parses a JSON string in HH:MM:SS format
 func (ct *CustomTime) UnmarshalJSON(data []byte) error {
 	s := string(data)
 	if len(s) > 2 && s[0] == '"' && s[len(s)-1] == '"' {
@@ -42,64 +37,64 @@ func (ct *CustomTime) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	// try time-only format
-	t, err := time.Parse(timeFormat, s)
+	wib := time.FixedZone("WIB", 7*3600)
+
+	// Coba parsing format 15:04:05
+	t, err := time.ParseInLocation(timeFormat, s, wib)
 	if err == nil {
-		*ct = CustomTime(normalizeCustomTime(t.Hour(), t.Minute(), t.Second(), t.Location()))
+		*ct = CustomTime(normalizeCustomTime(t.Hour(), t.Minute(), t.Second()))
 		return nil
 	}
 
-	// fallback: try full RFC3339
-	t2, err2 := time.Parse(time.RFC3339, s)
+	// Coba parsing format 15:04 (sering dikirim dari mobile)
+	t2, err2 := time.ParseInLocation(shortTimeFormat, s, wib)
 	if err2 == nil {
-		*ct = CustomTime(normalizeCustomTime(t2.Hour(), t2.Minute(), t2.Second(), t2.Location()))
+		*ct = CustomTime(normalizeCustomTime(t2.Hour(), t2.Minute(), 0))
+		return nil
+	}
+
+	// Coba RFC3339
+	t3, err3 := time.ParseInLocation(time.RFC3339, s, wib)
+	if err3 == nil {
+		*ct = CustomTime(normalizeCustomTime(t3.Hour(), t3.Minute(), t3.Second()))
 		return nil
 	}
 
 	return fmt.Errorf("invalid time format: %s", s)
 }
 
-// MarshalJSON writes time in HH:MM:SS
 func (ct CustomTime) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("\"%s\"", time.Time(ct).Format(timeFormat))), nil
+	wib := time.FixedZone("WIB", 7*3600)
+	return []byte(fmt.Sprintf("\"%s\"", time.Time(ct).In(wib).Format(timeFormat))), nil
 }
 
-// Value returns a driver.Value for database storage
 func (ct CustomTime) Value() (driver.Value, error) {
-	return time.Time(ct).Format(timeFormat), nil
+	wib := time.FixedZone("WIB", 7*3600)
+	return time.Time(ct).In(wib).Format(timeFormat), nil
 }
 
-// Scan reads from database value
 func (ct *CustomTime) Scan(value interface{}) error {
 	if value == nil {
 		return nil
 	}
+	wib := time.FixedZone("WIB", 7*3600)
+
 	switch v := value.(type) {
 	case time.Time:
-		*ct = CustomTime(normalizeCustomTime(v.Hour(), v.Minute(), v.Second(), v.Location()))
+		*ct = CustomTime(v.In(wib))
 		return nil
 	case []byte:
 		s := string(v)
-		t, err := time.Parse(timeFormat, s)
+		t, err := time.ParseInLocation(timeFormat, s, wib)
 		if err == nil {
-			*ct = CustomTime(normalizeCustomTime(t.Hour(), t.Minute(), t.Second(), t.Location()))
-			return nil
-		}
-		t2, err2 := time.Parse(time.RFC3339, s)
-		if err2 == nil {
-			*ct = CustomTime(normalizeCustomTime(t2.Hour(), t2.Minute(), t2.Second(), t2.Location()))
+			*ct = CustomTime(normalizeCustomTime(t.Hour(), t.Minute(), t.Second()))
 			return nil
 		}
 		return fmt.Errorf("cannot scan []byte to CustomTime: %s", s)
 	case string:
-		t, err := time.Parse(timeFormat, v)
+		t, err := time.ParseInLocation(timeFormat, v, wib)
 		if err == nil {
-			*ct = CustomTime(normalizeCustomTime(t.Hour(), t.Minute(), t.Second(), t.Location()))
-			return nil
-		}
-		t2, err2 := time.Parse(time.RFC3339, v)
-		if err2 == nil {
-			*ct = CustomTime(normalizeCustomTime(t2.Hour(), t2.Minute(), t2.Second(), t2.Location()))
+			*ct = CustomTime(normalizeCustomTime(t.Hour(), t.Minute(), t.Second()))
 			return nil
 		}
 		return fmt.Errorf("cannot scan string to CustomTime: %s", v)
@@ -108,7 +103,7 @@ func (ct *CustomTime) Scan(value interface{}) error {
 	}
 }
 
-// String returns HH:MM:SS
 func (ct CustomTime) String() string {
-	return time.Time(ct).Format(timeFormat)
+	wib := time.FixedZone("WIB", 7*3600)
+	return time.Time(ct).In(wib).Format(timeFormat)
 }

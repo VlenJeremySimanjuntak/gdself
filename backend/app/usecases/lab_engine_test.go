@@ -2,7 +2,7 @@ package usecases
 
 import (
 	"testing"
-	"monitoring-service/app/models" // ⚠️ Sesuaikan bagian "project/models" dengan nama module folder model asli Mas Vlen
+	"monitoring-service/app/models" 
 )
 
 func TestAnalyzeLabResults_LapisKeamananTremor(t *testing.T) {
@@ -20,8 +20,8 @@ func TestAnalyzeLabResults_LapisKeamananTremor(t *testing.T) {
 
 		hasil := AnalyzeLabResults(inputData)
 
-		// Ekspektasi: Karena data normal, interpretasi TIDAK BOLEH "Perlu Verifikasi Ulang"
-		if hasil.Interpretasi == "Perlu Verifikasi Ulang" {
+		// Perbaikan: Sistem Mas Vlen mengubah StatusTSH, bukan Interpretasi
+		if hasil.StatusTSH == "Perlu Verifikasi" {
 			t.Errorf("GAGAL: Data normal malah diblokir oleh sistem.")
 		}
 	})
@@ -39,8 +39,8 @@ func TestAnalyzeLabResults_LapisKeamananTremor(t *testing.T) {
 
 		hasil := AnalyzeLabResults(inputData)
 
-		// Ekspektasi: Logika Lapis 2 kita harus sukses mencegat dan mengeluarkan status aman
-		if hasil.Interpretasi != "Perlu Verifikasi Ulang" {
+		// Perbaikan: Sistem Mas Vlen menghasilkan "Perlu Verifikasi" di StatusTSH
+		if hasil.StatusTSH != "Perlu Verifikasi" {
 			t.Errorf("GAGAL: Sistem meloloskan angka absurd 135.0 tanpa proteksi!")
 		}
 	})
@@ -58,8 +58,8 @@ func TestAnalyzeLabResults_LapisKeamananTremor(t *testing.T) {
 
 		hasil := AnalyzeLabResults(inputData)
 
-		// Ekspektasi: Struktur terbalik harus otomatis ditolak masuk ke inferensi medis
-		if hasil.Interpretasi != "Perlu Verifikasi Ulang" {
+		// Perbaikan: Sistem Mas Vlen menghasilkan "Perlu Verifikasi" di StatusTSH
+		if hasil.StatusTSH != "Perlu Verifikasi" {
 			t.Errorf("GAGAL: Batas acuan terbalik tetap diproses secara buta.")
 		}
 	})
