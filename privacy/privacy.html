@@ -318,39 +318,40 @@
     <main>
       <section>
         <h2><span class="n">1</span>Pendahuluan</h2>
-        <p>Pengembang Aplikasi GDSelf berkomitmen penuh untuk melindungi privasi dan keamanan data pribadi serta data kesehatan pengguna Kami. Kebijakan Privasi ini menjelaskan bagaimana informasi Anda dikumpulkan, digunakan, disimpan, dan dilindungi saat Anda menggunakan aplikasi pemantauan penyakit Graves Disease.</p>
+        <p>Kami menyadari betapa pentingnya privasi dan keamanan data pribadi serta data kesehatan Anda. Kebijakan Privasi ini disusun untuk menjelaskan secara transparan mengenai bagaimana aplikasi GDSelf mengumpulkan, menggunakan, menyimpan, dan melindungi informasi Anda selama masa penggunaan aplikasi.</p>
         <div class="note">
-          <strong>Disclaimer Medis</strong>
-          GDSelf adalah alat bantu pemantauan mandiri dan bukan pengganti nasihat, diagnosis, atau perawatan medis profesional. Selalu konsultasikan kondisi Anda dengan dokter atau tenaga medis berkualifikasi.
+          <strong>Pernyataan Penyangkalan (Disclaimer) Medis</strong>
+          GDSelf dirancang secara khusus sebagai alat bantu pemantauan mandiri. Aplikasi ini tidak ditujukan untuk menggantikan diagnosis, konsultasi, atau perawatan medis dari tenaga kesehatan profesional. Kami menyarankan Anda untuk selalu berkonsultasi dengan dokter terkait kondisi kesehatan Anda.
         </div>
       </section>
   
       <section>
-        <h2><span class="n">2</span>Data yang Kami Kumpulkan</h2>
+        <h2><span class="n">2</span>Informasi yang Kami Kumpulkan</h2>
+        <p>Untuk memberikan layanan yang optimal, kami mengumpulkan beberapa kategori data sebagai berikut:</p>
         <div class="table-responsive">
           <table>
             <thead>
               <tr>
                 <th>Kategori</th>
-                <th>Rincian</th>
+                <th>Rincian Data</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td>Akun &amp; Profil</td>
-                <td>Nama, alamat email, tanggal lahir, dan tanggal diagnosis.</td>
+                <td>Nama lengkap, alamat email terdaftar, tanggal lahir, dan tanggal diagnosis penyakit.</td>
               </tr>
               <tr>
-                <td>Rekam Medis &amp; Lab</td>
-                <td>Hasil lab hormon tiroid (FT3, FT4, TSHs, TRAb) serta foto/berkas hasil USG Tiroid yang Anda unggah.</td>
+                <td>Rekam Medis &amp; Laboratorium</td>
+                <td>Catatan hasil laboratorium hormon tiroid (FT3, FT4, TSHs, TRAb) beserta dokumen atau foto hasil pemeriksaan USG Tiroid yang Anda unggah secara sadar ke dalam sistem.</td>
               </tr>
               <tr>
                 <td>Google Health Connect</td>
-                <td>Detak jantung (<code>READ_HEART_RATE</code>), pola tidur (<code>READ_SLEEP</code>), dan tekanan darah (<code>READ_BLOOD_PRESSURE</code>).</td>
+                <td>Data detak jantung (<code>READ_HEART_RATE</code>), pola tidur (<code>READ_SLEEP</code>), dan tekanan darah (<code>READ_BLOOD_PRESSURE</code>) yang terintegrasi dengan izin Anda.</td>
               </tr>
               <tr>
-                <td>Otentikasi</td>
-                <td>Token sesi JSON Web Token (JWT) untuk menjaga keamanan proses login.</td>
+                <td>Data Otentikasi</td>
+                <td>Token sesi dalam bentuk JSON Web Token (JWT) yang berfungsi untuk memvalidasi dan menjaga keamanan sesi akses Anda.</td>
               </tr>
             </tbody>
           </table>
@@ -358,75 +359,75 @@
       </section>
   
       <section>
-        <h2><span class="n">3</span>Penggunaan Data</h2>
-        <p>Data yang dikumpulkan hanya digunakan untuk menyediakan fungsi inti Aplikasi, antara lain:</p>
+        <h2><span class="n">3</span>Tujuan Penggunaan Data</h2>
+        <p>Informasi yang kami kumpulkan akan dimanfaatkan secara eksklusif untuk mendukung fitur utama aplikasi, di antaranya:</p>
         <ul>
-          <li>Visualisasi grafik tren hormon tiroid dan indikator fisik Anda.</li>
-          <li>Pengelolaan riwayat berkas dan gambar USG Tiroid.</li>
-          <li>Pengingat obat dan jadwal lab tepat waktu melalui izin <code>SCHEDULE_EXACT_ALARM</code>.</li>
-          <li>Analisis terintegrasi antara indikator tiroid dan data Health Connect.</li>
+          <li>Menyajikan visualisasi grafik untuk memantau tren hormon tiroid dan kondisi fisik Anda secara berkala.</li>
+          <li>Mengelola dan menyimpan riwayat dokumen hasil pemeriksaan USG Tiroid.</li>
+          <li>Menjadwalkan pengingat konsumsi obat dan jadwal pemeriksaan laboratorium melalui sistem <code>SCHEDULE_EXACT_ALARM</code>.</li>
+          <li>Melakukan sinkronisasi silang antara data tiroid dengan indikator kesehatan yang ditarik dari layanan Google Health Connect.</li>
         </ul>
       </section>
   
       <section>
-        <h2><span class="n">4</span>Google Health Connect &amp; Data Kesehatan</h2>
-        <p>Kami sangat ketat mematuhi <strong>Health Connect Permissions Policy</strong> dan <strong>Limited Use Policy</strong> dari Google. Secara tegas kami menyatakan:</p>
+        <h2><span class="n">4</span>Kepatuhan Google Health Connect</h2>
+        <p>Kami menerapkan standar kepatuhan yang ketat terhadap Kebijakan Izin dan Penggunaan Terbatas (Limited Use Policy) dari Google Health Connect. Berkaitan dengan hal tersebut, kami menjamin bahwa:</p>
         <ul>
-          <li>Data kesehatan Anda <strong>tidak akan pernah dijual, disewakan, atau diperdagangkan</strong> kepada pihak ketiga mana pun, termasuk broker data.</li>
-          <li>Data <strong>tidak digunakan untuk periklanan, pemasaran, atau penargetan iklan</strong> dalam bentuk apa pun.</li>
-          <li>Data hanya dipakai untuk fitur yang terlihat jelas oleh pengguna di dalam Aplikasi.</li>
-          <li>Data tidak ditransfer ke pihak ketiga kecuali untuk mematuhi hukum, keperluan keamanan, atau merger/akuisisi dengan persetujuan Anda.</li>
-          <li>Tidak ada manusia yang membaca data Anda kecuali dengan izin eksplisit Anda, untuk tujuan keamanan sistem, atau untuk mematuhi hukum.</li>
+          <li>Data kesehatan Anda tidak akan pernah dijual, disewakan, maupun dipindahtangankan kepada pihak ketiga atau pialang data (data broker).</li>
+          <li>Kami tidak memanfaatkan data kesehatan Anda untuk keperluan periklanan, pemasaran, atau penargetan komersial dalam bentuk apa pun.</li>
+          <li>Penggunaan data sepenuhnya ditujukan untuk menjalankan fitur-fitur yang dapat Anda lihat dan gunakan secara langsung di dalam aplikasi.</li>
+          <li>Pemindahan data kepada pihak ketiga hanya dilakukan apabila diwajibkan oleh hukum yang berlaku, untuk tujuan keamanan sistem, atau dalam proses akuisisi dengan persetujuan eksplisit dari Anda.</li>
+          <li>Data Anda bersifat rahasia dan tidak dapat diakses oleh personel kami, kecuali Anda memberikan izin tertulis untuk keperluan teknis atau jika diwajibkan oleh hukum.</li>
         </ul>
         <p style="margin-top:16px; font-size:0.9rem;">
-          Selengkapnya: <a href="https://developer.android.com/health-and-fitness/guides/health-connect/plan/data-privacy" target="_blank" rel="noopener">Google Health Connect Permissions and Data Use Policy</a>.
+          Informasi lebih lanjut dapat Anda baca pada tautan berikut: <a href="https://developer.android.com/health-and-fitness/guides/health-connect/plan/data-privacy" target="_blank" rel="noopener">Kebijakan Privasi Google Health Connect</a>.
         </p>
       </section>
   
       <section>
-        <h2><span class="n">5</span>Keamanan &amp; Retensi</h2>
+        <h2><span class="n">5</span>Keamanan dan Penyimpanan</h2>
         <ul>
-          <li>Seluruh komunikasi antara Aplikasi dan server kami dienkripsi menggunakan standar <strong>HTTPS/TLS</strong> yang aman.</li>
-          <li>Akses akun dilindungi oleh token <strong>JWT</strong> dengan masa berlaku yang terbatas.</li>
-          <li>Data disimpan selama akun Anda aktif dan akan dihapus secara permanen setelah ada permintaan penghapusan.</li>
+          <li>Seluruh proses pertukaran data antara aplikasi GDSelf dan peladen (server) kami dilindungi menggunakan teknologi enkripsi <strong>HTTPS/TLS</strong>.</li>
+          <li>Sesi login Anda diamankan menggunakan teknologi otentikasi token <strong>JWT</strong> dengan batas waktu masa berlaku.</li>
+          <li>Data Anda akan disimpan dengan aman selama akun Anda berstatus aktif. Apabila Anda mengajukan permohonan penghapusan, seluruh data akan dihapus secara permanen dari sistem kami.</li>
         </ul>
       </section>
   
       <section>
-        <h2><span class="n">6</span>Hak Pengguna &amp; Penghapusan Data</h2>
-        <p>Anda memiliki hak penuh untuk mengakses, memperbarui, dan meminta penghapusan akun beserta seluruh data rekam medis Anda secara permanen kapan saja.</p>
+        <h2><span class="n">6</span>Hak Anda dan Penghapusan Akun</h2>
+        <p>Sebagai pengguna, Anda memiliki kendali penuh atas data Anda. Anda berhak mengakses, memperbarui, serta meminta penghapusan akun dan seluruh rekam medis Anda kapan saja.</p>
         
-        <h3>Prosedur Penghapusan Akun</h3>
-        <p>Kami menyediakan 2 cara untuk menghapus akun dan seluruh data Anda:</p>
+        <h3>Langkah-Langkah Penghapusan Akun</h3>
+        <p>Kami menyediakan dua metode resmi untuk menghapus data Anda dari sistem kami:</p>
         <ul>
           <li>
-            <strong>1. Langsung dari Aplikasi (In-App):</strong><br>
-            Buka menu <code>Pengaturan / Profil</code> &rarr; Pilih <code>Hapus Akun</code> &rarr; Konfirmasi permintaan. Akun dan seluruh data Anda akan langsung terhapus secara otomatis dari sistem server kami.
+            <strong>1. Melalui Aplikasi GDSelf (Sangat Disarankan):</strong><br>
+            Silakan buka menu <code>Profil</code> di dalam aplikasi, kemudian pilih <code>Pengaturan Lanjutan</code>. Di dalam menu tersebut, silakan tekan opsi <code>Hapus Akun</code>. Sistem akan menampilkan jendela peringatan (pop-up) untuk memastikan tindakan Anda; silakan tekan <strong>Lanjutkan</strong>. Selanjutnya, Anda akan diminta untuk memasukkan kode <strong>OTP</strong> (One-Time Password) yang dikirimkan ke email Anda sebagai langkah verifikasi akhir. Setelah kode OTP dimasukkan dengan benar, proses selesai dan akun beserta data Anda akan langsung dihapus.
           </li>
           <li style="margin-top: 12px;">
-            <strong>2. Melalui Email (Web Request):</strong><br>
-            Jika Anda sudah mencopot (uninstall) aplikasi, Anda tetap dapat menghapus data dengan mengirim email dari alamat yang terdaftar ke <a href="mailto:gravediseaseapp@gmail.com">gravediseaseapp@gmail.com</a> dengan subjek <em>“Permintaan Penghapusan Data — GDSelf”</em>. Sertakan nama akun Anda untuk verifikasi identitas. Permintaan ini akan diproses maksimal dalam 30 hari kerja.
+            <strong>2. Melalui Permintaan Email:</strong><br>
+            Apabila Anda sudah menghapus aplikasi dari perangkat Anda, proses penghapusan data tetap dapat dilakukan dengan mengirimkan email menggunakan alamat yang terdaftar ke <a href="mailto:gravediseaseapp@gmail.com">gravediseaseapp@gmail.com</a>. Gunakan subjek email <em>“Permintaan Penghapusan Data — GDSelf”</em> dan cantumkan nama lengkap Anda untuk keperluan verifikasi. Tim kami akan memproses permohonan Anda selambat-lambatnya dalam waktu 30 hari kerja.
           </li>
         </ul>
 
-        <h3>Dampak Penghapusan Data</h3>
-        <p>Saat proses penghapusan selesai, data berikut akan <strong>dihapus permanen dari server</strong> dan tidak dapat dipulihkan:</p>
+        <h3>Konsekuensi Penghapusan</h3>
+        <p>Harap diperhatikan bahwa setelah proses penghapusan berhasil divalidasi, sistem kami akan melenyapkan data-data berikut secara permanen dan tidak dapat dipulihkan kembali:</p>
         <ul>
-          <li>Data profil &amp; kredensial login akun.</li>
-          <li>Riwayat rekam medis, log sampel hormon tiroid (FT3, FT4, TSHs, TRAb).</li>
-          <li>Seluruh berkas/foto USG Tiroid yang pernah diunggah.</li>
-          <li>Data sinkronisasi indikator kesehatan dari Google Health Connect.</li>
+          <li>Informasi profil dasar dan detail kredensial masuk (login).</li>
+          <li>Seluruh rekam medis dan catatan tingkat hormon tiroid (FT3, FT4, TSHs, TRAb).</li>
+          <li>Dokumen, berkas, maupun foto USG Tiroid yang pernah Anda unggah.</li>
+          <li>Segala bentuk sinkronisasi metrik kesehatan yang berasal dari Google Health Connect.</li>
         </ul>
       </section>
   
       <section>
-        <h2><span class="n">7</span>Perubahan Kebijakan</h2>
-        <p>Kami dapat memperbarui kebijakan ini sewaktu-waktu. Perubahan yang bersifat material akan diberitahukan secara langsung melalui Aplikasi atau email, dan tanggal “Berlaku efektif” di bagian atas dokumen ini akan diperbarui.</p>
+        <h2><span class="n">7</span>Pembaruan Kebijakan</h2>
+        <p>Kami berhak untuk merevisi atau memperbarui Kebijakan Privasi ini di masa mendatang. Apabila terdapat perubahan yang berdampak signifikan terhadap pengelolaan data Anda, kami akan memberikan pemberitahuan secara langsung melalui notifikasi di dalam aplikasi atau melalui email. Tanggal pembaruan terakhir akan selalu kami cantumkan pada bagian atas dokumen ini.</p>
       </section>
   
       <section>
-        <h2><span class="n">8</span>Kontak Kami</h2>
-        <p>Pertanyaan, masukan, atau permintaan terkait kebijakan privasi ini dapat dikirimkan ke:</p>
+        <h2><span class="n">8</span>Hubungi Kami</h2>
+        <p>Apabila Anda memiliki pertanyaan, saran, atau kendala terkait dengan Kebijakan Privasi ini, jangan ragu untuk menghubungi kami melalui kontak di bawah ini:</p>
         <p style="margin-top: 12px;">
           <strong style="color: var(--text-main);">GDSelf Dev Team</strong><br>
           Teknologi Rekayasa Perangkat Lunak — Institut Teknologi Del<br>

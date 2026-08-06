@@ -446,10 +446,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               child: const Text(
                 "Hapus Akun Permanen",
                 style: TextStyle(
-                  color: Color(0xFF64748B),
+                  color: Color(0xFFD32F2F),
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                   decoration: TextDecoration.underline,
+                  decorationColor: Color(0xFFD32F2F), // ✅ Tambahkan baris ini agar garis bawahnya juga merah
                 ),
               ),
             ),

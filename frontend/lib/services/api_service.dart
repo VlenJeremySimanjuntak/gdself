@@ -39,7 +39,8 @@ class ApiService {
 
   final Dio _dio = Dio(
     BaseOptions(
-      baseUrl: 'https://engaged-kick-utilize.ngrok-free.dev/api',
+      baseUrl: 'https://gdself.generasisehat.com/api',
+      // baseUrl: 'https://engaged-kick-utilize.ngrok-free.dev/api',
       connectTimeout: const Duration(seconds: 40),
       receiveTimeout: const Duration(seconds: 40),
       headers: {
