@@ -1,0 +1,22 @@
+# --- Flutter / Android ---
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.metadata
+*.iml
+android/.gradle
+android/build/
+android/local.properties
+
+# --- Golang ---
+/backend/bin/
+/backend/vendor/
+.env
+
+# --- Umum ---
+.vscode/
+.idea/
+.DS_Store
+*.log

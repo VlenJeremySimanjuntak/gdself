@@ -1,0 +1,82 @@
+package repositories
+
+import (
+	"monitoring-service/app/models"
+	"time"
+
+	"gorm.io/gorm"
+)
+
+type RiwayatRepository interface {
+	Create(riwayat models.Riwayat) (models.Riwayat, error)
+	GetByID(id uint) (models.Riwayat, error)
+	GetByUserID(userID uint) ([]models.Riwayat, error)
+	GetByUserIDAndDate(userID uint, date models.CustomDate) (models.Riwayat, error)
+	GetAll() ([]models.Riwayat, error)
+	Update(id uint, riwayat models.Riwayat) (models.Riwayat, error)
+	Delete(id uint) error
+}
+
+type riwayatRepository struct {
+	db *gorm.DB
+}
+
+func NewRiwayatRepository(db *gorm.DB) RiwayatRepository {
+	return &riwayatRepository{db: db}
+}
+
+func (r *riwayatRepository) Create(riwayat models.Riwayat) (models.Riwayat, error) {
+	err := r.db.Create(&riwayat).Error
+	return riwayat, err
+}
+
+func (r *riwayatRepository) GetByUserIDAndDate(userID uint, date models.CustomDate) (models.Riwayat, error) {
+	var riwayat models.Riwayat
+	err := r.db.Where("id_user = ? AND tanggal = ?", userID, time.Time(date).Format("2006-01-02")).
+		First(&riwayat).Error
+	return riwayat, err
+}
+
+func (r *riwayatRepository) GetByID(id uint) (models.Riwayat, error) {
+	var riwayat models.Riwayat
+	// ✅ PERBAIKAN: Mengganti HasilLab dan HasilAI menjadi relasi ERD terbaru
+	err := r.db.
+		Preload("Wearable").
+		Preload("LaporanLab").
+		Preload("USGTiroid").
+		First(&riwayat, id).Error
+	return riwayat, err
+}
+
+func (r *riwayatRepository) GetByUserID(userID uint) ([]models.Riwayat, error) {
+	var riwayat []models.Riwayat
+	err := r.db.Where("id_user = ?", userID).
+		Preload("Wearable").     // Menarik data smartwatch
+		Preload("LaporanLab").   // Menarik data Laporan Lab
+		Preload("USGTiroid").    // Menarik data USG
+		Order("tanggal DESC").
+		Find(&riwayat).Error
+	return riwayat, err
+}
+
+func (r *riwayatRepository) GetAll() ([]models.Riwayat, error) {
+	var riwayat []models.Riwayat
+	err := r.db.
+		Preload("Wearable").
+		Preload("LaporanLab").
+		Preload("USGTiroid").
+		Find(&riwayat).Error
+	return riwayat, err
+}
+
+func (r *riwayatRepository) Update(id uint, riwayat models.Riwayat) (models.Riwayat, error) {
+	err := r.db.Model(&models.Riwayat{}).Where("id_riwayat = ?", id).Updates(riwayat).Error
+	if err == nil {
+		riwayat, err = r.GetByID(id)
+	}
+	return riwayat, err
+}
+
+func (r *riwayatRepository) Delete(id uint) error {
+	return r.db.Delete(&models.Riwayat{}, id).Error
+}

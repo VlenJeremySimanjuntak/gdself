@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kebijakan Privasi — GDSelf</title>
+  
+  <!-- Import Font: Instrument Sans sesuai UI Guide -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+
+  <style>
+    /* Mengadopsi Palet Warna dari UI Style Guide */
+    :root {
+      --primary: #005C85;       /* Button & Aksen Utama */
+      --bg-main: #F8F9FF;       /* Background luar */
+      --bg-card: #FFFFFF;       /* Background konten */
+      --bg-soft: #E0EFFE;       /* Light blue untuk alert/highlight */
+      --text-main: #000000;     /* Teks Utama */
+      --text-muted: #586169;    /* Teks Sekunder */
+      --border: #E2EAE9;        /* Fields / Garis pemisah */
+      --success: #00B932;       /* Hijau status */
+      --danger: #A83836;        /* Merah alert */
+    }
+    
+    * { 
+      box-sizing: border-box; 
+      margin: 0; 
+      padding: 0; 
+    }
+    
+    body {
+      font-family: 'Instrument Sans', sans-serif;
+      color: var(--text-main);
+      background-color: var(--bg-main);
+      line-height: 1.6;
+      font-size: 16px;
+      -webkit-font-smoothing: antialiased;
+      padding: 24px;
+    }
+
+    a { 
+      color: var(--primary); 
+      text-decoration: none;
+      font-weight: 500;
+      transition: opacity 0.2s ease;
+    }
+    
+    a:hover {
+      opacity: 0.8;
+      text-decoration: underline;
+    }
+
+    /* Layout Wrapper (Mirip Card di UI) */
+    .page-wrapper {
+      max-width: 760px;
+      margin: 0 auto;
+      background: var(--bg-card);
+      border-radius: 24px; /* Sudut melengkung khas UI modern */
+      box-shadow: 0 12px 32px rgba(0, 92, 133, 0.05); /* Shadow biru sangat lembut */
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    /* Header */
+    header {
+      padding: 56px 40px 40px;
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+      background-color: var(--bg-card);
+    }
+
+    header .eyebrow {
+      font-size: 0.85rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 12px;
+    }
+
+    header h1 {
+      font-size: 2.5rem;
+      line-height: 1.2;
+      margin-bottom: 8px;
+      font-weight: 700;
+      color: var(--text-main);
+      letter-spacing: -0.02em;
+    }
+
+    header .subtitle {
+      font-size: 1.1rem;
+      color: var(--text-muted);
+      margin-bottom: 28px;
+      font-weight: 400;
+    }
+
+    .meta {
+      display: inline-flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 16px 32px;
+      font-size: 0.9rem;
+      background: var(--bg-main);
+      padding: 16px 24px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+
+    .meta span strong {
+      color: var(--text-main);
+      font-weight: 600;
+    }
+
+    /* Content Area */
+    main { 
+      padding: 40px; 
+    }
+
+    section { 
+      margin-bottom: 40px; 
+    }
+    
+    section:last-of-type { 
+      margin-bottom: 0; 
+    }
+
+    h2 {
+      font-size: 1.25rem;
+      margin-bottom: 16px;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+    }
+
+    /* Nomor Section menyerupai Button UI */
+    h2 .n { 
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background-color: var(--bg-soft);
+      color: var(--primary);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      font-size: 0.9rem;
+      margin-right: 12px;
+      font-weight: 600;
+    }
+
+    h3 { 
+      font-size: 1.05rem; 
+      margin: 24px 0 12px; 
+      font-weight: 600; 
+      color: var(--text-main);
+    }
+
+    p { 
+      margin-bottom: 16px; 
+      color: var(--text-muted);
+    }
+
+    ul { 
+      padding-left: 24px; 
+      margin-bottom: 16px; 
+      color: var(--text-muted);
+    }
+
+    li { 
+      margin-bottom: 8px; 
+    }
+
+    /* Table Styling */
+    .table-responsive {
+      width: 100%;
+      overflow-x: auto;
+      margin-bottom: 16px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    td:first-child { 
+      width: 30%; 
+      font-weight: 600; 
+      color: var(--text-main);
+      background-color: #FAFCFF; /* Sangat soft blue */
+    }
+    
+    td:last-child {
+      color: var(--text-muted);
+    }
+
+    code {
+      background: var(--bg-main);
+      border: 1px solid var(--border);
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 0.85em;
+      color: var(--primary);
+    }
+
+    /* Callouts / Notes (Mirip Alert Card di UI) */
+    .note {
+      background: var(--bg-soft);
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin: 24px 0;
+      font-size: 0.95rem;
+      color: var(--primary);
+    }
+
+    .note strong { 
+      display: block; 
+      margin-bottom: 4px;
+      font-weight: 700;
+    }
+
+    /* Footer */
+    footer {
+      background-color: var(--bg-main);
+      border-top: 1px solid var(--border);
+      padding: 24px 40px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    /* Mobile Responsiveness */
+    @media (max-width: 600px) {
+      body {
+        padding: 0;
+        background-color: var(--bg-card);
+      }
+      
+      .page-wrapper {
+        border-radius: 0;
+        box-shadow: none;
+        border: none;
+      }
+      
+      header {
+        padding: 40px 24px 32px;
+      }
+
+      header h1 { 
+        font-size: 2rem; 
+      }
+
+      .meta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+        width: 100%;
+        padding: 16px;
+      }
+
+      main { 
+        padding: 32px 24px; 
+      }
+      
+      td:first-child { 
+        width: 100%; 
+        display: block; 
+        border-bottom: none;
+        padding-bottom: 4px;
+      }
+      
+      td:last-child {
+        display: block;
+        padding-top: 4px;
+      }
+      
+      th { display: none; }
+      
+      tr { 
+        display: block; 
+        border-bottom: 1px solid var(--border); 
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="page-wrapper">
+    <header>
+      <div class="eyebrow">Kebijakan Privasi</div>
+      <h1>GDSelf</h1>
+      <p class="subtitle">Graves' Disease Self-Management &amp; Monitoring App</p>
+      <div class="meta">
+        <span><strong>Terakhir diperbarui:</strong> 6 Agustus 2026</span>
+      </div>
+    </header>
+  
+    <main>
+      <section>
+        <h2><span class="n">1</span>Pendahuluan</h2>
+        <p>Pengembang Aplikasi GDSelf berkomitmen penuh untuk melindungi privasi dan keamanan data pribadi serta data kesehatan pengguna Kami. Kebijakan Privasi ini menjelaskan bagaimana informasi Anda dikumpulkan, digunakan, disimpan, dan dilindungi saat Anda menggunakan aplikasi pemantauan penyakit Graves Disease.</p>
+        <div class="note">
+          <strong>Disclaimer Medis</strong>
+          GDSelf adalah alat bantu pemantauan mandiri dan bukan pengganti nasihat, diagnosis, atau perawatan medis profesional. Selalu konsultasikan kondisi Anda dengan dokter atau tenaga medis berkualifikasi.
+        </div>
+      </section>
+  
+      <section>
+        <h2><span class="n">2</span>Data yang Kami Kumpulkan</h2>
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Kategori</th>
+                <th>Rincian</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Akun &amp; Profil</td>
+                <td>Nama, alamat email, tanggal lahir, dan tanggal diagnosis.</td>
+              </tr>
+              <tr>
+                <td>Rekam Medis &amp; Lab</td>
+                <td>Hasil lab hormon tiroid (FT3, FT4, TSHs, TRAb) serta foto/berkas hasil USG Tiroid yang Anda unggah.</td>
+              </tr>
+              <tr>
+                <td>Google Health Connect</td>
+                <td>Detak jantung (<code>READ_HEART_RATE</code>), pola tidur (<code>READ_SLEEP</code>), dan tekanan darah (<code>READ_BLOOD_PRESSURE</code>).</td>
+              </tr>
+              <tr>
+                <td>Otentikasi</td>
+                <td>Token sesi JSON Web Token (JWT) untuk menjaga keamanan proses login.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+  
+      <section>
+        <h2><span class="n">3</span>Penggunaan Data</h2>
+        <p>Data yang dikumpulkan hanya digunakan untuk menyediakan fungsi inti Aplikasi, antara lain:</p>
+        <ul>
+          <li>Visualisasi grafik tren hormon tiroid dan indikator fisik Anda.</li>
+          <li>Pengelolaan riwayat berkas dan gambar USG Tiroid.</li>
+          <li>Pengingat obat dan jadwal lab tepat waktu melalui izin <code>SCHEDULE_EXACT_ALARM</code>.</li>
+          <li>Analisis terintegrasi antara indikator tiroid dan data Health Connect.</li>
+        </ul>
+      </section>
+  
+      <section>
+        <h2><span class="n">4</span>Google Health Connect &amp; Data Kesehatan</h2>
+        <p>Kami sangat ketat mematuhi <strong>Health Connect Permissions Policy</strong> dan <strong>Limited Use Policy</strong> dari Google. Secara tegas kami menyatakan:</p>
+        <ul>
+          <li>Data kesehatan Anda <strong>tidak akan pernah dijual, disewakan, atau diperdagangkan</strong> kepada pihak ketiga mana pun, termasuk broker data.</li>
+          <li>Data <strong>tidak digunakan untuk periklanan, pemasaran, atau penargetan iklan</strong> dalam bentuk apa pun.</li>
+          <li>Data hanya dipakai untuk fitur yang terlihat jelas oleh pengguna di dalam Aplikasi.</li>
+          <li>Data tidak ditransfer ke pihak ketiga kecuali untuk mematuhi hukum, keperluan keamanan, atau merger/akuisisi dengan persetujuan Anda.</li>
+          <li>Tidak ada manusia yang membaca data Anda kecuali dengan izin eksplisit Anda, untuk tujuan keamanan sistem, atau untuk mematuhi hukum.</li>
+        </ul>
+        <p style="margin-top:16px; font-size:0.9rem;">
+          Selengkapnya: <a href="https://developer.android.com/health-and-fitness/guides/health-connect/plan/data-privacy" target="_blank" rel="noopener">Google Health Connect Permissions and Data Use Policy</a>.
+        </p>
+      </section>
+  
+      <section>
+        <h2><span class="n">5</span>Keamanan &amp; Retensi</h2>
+        <ul>
+          <li>Seluruh komunikasi antara Aplikasi dan server kami dienkripsi menggunakan standar <strong>HTTPS/TLS</strong> yang aman.</li>
+          <li>Akses akun dilindungi oleh token <strong>JWT</strong> dengan masa berlaku yang terbatas.</li>
+          <li>Data disimpan selama akun Anda aktif dan akan dihapus secara permanen setelah ada permintaan penghapusan.</li>
+        </ul>
+      </section>
+  
+      <section>
+        <h2><span class="n">6</span>Hak Pengguna &amp; Penghapusan Data</h2>
+        <p>Anda memiliki hak penuh untuk mengakses, memperbarui, dan meminta penghapusan akun beserta seluruh data rekam medis Anda secara permanen kapan saja.</p>
+        
+        <h3>Prosedur Penghapusan Akun</h3>
+        <p>Kami menyediakan 2 cara untuk menghapus akun dan seluruh data Anda:</p>
+        <ul>
+          <li>
+            <strong>1. Langsung dari Aplikasi (In-App):</strong><br>
+            Buka menu <code>Pengaturan / Profil</code> &rarr; Pilih <code>Hapus Akun</code> &rarr; Konfirmasi permintaan. Akun dan seluruh data Anda akan langsung terhapus secara otomatis dari sistem server kami.
+          </li>
+          <li style="margin-top: 12px;">
+            <strong>2. Melalui Email (Web Request):</strong><br>
+            Jika Anda sudah mencopot (uninstall) aplikasi, Anda tetap dapat menghapus data dengan mengirim email dari alamat yang terdaftar ke <a href="mailto:gravediseaseapp@gmail.com">gravediseaseapp@gmail.com</a> dengan subjek <em>“Permintaan Penghapusan Data — GDSelf”</em>. Sertakan nama akun Anda untuk verifikasi identitas. Permintaan ini akan diproses maksimal dalam 30 hari kerja.
+          </li>
+        </ul>
+
+        <h3>Dampak Penghapusan Data</h3>
+        <p>Saat proses penghapusan selesai, data berikut akan <strong>dihapus permanen dari server</strong> dan tidak dapat dipulihkan:</p>
+        <ul>
+          <li>Data profil &amp; kredensial login akun.</li>
+          <li>Riwayat rekam medis, log sampel hormon tiroid (FT3, FT4, TSHs, TRAb).</li>
+          <li>Seluruh berkas/foto USG Tiroid yang pernah diunggah.</li>
+          <li>Data sinkronisasi indikator kesehatan dari Google Health Connect.</li>
+        </ul>
+      </section>
+  
+      <section>
+        <h2><span class="n">7</span>Perubahan Kebijakan</h2>
+        <p>Kami dapat memperbarui kebijakan ini sewaktu-waktu. Perubahan yang bersifat material akan diberitahukan secara langsung melalui Aplikasi atau email, dan tanggal “Berlaku efektif” di bagian atas dokumen ini akan diperbarui.</p>
+      </section>
+  
+      <section>
+        <h2><span class="n">8</span>Kontak Kami</h2>
+        <p>Pertanyaan, masukan, atau permintaan terkait kebijakan privasi ini dapat dikirimkan ke:</p>
+        <p style="margin-top: 12px;">
+          <strong style="color: var(--text-main);">GDSelf Dev Team</strong><br>
+          Teknologi Rekayasa Perangkat Lunak — Institut Teknologi Del<br>
+          <a href="mailto:gravediseaseapp@gmail.com">gravediseaseapp@gmail.com</a>
+        </p>
+      </section>
+  
+    </main>
+  
+    <footer>
+      &copy; 2026 GDSelf Dev Team — Institut Teknologi Del. Semua hak cipta dilindungi.
+    </footer>
+  </div>
+
+</body>
+</html>

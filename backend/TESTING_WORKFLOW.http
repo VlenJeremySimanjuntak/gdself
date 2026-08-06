@@ -1,0 +1,211 @@
+@baseUrl = http://127.0.0.1:3000/api
+
+###
+# ============================================================
+# GRAVES DISEASE MONITORING - TESTING WORKFLOW
+# ============================================================
+# PENTING: Ikuti urutan ini! Step 1 → 2 → 3 → ... → 5
+# Ganti ID sesuai response dari step sebelumnya!
+# ============================================================
+
+###
+# STEP 1: CREATE USER
+# Response akan berisi: id_user (catat nomor ini!)
+POST {{baseUrl}}/users
+Content-Type: application/json
+
+{
+  "nama": "Budi Santoso",
+  "email": "budi.santoso@example.com",
+  "password": "password123",
+  "tgl_lahir": "1998-08-12",
+  "jenis_kelamin": "L",
+  "tgl_terdiagnosis": "2024-04-01"
+}
+
+###
+# DEBUG: Lihat semua user yang sudah dibuat
+GET {{baseUrl}}/users
+
+###
+# STEP 2: CREATE RIWAYAT
+# Gunakan id_user dari Step 1
+# Response akan berisi: id_riwayat (catat nomor ini!)
+POST {{baseUrl}}/riwayat
+Content-Type: application/json
+
+{
+  "id_user": 1,
+  "tanggal": "2026-05-02"
+}
+
+###
+# STEP 3: CREATE LAPORAN LAB
+# Gunakan id_user dari Step 1
+# Response akan berisi: id_laporan_lab (catat nomor ini!)
+POST {{baseUrl}}/laporan-lab
+Content-Type: application/json
+
+{
+  "id_user": 1,
+  "tgl_periksa": "2026-05-02",
+  "nama_lab": "Lab UNPAD"
+}
+
+###
+# STEP 4: CREATE WEARABLE DATA
+# Gunakan id_riwayat dari Step 2 dan id_user dari Step 1
+POST {{baseUrl}}/wearable
+Content-Type: application/json
+
+{
+  "id_riwayat": 1,
+  "id_user": 1,
+  "tgl_data": "2026-05-02",
+  "waktu_data": "10:30:00",
+  "heart_rate_rhr": 85,
+  "stress_score": 55,
+  "sleep_duration": 360
+}
+
+###
+# STEP 5: CREATE HASIL LAB (Lab Result)
+# Gunakan id_report dari Step 3 dan id_riwayat dari Step 2
+# id_laporan_lab = id_laporan_lab
+POST {{baseUrl}}/hasil-lab
+Content-Type: application/json
+
+{
+  "id_laporan_lab": 1,
+  "id_riwayat": 1,
+  "nilai_hasil": 0.3,
+  "rujukan_min": 0.4,
+  "rujukan_max": 4.0,
+  "parameters": [
+    {
+      "nama_parameter": "FT3",
+      "satuan": "pmol/L",
+      "kategori": "Thyroid",
+      "nilai": 4.5
+    },
+    {
+      "nama_parameter": "FT4",
+      "satuan": "pmol/L",
+      "kategori": "Thyroid",
+      "nilai": 16.0
+    },
+    {
+      "nama_parameter": "TSH",
+      "satuan": "mIU/L",
+      "kategori": "Thyroid",
+      "nilai": 0.3
+    }
+  ]
+}
+
+###
+# STEP 6: AI ASSESSMENT - Graves Overt (Lab Day + Worsening)
+# Testing scenario: kondisi memburuk dibanding hasil sebelumnya
+POST {{baseUrl}}/assess
+Content-Type: application/json
+
+{
+  "lab": {
+    "parameters": [
+      {
+        "nama_parameter": "FT3",
+        "nilai": 4.5
+      },
+      {
+        "nama_parameter": "FT4",
+        "nilai": 16.0
+      },
+      {
+        "nama_parameter": "TSH",
+        "nilai": 0.3
+      }
+    ]
+  },
+  "prev_lab": {
+    "parameters": [
+      {
+        "nama_parameter": "FT3",
+        "nilai": 3.2
+      },
+      {
+        "nama_parameter": "FT4",
+        "nilai": 9.0
+      },
+      {
+        "nama_parameter": "TSH",
+        "nilai": 1.8
+      }
+    ]
+  },
+  "wearable": {
+    "hr": 85,
+    "stress": 55,
+    "sleep_minutes": 360,
+    "baseline_hr_min": 60,
+    "baseline_hr_max": 80,
+    "baseline_stress_min": 20,
+    "baseline_stress_max": 50,
+    "baseline_sleep_min": 420,
+    "baseline_sleep_max": 540
+  },
+  "is_lab_day": true
+}
+
+###
+# STEP 7: AI ASSESSMENT - Normal Condition (Non-Lab Day)
+# Testing scenario: hasil normal, tidak di hari lab
+POST {{baseUrl}}/assess
+Content-Type: application/json
+
+{
+  "lab": {
+    "parameters": [
+      {
+        "nama_parameter": "FT3",
+        "nilai": 3.5
+      },
+      {
+        "nama_parameter": "FT4",
+        "nilai": 10.0
+      },
+      {
+        "nama_parameter": "TSH",
+        "nilai": 1.5
+      }
+    ]
+  },
+  "wearable": {
+    "hr": 72,
+    "stress": 35,
+    "sleep_minutes": 480,
+    "baseline_hr_min": 60,
+    "baseline_hr_max": 80,
+    "baseline_stress_min": 20,
+    "baseline_stress_max": 50,
+    "baseline_sleep_min": 420,
+    "baseline_sleep_max": 540
+  },
+  "is_lab_day": false
+}
+
+###
+# GET HASIL LAB BY ID
+GET {{baseUrl}}/hasil-lab/1
+
+###
+# GET SEMUA HASIL AI (ASSESSMENT RESULTS)
+GET {{baseUrl}}/hasil-ai
+
+###
+# ============================================================
+# TROUBLESHOOTING
+# ============================================================
+# Error 1452? → Pastikan Step 1 berhasil, lihat id_user di debug query
+# Error 400? → Periksa format tanggal: YYYY-MM-DD (bukan YYYY/MM/DD!)
+# Error 500? → Check terminal untuk error message detail
+# ============================================================

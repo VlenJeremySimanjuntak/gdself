@@ -1,0 +1,445 @@
+@baseUrl = http://127.0.0.1:3000/api
+
+### Health-style read check
+GET {{baseUrl}}/users
+Accept: application/json
+
+### 1) Create User
+POST {{baseUrl}}/users
+Content-Type: application/json
+
+{
+  "nama": "Budi Santoso",
+  "email": "budi.santoso.20260502@example.com",
+  "password": "password123",
+  "tgl_lahir": "1998-08-12T00:00:00Z",
+  "jenis_kelamin": "L",
+  "tgl_terdiagnosis": "2024-04-01T00:00:00Z"
+}
+
+### 2) Create Riwayat
+POST {{baseUrl}}/riwayat
+Content-Type: application/json
+
+{
+  "id_user": 1,
+  "tanggal": "2026-05-02T00:00:00Z"
+}
+
+### 3) Create Laporan Lab
+POST {{baseUrl}}/laporan-lab
+Content-Type: application/json
+
+{
+  "id_user": 1,
+  "tgl_periksa": "2026-05-02T10:30:00Z",
+  "nama_lab": "Laboratorium Kimia Klinik"
+}
+
+### 4) Create Wearable Data
+POST {{baseUrl}}/wearable
+Content-Type: application/json
+
+{
+  "id_riwayat": 1,
+  "id_user": 1,
+  "tgl_data": "2026-05-02T00:00:00Z",
+  "waktu_data": "2026-05-02T08:00:00Z",
+  "heart_rate_rhr": 85,
+  "stress_score": 55,
+  "sleep_duration": 360
+}
+
+### 5) Create Hasil Lab with Parameters
+POST {{baseUrl}}/hasil-lab
+Content-Type: application/json
+
+{
+  "id_laporan_lab": 1,
+  "id_riwayat": 1,
+  "nilai_hasil": 0.0,
+  "parameters": [
+    {
+      "id_parameter": 1,
+      "nama_parameter": "FT3",
+      "satuan": "pmol/L",
+      "kategori": "Thyroid",
+      "nilai": 4.5,
+      "rujukan_min": 3.5,
+      "rujukan_max": 6.0
+    },
+    {
+      "id_parameter": 2,
+      "nama_parameter": "FT4",
+      "satuan": "pmol/L",
+      "kategori": "Thyroid",
+      "nilai": 16.0,
+      "rujukan_min": 10.0,
+      "rujukan_max": 24.0
+    },
+    {
+      "id_parameter": 3,
+      "nama_parameter": "TSH",
+      "satuan": "mIU/L",
+      "kategori": "Thyroid",
+      "nilai": 0.3,
+      "rujukan_min": 0.4,
+      "rujukan_max": 4.0
+    }
+  ]
+}
+
+### 6) Assess / AI Rule Engine
+POST {{baseUrl}}/assess
+Content-Type: application/json
+
+{
+  "lab": {
+    "id_hasil_lab": 1,
+    "id_laporan_lab": 1,
+    "id_riwayat": 1,
+    "nilai_hasil": 0.3,
+    "rujukan_min": 0.4,
+    "rujukan_max": 4.0,
+    "parameters": [
+      {
+        "nama_parameter": "FT3",
+        "satuan": "pmol/L",
+        "kategori": "Thyroid",
+        "nilai": 4.5,
+        "rujukan_min": 3.5,
+        "rujukan_max": 6.0
+      },
+      {
+        "nama_parameter": "FT4",
+        "satuan": "pmol/L",
+        "kategori": "Thyroid",
+        "nilai": 16.0,
+        "rujukan_min": 10.0,
+        "rujukan_max": 24.0
+      },
+      {
+        "nama_parameter": "TSH",
+        "satuan": "mIU/L",
+        "kategori": "Thyroid",
+        "nilai": 0.3,
+        "rujukan_min": 0.4,
+        "rujukan_max": 4.0
+      }
+    ]
+  },
+  "prev_lab": {
+    "id_hasil_lab": 2,
+    "id_laporan_lab": 1,
+    "id_riwayat": 1,
+    "nilai_hasil": 1.8,
+    "rujukan_min": 0.4,
+    "rujukan_max": 4.0,
+    "parameters": [
+      {
+        "nama_parameter": "FT3",
+        "satuan": "pmol/L",
+        "kategori": "Thyroid",
+        "nilai": 3.2
+      },
+      {
+        "nama_parameter": "FT4",
+        "satuan": "pmol/L",
+        "kategori": "Thyroid",
+        "nilai": 9.0
+      },
+      {
+        "nama_parameter": "TSH",
+        "satuan": "mIU/L",
+        "kategori": "Thyroid",
+        "nilai": 1.8
+      }
+    ]
+  },
+  "wearable": {
+    "hr": 85,
+    "stress": 55,
+    "sleep_minutes": 360,
+    "baseline_hr_min": 60,
+    "baseline_hr_max": 80,
+    "baseline_stress_min": 20,
+    "baseline_stress_max": 50,
+    "baseline_sleep_min": 420,
+    "baseline_sleep_max": 540
+  },
+  "is_lab_day": true
+}
+
+### 7) AI Assessment - Normal (Non Lab Day)
+POST {{baseUrl}}/assess
+Content-Type: application/json
+
+{
+  "lab": {
+    "id_hasil_lab": 3,
+    "id_laporan_lab": 2,
+    "id_riwayat": 2,
+    "nilai_hasil": 1.5,
+    "rujukan_min": 0.4,
+    "rujukan_max": 4.0,
+    "parameters": [
+      {
+        "nama_parameter": "FT3",
+        "satuan": "pmol/L",
+        "kategori": "Thyroid",
+        "nilai": 3.5,
+        "rujukan_min": 3.5,
+        "rujukan_max": 6.0
+      },
+      {
+        "nama_parameter": "FT4",
+        "satuan": "pmol/L",
+        "kategori": "Thyroid",
+        "nilai": 10.0,
+        "rujukan_min": 10.0,
+        "rujukan_max": 24.0
+      },
+      {
+        "nama_parameter": "TSH",
+        "satuan": "mIU/L",
+        "kategori": "Thyroid",
+        "nilai": 1.5,
+        "rujukan_min": 0.4,
+        "rujukan_max": 4.0
+      }
+    ]
+  },
+  "wearable": {
+    "hr": 72,
+    "stress": 35,
+    "sleep_minutes": 480,
+    "baseline_hr_min": 60,
+    "baseline_hr_max": 80,
+    "baseline_stress_min": 20,
+    "baseline_stress_max": 50,
+    "baseline_sleep_min": 420,
+    "baseline_sleep_max": 540
+  },
+  "is_lab_day": false
+}
+
+### 8) Get Hasil Lab by ID
+GET {{baseUrl}}/hasil-lab/1
+Accept: application/json
+
+### 8b) Get Hasil Lab by Laporan Lab ID (returns one item per parameter)
+GET {{baseUrl}}/hasil-lab/laporan/1
+Accept: application/json
+
+### Example Response
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "status_code": 200,
+  "message": "Daftar hasil lab dari laporan",
+  "data": [
+    {
+      "id_hasil_lab": 5,
+      "id_laporan_lab": 1,
+      "id_parameter": 1,
+      "id_riwayat": 1,
+      "nilai_hasil": 4.5,
+      "rujukan_min": 3.5,
+      "rujukan_max": 6.0
+    },
+    {
+      "id_hasil_lab": 6,
+      "id_laporan_lab": 1,
+      "id_parameter": 2,
+      "id_riwayat": 1,
+      "nilai_hasil": 16.0,
+      "rujukan_min": 10.0,
+      "rujukan_max": 24.0
+    },
+    {
+      "id_hasil_lab": 7,
+      "id_laporan_lab": 1,
+      "id_parameter": 3,
+      "id_riwayat": 1,
+      "nilai_hasil": 0.3,
+      "rujukan_min": 0.4,
+      "rujukan_max": 4.0
+    }
+  ]
+}
+
+### 8c) Get Hasil Lab by Riwayat ID and Date (returns items for that date)
+GET {{baseUrl}}/hasil-lab/riwayat/1/date/2026-05-02
+Accept: application/json
+
+### Example Response
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "status_code": 200,
+  "message": "Daftar hasil lab dari riwayat dan tanggal",
+  "data": [
+    {
+      "id_hasil_lab": 5,
+      "id_laporan_lab": 1,
+      "id_parameter": 1,
+      "id_riwayat": 1,
+      "nilai_hasil": 4.5,
+      "rujukan_min": 3.5,
+      "rujukan_max": 6.0
+    },
+    {
+      "id_hasil_lab": 6,
+      "id_laporan_lab": 1,
+      "id_parameter": 2,
+      "id_riwayat": 1,
+      "nilai_hasil": 16.0,
+      "rujukan_min": 10.0,
+      "rujukan_max": 24.0
+    },
+    {
+      "id_hasil_lab": 7,
+      "id_laporan_lab": 1,
+      "id_parameter": 3,
+      "id_riwayat": 1,
+      "nilai_hasil": 0.3,
+      "rujukan_min": 0.4,
+      "rujukan_max": 4.0
+    }
+  ]
+}
+
+### 9) Read AI results
+GET {{baseUrl}}/hasil-ai
+Accept: application/json
+
+#################################
+# ===== OBAT API TESTS (PORT 8080) =====
+#################################
+
+### 10) Create Obat (Medication)
+POST {{baseUrl8080}}/obat
+Content-Type: application/json
+
+{
+  "id_user": 1,
+  "nama_obat": "Propylthiouracil (PTU)",
+  "dosis": "100 mg",
+  "frekuensi": "3x Sehari",
+  "tanggal_mulai": "2026-05-11",
+  "status_aktif": true
+}
+
+### 11) Create Obat 2 (Another medication)
+POST {{baseUrl8080}}/obat
+Content-Type: application/json
+
+{
+  "id_user": 1,
+  "nama_obat": "Levothyroxine",
+  "dosis": "75 mcg",
+  "frekuensi": "1x Sehari",
+  "tanggal_mulai": "2026-05-11",
+  "status_aktif": true
+}
+
+### 12) Get All Obat
+GET {{baseUrl8080}}/obat
+Accept: application/json
+
+### 13) Get Obat by ID
+GET {{baseUrl8080}}/obat/1
+Accept: application/json
+
+### 14) Get Obat by User ID (WITH NESTED JADWAL - IMPORTANT!)
+GET {{baseUrl8080}}/obat/user/1
+Accept: application/json
+
+### 15) Update Obat
+PUT {{baseUrl8080}}/obat/1
+Content-Type: application/json
+
+{
+  "nama_obat": "Propylthiouracil (PTU) - Updated",
+  "dosis": "150 mg",
+  "frekuensi": "3x Sehari",
+  "status_aktif": true
+}
+
+#################################
+# ===== JADWAL OBAT API TESTS =====
+#################################
+
+### 16) Create Jadwal Obat - First Time (07:00)
+POST {{baseUrl8080}}/jadwal-obat
+Content-Type: application/json
+
+{
+  "id_obat": 1,
+  "waktu_minum_obat": "07:00:00"
+}
+
+### 17) Create Jadwal Obat - Second Time (14:00)
+POST {{baseUrl8080}}/jadwal-obat
+Content-Type: application/json
+
+{
+  "id_obat": 1,
+  "waktu_minum_obat": "14:00:00"
+}
+
+### 18) Create Jadwal Obat - Third Time (21:00)
+POST {{baseUrl8080}}/jadwal-obat
+Content-Type: application/json
+
+{
+  "id_obat": 1,
+  "waktu_minum_obat": "21:00:00"
+}
+
+### 19) Create Jadwal Obat for Obat 2 - Morning (08:00)
+POST {{baseUrl8080}}/jadwal-obat
+Content-Type: application/json
+
+{
+  "id_obat": 2,
+  "waktu_minum_obat": "08:00:00"
+}
+
+### 20) Get All Jadwal Obat
+GET {{baseUrl8080}}/jadwal-obat
+Accept: application/json
+
+### 21) Get Jadwal Obat by ID
+GET {{baseUrl8080}}/jadwal-obat/1
+Accept: application/json
+
+### 22) Get Jadwal Obat by Obat ID (should return 3 entries for obat_id=1)
+GET {{baseUrl8080}}/jadwal-obat/obat/1
+Accept: application/json
+
+### 23) Update Jadwal Obat Time
+PUT {{baseUrl8080}}/jadwal-obat/1
+Content-Type: application/json
+
+{
+  "waktu_minum_obat": "06:30:00"
+}
+
+### 24) Delete Jadwal Obat
+DELETE {{baseUrl8080}}/jadwal-obat/1
+Accept: application/json
+
+### 25) Delete Obat (CASCADE - should delete associated jadwal)
+DELETE {{baseUrl8080}}/obat/1
+Accept: application/json
+
+#################################
+# ===== DEBUG TEST FOR NESTED JADWAL =====
+#################################
+
+### 26) DEBUG: Get Obat by User ID after creating multiple jadwal
+GET {{baseUrl8080}}/obat/user/1
+Accept: application/json

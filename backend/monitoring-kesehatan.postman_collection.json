@@ -1,0 +1,1345 @@
+﻿{
+    "info": {
+        "name": "GdSelf API - Graves Disease Monitoring",
+        "description": "Collection lengkap untuk GdSelf Backend. Flow: Register → Riwayat → Laporan Lab → Hasil Lab → Assess (Mesin 1/3) | Wearable → Hasil AI Harian (Mesin 2)",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "https://engaged-kick-utilize.ngrok-free.dev/api",
+            "type": "string"
+        },
+        {
+            "key": "auth_token",
+            "value": "",
+            "type": "string"
+        }
+    ],
+    "item": [
+        {
+            "name": "1. Authentication & OTP Flow",
+            "item": [
+                {
+                    "name": "Send OTP",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"rokiv35@gmail.com\",\n  \"type\": \"register\"\n}"
+                        },
+                        "url": "{{base_url}}/auth/send-otp"
+                    }
+                },
+                {
+                    "name": "Verify OTP",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"rokiv35@gmail.com\",\n  \"code\": \"123456\",\n  \"type\": \"register\"\n}"
+                        },
+                        "url": "{{base_url}}/auth/verify-otp"
+                    }
+                },
+                {
+                    "name": "Register User",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"nama\": \"Vlen Jeremy Simanjuntak\",\n  \"email\": \"rokiv35@gmail.com\",\n  \"password\": \"password123\",\n  \"jenis_kelamin\": \"P\",\n  \"tgl_lahir\": \"1995-03-20\",\n  \"tgl_terdiagnosis\": \"2023-06-01\"\n}"
+                        },
+                        "url": "{{base_url}}/auth/register"
+                    }
+                },
+                {
+                    "name": "Login User",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"rokiv35@gmail.com\",\n  \"password\": \"password123\"\n}"
+                        },
+                        "url": "{{base_url}}/auth/login"
+                    }
+                },
+                {
+                    "name": "Google Login (Legacy)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id_token\": \"google-id-token-here\"\n}"
+                        },
+                        "url": "{{base_url}}/auth/google"
+                    }
+                },
+                {
+                    "name": "Google Check",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id_token\": \"google-id-token-here\"\n}"
+                        },
+                        "url": "{{base_url}}/auth/google/check"
+                    }
+                },
+                {
+                    "name": "Google Complete",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id_token\": \"google-id-token-here\",\n  \"password\": \"password123\",\n  \"jenis_kelamin\": \"P\",\n  \"tgl_lahir\": \"1995-03-20\",\n  \"tgl_terdiagnosis\": \"2023-06-01\"\n}"
+                        },
+                        "url": "{{base_url}}/auth/google/complete"
+                    }
+                },
+                {
+                    "name": "Forgot Password",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"rokiv35@gmail.com\"\n}"
+                        },
+                        "url": "{{base_url}}/auth/forgot-password"
+                    }
+                },
+                {
+                    "name": "Reset Password",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"rokiv35@gmail.com\",\n  \"code\": \"123456\",\n  \"new_password\": \"newpassword123\"\n}"
+                        },
+                        "url": "{{base_url}}/auth/reset-password"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "2. User Management",
+            "item": [
+                {
+                    "name": "Create User Alternative",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"nama\": \"Vlen Jeremy Simanjuntak\",\n  \"email\": \"rokiv35@gmail.com\",\n  \"password\": \"password123\",\n  \"jenis_kelamin\": \"P\"\n}"
+                        },
+                        "url": "{{base_url}}/users"
+                    }
+                },
+                {
+                    "name": "Get All Users",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/users"
+                    }
+                },
+                {
+                    "name": "Get User by ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/users/1"
+                    }
+                },
+                {
+                    "name": "Update User",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"nama\": \"Vlen Jeremy Simanjuntak Updated\",\n  \"jenis_kelamin\": \"P\",\n  \"tgl_lahir\": \"1995-03-20\",\n  \"tgl_terdiagnosis\": \"2023-06-01\"\n}"
+                        },
+                        "url": "{{base_url}}/users/1"
+                    }
+                },
+                {
+                    "name": "Upload User Avatar",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "avatar",
+                                    "type": "file",
+                                    "description": "Pilih file gambar (.png / .jpg)"
+                                }
+                            ]
+                        },
+                        "url": "{{base_url}}/users/1/avatar"
+                    }
+                },
+                {
+                    "name": "Delete User",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/users/1"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "3. Riwayat (Session Anchor)",
+            "item": [
+                {
+                    "name": "Create Riwayat",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id_user\": 1,\n  \"tanggal\": \"2024-01-15\"\n}"
+                        },
+                        "url": "{{base_url}}/riwayat"
+                    }
+                },
+                {
+                    "name": "Get All Riwayat",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/riwayat"
+                    }
+                },
+                {
+                    "name": "Get Riwayat by ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/riwayat/1"
+                    }
+                },
+                {
+                    "name": "Get Riwayat by User ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/riwayat/user/1"
+                    }
+                },
+                {
+                    "name": "Update Riwayat",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"tanggal\": \"2024-01-20\"\n}"
+                        },
+                        "url": "{{base_url}}/riwayat/1"
+                    }
+                },
+                {
+                    "name": "Delete Riwayat",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/riwayat/1"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "4. Wearable Endpoints",
+            "item": [
+                {
+                    "name": "Create Wearable Data",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id_user\": 1,\n  \"id_riwayat\": 1,\n  \"tgl_data\": \"2024-01-15\",\n  \"heart_rate_hr\": 105,\n  \"sleep_duration\": 300\n}"
+                        },
+                        "url": "{{base_url}}/wearable"
+                    }
+                },
+                {
+                    "name": "Get All Wearable",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/wearable"
+                    }
+                },
+                {
+                    "name": "Get Wearable by ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/wearable/1"
+                    }
+                },
+                {
+                    "name": "Get Wearable by Riwayat ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/wearable/riwayat/1"
+                    }
+                },
+                {
+                    "name": "Get Wearable by User ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/wearable/user/1"
+                    }
+                },
+                {
+                    "name": "Update Wearable",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"heart_rate_hr\": 88,\n  \"sleep_duration\": 450\n}"
+                        },
+                        "url": "{{base_url}}/wearable/1"
+                    }
+                },
+                {
+                    "name": "Delete Wearable",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/wearable/1"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "5. Laporan Lab",
+            "item": [
+                {
+                    "name": "Create Laporan Lab",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id_user\": 1,\n  \"nama_lab\": \"Prodia Pematang Siantar\",\n  \"tgl_periksa\": \"2024-01-15\"\n}"
+                        },
+                        "url": "{{base_url}}/laporan-lab"
+                    }
+                },
+                {
+                    "name": "Get All Laporan Lab",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/laporan-lab"
+                    }
+                },
+                {
+                    "name": "Get Laporan Lab by ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/laporan-lab/1"
+                    }
+                },
+                {
+                    "name": "Get Laporan Lab by User ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/laporan-lab/user/1"
+                    }
+                },
+                {
+                    "name": "Update Laporan Lab",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"nama_lab\": \"Kimia Farma\",\n  \"tgl_periksa\": \"2024-01-20\"\n}"
+                        },
+                        "url": "{{base_url}}/laporan-lab/1"
+                    }
+                },
+                {
+                    "name": "Delete Laporan Lab",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/laporan-lab/1"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "6. Hasil Lab Endpoints",
+            "item": [
+                {
+                    "name": "Create Hasil Lab",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id_laporan_lab\": 1,\n  \"parameters\": [\n    {\n      \"nama_parameter\": \"TSH\",\n      \"nilai_hasil\": 0.01,\n      \"nilai_batas_bawah\": 0.4,\n      \"nilai_batas_atas\": 4.0,\n      \"satuan\": \"mIU/L\",\n      \"kategori\": \"Tiroid\"\n    },\n    {\n      \"nama_parameter\": \"TRAb\",\n      \"nilai_hasil\": 2.5,\n      \"nilai_batas_bawah\": 1.75,\n      \"nilai_batas_atas\": 1.75,\n      \"satuan\": \"IU/L\",\n      \"kategori\": \"Tiroid\"\n    }\n  ]\n}"
+                        },
+                        "url": "{{base_url}}/hasil-lab"
+                    }
+                },
+                {
+                    "name": "Get All Hasil Lab",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/hasil-lab"
+                    }
+                },
+                {
+                    "name": "Get Hasil Lab by ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/hasil-lab/1"
+                    }
+                },
+                {
+                    "name": "Get Hasil Lab by Laporan ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/hasil-lab/laporan/1"
+                    }
+                },
+                {
+                    "name": "Get Hasil Lab by Riwayat ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/hasil-lab/riwayat/1"
+                    }
+                },
+                {
+                    "name": "Get Hasil Lab by User and Date",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/hasil-lab/user/1/date/2024-01-15"
+                    }
+                },
+                {
+                    "name": "Get Hasil Lab by Riwayat and Date",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/hasil-lab/riwayat/1/date/2024-01-15"
+                    }
+                },
+                {
+                    "name": "Update Hasil Lab",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"nilai_hasil\": 0.02,\n  \"nilai_batas_bawah\": 0.4,\n  \"nilai_batas_atas\": 4.0\n}"
+                        },
+                        "url": "{{base_url}}/hasil-lab/1"
+                    }
+                },
+                {
+                    "name": "Delete Hasil Lab",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/hasil-lab/1"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "7. Hasil AI & Assessment",
+            "item": [
+                {
+                    "name": "Process AI Assessment",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"is_lab_day\": true,\n  \"lab\": {\n    \"id_laporan_lab\": 1,\n    \"parameters\": [\n      { \"nama_parameter\": \"TSH\", \"nilai_hasil\": 0.01 }\n    ]\n  }\n}"
+                        },
+                        "url": "{{base_url}}/hasil-ai/assess"
+                    }
+                },
+                {
+                    "name": "Create Hasil AI Harian Manual",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id_wearable\": 1,\n  \"status_hr\": \"Tinggi\",\n  \"reminder_hr\": \"Heart rate tinggi\",\n  \"status_tidur\": \"Kurang\",\n  \"reminder_tidur\": \"Tidur kurang\"\n}"
+                        },
+                        "url": "{{base_url}}/hasil-ai/harian"
+                    }
+                },
+                {
+                    "name": "Get AI Harian by ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/hasil-ai/harian/1"
+                    }
+                },
+                {
+                    "name": "Get AI Harian by Wearable ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/hasil-ai/harian/wearable/1"
+                    }
+                },
+                {
+                    "name": "Get AI Harian by Riwayat ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/hasil-ai/harian/riwayat/1"
+                    }
+                },
+                {
+                    "name": "Get AI Lab by ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/hasil-ai/lab/1"
+                    }
+                },
+                {
+                    "name": "Get AI Lab by Laporan Lab ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/hasil-ai/lab/laporan/1"
+                    }
+                },
+                {
+                    "name": "Get AI Tren by ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/hasil-ai/tren/1"
+                    }
+                },
+                {
+                    "name": "Get AI Tren by Laporan Lab ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/hasil-ai/tren/laporan/1"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "8. Obat, Jadwal & Log Konsumsi",
+            "item": [
+                {
+                    "name": "Create Obat Data",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id_user\": 1,\n  \"nama_obat\": \"Methimazole\",\n  \"tipe_obat\": \"Anti-tiroid\",\n  \"dosis\": \"10mg\",\n  \"frekuensi\": \"2x Sehari\",\n  \"tgl_mulai\": \"2026-07-22\",\n  \"tgl_selesai\": \"2026-10-22\"\n}"
+                        },
+                        "url": "{{base_url}}/obat"
+                    }
+                },
+                {
+                    "name": "Get All Obat",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/obat"
+                    }
+                },
+                {
+                    "name": "Get Obat by ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/obat/1"
+                    }
+                },
+                {
+                    "name": "Get Obat by User ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/obat/user/1"
+                    }
+                },
+                {
+                    "name": "Get Kepatuhan Obat (Rule-Based AI)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/kepatuhan-obat/1"
+                    }
+                },
+                {
+                    "name": "Get Kepatuhan Obat (Legacy Alias)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/obat/1/kepatuhan"
+                    }
+                },
+                {
+                    "name": "Update Obat",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"nama_obat\": \"Methimazole\",\n  \"tipe_obat\": \"Anti-tiroid\",\n  \"dosis\": \"15mg\",\n  \"frekuensi\": \"2x Sehari\",\n  \"tgl_mulai\": \"2026-07-22\",\n  \"tgl_selesai\": \"2026-10-22\"\n}"
+                        },
+                        "url": "{{base_url}}/obat/1"
+                    }
+                },
+                {
+                    "name": "Delete Obat",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/obat/1"
+                    }
+                },
+                {
+                    "name": "Create Jadwal Obat",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id_obat\": 1,\n  \"hari\": \"Senin\",\n  \"waktu_minum_obat\": \"08:00:00\"\n}"
+                        },
+                        "url": "{{base_url}}/jadwal-obat"
+                    }
+                },
+                {
+                    "name": "Get All Jadwal Obat",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/jadwal-obat"
+                    }
+                },
+                {
+                    "name": "Get Jadwal by ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/jadwal-obat/1"
+                    }
+                },
+                {
+                    "name": "Get Jadwal by Obat ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/jadwal-obat/obat/1"
+                    }
+                },
+                {
+                    "name": "Update Jadwal Obat",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"hari\": \"Selasa\"\n}"
+                        },
+                        "url": "{{base_url}}/jadwal-obat/1"
+                    }
+                },
+                {
+                    "name": "Delete Jadwal Obat",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/jadwal-obat/1"
+                    }
+                },
+                {
+                    "name": "Catat Konsumsi Obat",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id_jadwal_obat\": 1,\n  \"status\": \"Diminum\"\n}"
+                        },
+                        "url": "{{base_url}}/log-konsumsi"
+                    }
+                },
+                {
+                    "name": "Get Log by Jadwal ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/log-konsumsi/jadwal/1"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "9. USG Tiroid Endpoints",
+            "item": [
+                {
+                    "name": "Create USG Tiroid",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id_riwayat\": 1,\n  \"nama_rs\": \"RS Efarina\",\n  \"tgl_pemeriksaan\": \"2024-01-15\",\n  \"foto_path\": \"/uploads/usg/001.jpg\",\n  \"catatan_dokter\": \"Graves active\"\n}"
+                        },
+                        "url": "{{base_url}}/usg-tiroid"
+                    }
+                },
+                {
+                    "name": "Get All USG Tiroid",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/usg-tiroid"
+                    }
+                },
+                {
+                    "name": "Get USG Tiroid by ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/usg-tiroid/1"
+                    }
+                },
+                {
+                    "name": "Get USG Tiroid by Riwayat ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/usg-tiroid/riwayat/1"
+                    }
+                },
+                {
+                    "name": "Get USG Tiroid by User ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/usg-tiroid/user/1"
+                    }
+                },
+                {
+                    "name": "Update USG Tiroid",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"nama_rs\": \"RS Efarina Updated\"\n}"
+                        },
+                        "url": "{{base_url}}/usg-tiroid/1"
+                    }
+                },
+                {
+                    "name": "Delete USG Tiroid",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/usg-tiroid/1"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "10. Lab (Legacy/Assessment)",
+            "item": [
+                {
+                    "name": "Create Legacy Lab Result",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id_riwayat\": 1,\n  \"parameters\": []\n}"
+                        },
+                        "url": "{{base_url}}/lab"
+                    }
+                },
+                {
+                    "name": "Get All Legacy Labs",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/lab"
+                    }
+                },
+                {
+                    "name": "Get Legacy Lab by User ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/lab/user/1"
+                    }
+                },
+                {
+                    "name": "Trigger Legacy Assess",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"is_lab_day\": true\n}"
+                        },
+                        "url": "{{base_url}}/assess"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "11. Aggregated Monitoring",
+            "item": [
+                {
+                    "name": "Get Aggregated Monitoring",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/monitoring/user/1"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "🔧 Debug & Health Check",
+            "item": [
+                {
+                    "name": "Ping Server",
+                    "request": {
+                        "method": "GET",
+                        "url": "https://gdself-production.up.railway.app/ping"
+                    }
+                },
+                {
+                    "name": "Test JSON Payload",
+                    "request": {
+                        "method": "GET",
+                        "url": "https://gdself-production.up.railway.app/test-json"
+                    }
+                }
+            ]
+        }
+    ]
+}
