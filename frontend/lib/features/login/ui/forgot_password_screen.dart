@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../utils/design_system.dart';
 import '../../../../../services/api_service.dart';
 import 'otp_verify_screen.dart';
+import '../../../core/widgets/app_status_dialog.dart';
+
 
 class ForgotPasswordScreen extends ConsumerStatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -12,8 +14,7 @@ class ForgotPasswordScreen extends ConsumerStatefulWidget {
       _ForgotPasswordScreenState();
 }
 
-class _ForgotPasswordScreenState
-    extends ConsumerState<ForgotPasswordScreen> {
+class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   // Step 1: input email
   // Step 2: OTP (delegasi ke OTPVerifyScreen)
   // Step 3: input password baru
@@ -27,7 +28,9 @@ class _ForgotPasswordScreenState
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
   String? _errorMessage;
+
   String? _verifiedEmail; // email yang sudah diverifikasi OTP-nya
+  String? _verifiedCode;  // ✅ TAMBAHAN: menyimpan kode OTP yang sudah divalidasi
 
   @override
   void dispose() {
@@ -56,8 +59,8 @@ class _ForgotPasswordScreenState
 
       if (!mounted) return;
 
-      // Buka OTP screen, tunggu hasilnya
-      final verified = await Navigator.push<bool>(
+      // ✅ PERBAIKAN: Mengambil Map dari Navigator.push
+      final result = await Navigator.push<Map<String, dynamic>>(
         context,
         MaterialPageRoute(
           builder: (_) => OTPVerifyScreen(
@@ -69,9 +72,11 @@ class _ForgotPasswordScreenState
         ),
       );
 
-      if (verified == true && mounted) {
+      // ✅ PERBAIKAN: Ekstrak status 'verified' dan 'code'
+      if (result != null && result['verified'] == true && mounted) {
         setState(() {
           _verifiedEmail = email;
+          _verifiedCode = result['code'] as String; // Simpan kode OTP untuk dikirim saat reset password
           _step = 3;
           _isLoading = false;
         });
@@ -82,7 +87,7 @@ class _ForgotPasswordScreenState
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = e.toString();
+          _errorMessage = e.toString().replaceAll('Exception: ', '');
         });
       }
     }
@@ -102,49 +107,46 @@ class _ForgotPasswordScreenState
       return;
     }
 
+    if (_verifiedEmail == null || _verifiedCode == null) {
+      setState(() => _errorMessage = 'Sesi verifikasi tidak valid.');
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-      // OTP sudah diverifikasi di step 2, tapi backend reset password
-      // butuh verifikasi ulang OTP yang sama — kita perlu kirim code
-      // Solusi: simpan code dari OTPVerifyScreen, atau pakai endpoint
-      // yang tidak butuh code lagi karena sudah di-mark used.
-      // Untuk simplicity: kita kirim OTP baru tidak diperlukan —
-      // backend ResetPassword butuh code, jadi kita simpan code di state.
-      // Tapi OTPVerifyScreen sudah mark used. Solusinya: setelah verify,
-      // langsung reset tanpa code lagi (backend perlu adjustmen).
-      // Untuk saat ini: gunakan approach "verify + reset dalam satu flow"
-      // dengan menyimpan code di step OTP.
-      // Lihat catatan di bawah.
-
-      // Alternatif yang lebih simple: backend check apakah ada OTP verified
-      // dalam 10 menit terakhir untuk email ini.
-      // Untuk MVP, kita gunakan pendekatan: reset password langsung setelah
-      // OTP diverifikasi dengan mengirim request tanpa code lagi.
-      // Backend perlu endpoint: POST /auth/reset-password-verified
-      // yang hanya butuh email + new_password (karena OTP sudah diverifikasi).
-
-      // Sementara ini: kita pakai workaround — kirim dummy code "VERIFIED"
-      // dan backend cek flag verified di DB.
-      // Atau: simpan kode OTP dari screen sebelumnya.
-      // Solusi terbaik: pass code ke screen ini.
-      // Untuk sekarang implementasi sederhana: backend accept token verified.
-
-      // CATATAN: lihat di bawah untuk solusi yang benar.
-      // Untuk demo: kita anggap backend sudah handle ini.
+      await ApiService().resetPassword(
+        email: _verifiedEmail!,
+        code: _verifiedCode!,
+        newPassword: password,
+      );
 
       if (mounted) {
-        _showSuccessDialog();
+        // ✅ Ganti dialog manual dengan AppStatusDialog
+        AppStatusDialog.show(
+          context,
+          isSuccess: true,
+          title: "Berhasil!",
+          message: "Password berhasil diubah. Silakan masuk dengan password baru.",
+          onOk: () {
+            Navigator.of(context).popUntil((route) => route.isFirst);
+            Navigator.pushReplacementNamed(context, '/login');
+          },
+        );
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _errorMessage = e.toString();
-        });
+        setState(() => _isLoading = false);
+        AppStatusDialog.show(
+          context,
+          isSuccess: false,
+          title: "Gagal",
+          message: e.toString().replaceAll('Exception: ', ''),
+          onOk: () => Navigator.pop(context),
+        );
       }
     }
   }

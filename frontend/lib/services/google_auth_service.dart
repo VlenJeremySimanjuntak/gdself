@@ -9,6 +9,10 @@ class GoogleAuthService {
 
   Future<String?> signIn() async {
     try {
+      // ✅ Paksa sign out dulu, supaya popup pilih akun Google SELALU muncul
+      //    (mencegah otomatis pakai akun sebelumnya yang belum selesai daftar)
+      await _googleSignIn.signOut();
+
       final account = await _googleSignIn.signIn();
       if (account == null) return null;
 

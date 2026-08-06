@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/cupertino.dart';
 
 import '../../../models/obat_model.dart';
 import '../../home/providers/user_provider.dart';
 import '../../home/providers/home_provider.dart';
 import '../providers/obat_provider.dart';
-import '../../../services/notification_service.dart';
+import '../../../core/widgets/app_status_dialog.dart';
 
 class EditObatScreen extends StatelessWidget {
   final JadwalObatModel jadwal;
@@ -43,6 +43,7 @@ class ObatScheduleEditForm extends ConsumerStatefulWidget {
 class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
   final PageController _pageController = PageController();
   int _currentStep = 0;
+  bool _isSavingLocal = false;
 
   final TextEditingController _namaObatController = TextEditingController();
   final TextEditingController _dosisController = TextEditingController();
@@ -66,13 +67,11 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
     _DayOption('M', 'MIN'),
   ];
 
-  // State Step 1
   late DateTime _tanggalMulai;
-  DateTime? _tanggalSelesai;
+  late DateTime _tanggalSelesai;
   String _tipeObat = 'Tablet';
   int _frekuensi = 1;
 
-  // State Step 2
   late List<bool> _selectedDays;
   late List<TimeOfDay?> _times;
 
@@ -88,7 +87,6 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
     final obat = widget.jadwal.obat;
     _namaObatController.text = obat.namaObat;
 
-    // Hilangkan teks 'mg' jika dari backend sudah tergabung
     String dosisAsli = obat.dosis ?? '';
     _dosisController.text = dosisAsli.replaceAll(RegExp(r'[a-zA-Z\s]'), '');
 
@@ -99,9 +97,8 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
     }
 
     _tanggalMulai = obat.tglMulai ?? DateTime.now();
-    _tanggalSelesai = obat.tglSelesai;
+    _tanggalSelesai = obat.tglSelesai ?? _tanggalMulai.add(const Duration(days: 30));
 
-    // Tunggu build pertama selesai untuk mengambil state dari homeProvider
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final semuaJadwal = ref.read(homeProvider).jadwalObat.where((j) => j.idObat == obat.idObat).toList();
 
@@ -123,14 +120,12 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
         }
       }
 
-      // Checklist Hari
       for (int i = 0; i < _days.length; i++) {
         if (loadedDays.contains(_days[i].longLabel) || loadedDays.any((d) => d.contains(_days[i].longLabel))) {
           _selectedDays[i] = true;
         }
       }
 
-      // Setup Waktu & Frekuensi
       final timesList = loadedTimes.toList()..sort();
       _times = timesList.map((t) {
         final parts = t.split(':');
@@ -148,12 +143,8 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
         _frekuensi = _times.isEmpty ? 1 : _times.length;
       }
 
-      while (_times.length < _frekuensi) {
-        _times.add(null);
-      }
-      if (_times.length > _frekuensi) {
-        _times = _times.sublist(0, _frekuensi);
-      }
+      while (_times.length < _frekuensi) _times.add(null);
+      if (_times.length > _frekuensi) _times = _times.sublist(0, _frekuensi);
 
       setState(() {});
     });
@@ -186,23 +177,14 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
     }
   }
 
-  bool _isDateOverlapping(DateTime startA, DateTime? endA, DateTime startB, DateTime? endB) {
-    final aStart = DateTime(startA.year, startA.month, startA.day);
-    final aEnd = endA != null ? DateTime(endA.year, endA.month, endA.day) : null;
-    final bStart = DateTime(startB.year, startB.month, startB.day);
-    final bEnd = endB != null ? DateTime(endB.year, endB.month, endB.day) : null;
-
-    bool aStartBeforeOrEqBEnd = bEnd == null || aStart.isBefore(bEnd) || aStart.isAtSameMomentAs(bEnd);
-    bool bStartBeforeOrEqAEnd = aEnd == null || bStart.isBefore(aEnd) || bStart.isAtSameMomentAs(aEnd);
-
-    return aStartBeforeOrEqBEnd && bStartBeforeOrEqAEnd;
-  }
-
   void _nextStep() {
     if (_namaObatController.text.trim().isEmpty) return _showMessage('Nama obat belum diisi');
     if (_dosisController.text.trim().isEmpty) return _showMessage('Dosis belum diisi');
-    if (_tanggalSelesai != null && _tanggalSelesai!.isBefore(_tanggalMulai)) {
-      return _showMessage('Tanggal selesai tidak boleh mendahului tanggal mulai');
+
+    final mulai = DateTime(_tanggalMulai.year, _tanggalMulai.month, _tanggalMulai.day);
+    final selesai = DateTime(_tanggalSelesai.year, _tanggalSelesai.month, _tanggalSelesai.day);
+    if (selesai.isBefore(mulai)) {
+      return _showMessage('Tanggal selesai tidak boleh lebih awal dari tanggal mulai');
     }
 
     setState(() => _currentStep = 1);
@@ -233,10 +215,7 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
             }
           },
         ),
-        title: Text(
-          widget.title,
-          style: const TextStyle(color: themeBlue, fontWeight: FontWeight.bold, fontSize: 18),
-        ),
+        title: Text(widget.title, style: const TextStyle(color: themeBlue, fontWeight: FontWeight.bold, fontSize: 18)),
         centerTitle: false,
       ),
       body: Stack(
@@ -295,14 +274,13 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
                       context: context,
                       builder: (context) => _CustomCalendarDialog(
                         initialDate: _tanggalMulai,
-                        minDate: DateTime.now(), // ✅ CEGAH: Tidak bisa pilih tanggal sebelum hari ini
                       ),
                     );
                     if (picked != null) {
                       setState(() {
                         _tanggalMulai = picked;
-                        if (_tanggalSelesai != null && _tanggalSelesai!.isBefore(_tanggalMulai)) {
-                          _tanggalSelesai = null;
+                        if (_tanggalSelesai.isBefore(_tanggalMulai)) {
+                          _tanggalSelesai = _tanggalMulai;
                         }
                       });
                     }
@@ -313,16 +291,19 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
                 const SizedBox(height: 6),
                 _buildDatePickerField(
                   date: _tanggalSelesai,
-                  hint: "Opsional (Pilih Tanggal)",
                   onTap: () async {
                     final picked = await showDialog<DateTime>(
                       context: context,
                       builder: (context) => _CustomCalendarDialog(
-                        initialDate: _tanggalSelesai ?? _tanggalMulai,
-                        minDate: _tanggalMulai, // ✅ CEGAH: Tidak bisa pilih sebelum tanggal mulai
+                        initialDate: _tanggalSelesai,
+                        minDate: _tanggalMulai,
                       ),
                     );
-                    if (picked != null) setState(() => _tanggalSelesai = picked);
+                    if (picked != null) {
+                      setState(() {
+                        _tanggalSelesai = picked;
+                      });
+                    }
                   },
                 ),
               ],
@@ -456,8 +437,6 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
   }
 
   Widget _buildStep2() {
-    final obatState = ref.watch(obatProvider);
-
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       physics: const BouncingScrollPhysics(),
@@ -516,22 +495,21 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
           const SizedBox(height: 4),
           const Text('Pilih waktu konsumsi obat sesuai frekuensi harian.', style: TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
           const SizedBox(height: 16),
-
           ..._times.asMap().entries.map((entry) => _buildTimeSlotCard(entry.key, entry.value)),
-
           const SizedBox(height: 32),
           SizedBox(
             width: double.infinity,
             height: 56,
             child: ElevatedButton(
-              onPressed: obatState.isLoading ? null : _saveSchedule,
+              onPressed: _isSavingLocal ? null : _saveSchedule,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF006699),
+                disabledBackgroundColor: const Color(0xFF006699).withOpacity(0.6),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
                 elevation: 2,
               ),
-              child: obatState.isLoading
-                  ? const CircularProgressIndicator(color: Colors.white)
+              child: _isSavingLocal
+                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
                   : Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -548,7 +526,6 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
     );
   }
 
-  // ✅ PERBAIKAN BUG AUTOCOMPLETE: Merekam ketikan manual obat di luar daftar
   Widget _buildMedicineAutocomplete() {
     return Autocomplete<String>(
       optionsBuilder: (TextEditingValue textEditingValue) {
@@ -557,15 +534,13 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
       },
       onSelected: (selection) => _namaObatController.text = selection,
       fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
-        // Agar nama obat awal (saat baru masuk Edit Screen) otomatis terisi di UI
         if (_namaObatController.text.isNotEmpty && controller.text.isEmpty) {
           controller.text = _namaObatController.text;
         }
         return _InputField(
           controller: controller,
           focusNode: focusNode,
-          hintText: 'Misal: Paracetamol',
-          // Merekam setiap huruf yang diketik user
+          hintText: 'Masukkan nama obat',
           onChanged: (value) {
             _namaObatController.text = value;
           },
@@ -628,19 +603,12 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
 
   Widget _buildTimeSlotCard(int index, TimeOfDay? time) {
     final bool isFilled = time != null;
-
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          )
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Material(
         color: Colors.transparent,
@@ -662,7 +630,6 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
                 maxTime: maxTime,
               ),
             );
-
             if (picked != null) setState(() => _times[index] = picked);
           },
           child: Padding(
@@ -672,42 +639,24 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
                 Container(
                   width: 44,
                   height: 44,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFDDEBFA),
-                    shape: BoxShape.circle,
-                  ),
+                  decoration: const BoxDecoration(color: Color(0xFFDDEBFA), shape: BoxShape.circle),
                   child: const Icon(Icons.access_time_filled, color: Color(0xFF006699), size: 24),
                 ),
                 const SizedBox(width: 16),
-
                 if (!isFilled)
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Waktu',
-                          style: TextStyle(color: Color(0xFF1F2937), fontWeight: FontWeight.bold, fontSize: 16),
-                        ),
+                        const Text('Waktu', style: TextStyle(color: Color(0xFF1F2937), fontWeight: FontWeight.bold, fontSize: 16)),
                         const SizedBox(height: 4),
-                        Text(
-                          'Ketuk untuk mengatur',
-                          style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-                        ),
+                        Text('Ketuk untuk mengatur', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
                       ],
                     ),
                   )
                 else
                   Expanded(
-                    child: Text(
-                      '${_formatTime(time)} WIB',
-                      style: const TextStyle(
-                        color: Color(0xFF1F2937),
-                        fontWeight: FontWeight.w900,
-                        fontSize: 18,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
+                    child: Text('${_formatTime(time)} WIB', style: const TextStyle(color: Color(0xFF1F2937), fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: -0.5)),
                   ),
               ],
             ),
@@ -733,148 +682,83 @@ class _ObatScheduleEditFormState extends ConsumerState<ObatScheduleEditForm> {
     final dosisDenganSatuan = "${_dosisController.text.trim()} ${_getSatuanDosis()}";
 
     final semuaJadwal = ref.read(homeProvider).jadwalObat;
-
     bool isBentrok = false;
     for (var jdwl in semuaJadwal) {
       if (jdwl.idObat == widget.jadwal.idObat) continue;
-
       if (jdwl.obat.namaObat.toLowerCase() == namaObat.toLowerCase()) {
-        final startLama = jdwl.obat.tglMulai;
-        final endLama = jdwl.obat.tglSelesai;
-
-        if (startLama != null) {
-          if (_isDateOverlapping(_tanggalMulai, _tanggalSelesai, startLama, endLama)) {
-            isBentrok = true;
-            break;
-          }
-        }
+        isBentrok = true;
+        break;
       }
     }
 
     if (isBentrok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Gagal! Rentang tanggal bertabrakan dengan jadwal obat yang sama di riwayat/rekapan.'),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 4),
-        ),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal! Obat dengan nama yang sama sudah ada.'), backgroundColor: Colors.red));
       return;
     }
 
-    final formattedMulai = DateFormat('yyyy-MM-dd').format(_tanggalMulai);
-    final formattedSelesai = _tanggalSelesai != null ? DateFormat('yyyy-MM-dd').format(_tanggalSelesai!) : null;
-    final waktuKonsumsiList = _times.whereType<TimeOfDay>().map((time) => _formatTimeForApi(time)).toList();
-
+    // ✅ SAFETY CHECK: Memastikan idObat tidak 0 sebelum ditembak ke API
     final int idObatAsli = widget.jadwal.idObat ?? widget.jadwal.obat.idObat ?? 0;
 
-    // Call Edit API
+    if (idObatAsli == 0) {
+      _showMessage('Gagal: ID Master Obat (0) tidak valid. Mohon muat ulang halaman.');
+      return;
+    }
+
+    setState(() => _isSavingLocal = true);
+
+    final formattedMulai = DateFormat('yyyy-MM-dd').format(_tanggalMulai);
+    final formattedSelesai = DateFormat('yyyy-MM-dd').format(_tanggalSelesai);
+    final waktuKonsumsiList = _times.whereType<TimeOfDay>().map((time) => _formatTimeForApi(time)).toList();
+
     final success = await ref.read(obatProvider.notifier).editObatDenganJadwal(
-      idObat: idObatAsli,
+      idObat: idObatAsli, // Cek log backend Mas: apakah harusnya ini id_jadwal_obat?
       userId: user.idUser,
       namaObat: namaObat,
       dosis: dosisDenganSatuan,
+      tipeObat: _tipeObat,
       waktuKonsumsi: waktuKonsumsiList,
       tanggalMulai: formattedMulai,
       tanggalSelesai: formattedSelesai,
       hariKonsumsi: selectedDays,
     );
 
+    if (!mounted) return;
+    setState(() => _isSavingLocal = false);
+
     if (success) {
-      try {
-        await NotificationService().batalkanAlarmObat(
-          idObat: idObatAsli,
-          hariKonsumsi: ['SEN', 'SEL', 'RAB', 'KAM', 'JUM', 'SAB', 'MIN'],
-          jumlahWaktu: 10,
-        );
+      // ❌ Blok redundan Future() -> syncSemuaAlarm telah dihapus dengan aman.
 
-        await NotificationService().jadwalkanAlarmObat(
-          idObat: idObatAsli,
-          namaObat: namaObat,
-          hariKonsumsi: selectedDays,
-          waktuKonsumsi: _times.whereType<TimeOfDay>().toList(),
+      if (mounted) {
+        AppStatusDialog.show(
+          context,
+          isSuccess: true,
+          title: "Berhasil!",
+          message: "Data obat berhasil diperbarui.",
+          onOk: () {
+            Navigator.pop(context);
+            Navigator.pop(context, true);
+          },
         );
-
-      } catch (e) {
-        debugPrint("❌ [EDIT] Gagal menyinkronkan alarm: $e");
       }
-
-      await _showSuccessPopup();
     } else {
-      final errorMsg = ref.read(obatProvider).errorMessage;
-      _showMessage(errorMsg ?? 'Gagal memperbarui obat ke server');
+      if (mounted) {
+        final errorMsg = ref.read(obatProvider).errorMessage;
+        AppStatusDialog.show(
+            context,
+            isSuccess: false,
+            title: "Gagal!",
+            message: errorMsg ?? 'Terjadi kendala pada sistem kami. Silakan coba beberapa saat lagi.',
+            onOk: () => Navigator.pop(context)
+        );
+      }
     }
   }
 
-  Future<void> _showSuccessPopup() async {
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          backgroundColor: Colors.white,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 70,
-                  height: 70,
-                  decoration: const BoxDecoration(color: Color(0xFFE8F5E9), shape: BoxShape.circle),
-                  child: const Icon(Icons.check_circle, color: Color(0xFF00695C), size: 40),
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                    'Obat Berhasil\nDiperbarui',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Color(0xFF263238), fontWeight: FontWeight.w900, fontSize: 22, height: 1.2)
-                ),
-                const SizedBox(height: 32),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(dialogContext).pop();
-                      Navigator.of(context).pop(true);
-                    },
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF006699),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25))
-                    ),
-                    child: const Text('Selesai', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  String _formatTime(TimeOfDay time) {
-    final hour = time.hour.toString().padLeft(2, '0');
-    final min = time.minute.toString().padLeft(2, '0');
-    return '$hour:$min';
-  }
-
-  String _formatTimeForApi(TimeOfDay time) {
-    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}:00';
-  }
+  void _showMessage(String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  String _formatTime(TimeOfDay time) => '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+  String _formatTimeForApi(TimeOfDay time) => '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}:00';
 }
 
-// ============================================================================
-// WIDGET-WIDGET PENDUKUNG
-// ============================================================================
 class _DayOption {
   final String shortLabel;
   final String longLabel;
@@ -888,7 +772,6 @@ class _FieldLabel extends StatelessWidget {
   Widget build(BuildContext context) => Text(text, style: const TextStyle(color: Color(0xFF4B5563), fontSize: 12, fontWeight: FontWeight.w600));
 }
 
-// ✅ PERBAIKAN: Menambahkan onChanged agar ketikan manual terbaca
 class _InputField extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode? focusNode;
@@ -969,7 +852,6 @@ class _CustomTimePickerDialog extends StatefulWidget {
 class _CustomTimePickerDialogState extends State<_CustomTimePickerDialog> {
   late DateTime _selectedDateTime;
   bool _isInvalid = false;
-
   @override
   void initState() {
     super.initState();
@@ -977,7 +859,6 @@ class _CustomTimePickerDialogState extends State<_CustomTimePickerDialog> {
     _selectedDateTime = DateTime(now.year, now.month, now.day, widget.initialTime.hour, widget.initialTime.minute);
     _validateTime();
   }
-
   void _validateTime() {
     bool invalid = false;
     final selectedTime = TimeOfDay(hour: _selectedDateTime.hour, minute: _selectedDateTime.minute);
@@ -989,7 +870,6 @@ class _CustomTimePickerDialogState extends State<_CustomTimePickerDialog> {
     }
     setState(() => _isInvalid = invalid);
   }
-
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -1034,21 +914,9 @@ class _CustomTimePickerDialogState extends State<_CustomTimePickerDialog> {
             const SizedBox(height: 24),
             Row(
               children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24))),
-                    child: const Text("Batal", style: TextStyle(color: Color(0xFF4B5563), fontWeight: FontWeight.w600)),
-                  ),
-                ),
+                Expanded(child: OutlinedButton(onPressed: () => Navigator.pop(context), style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24))), child: const Text("Batal", style: TextStyle(color: Color(0xFF4B5563), fontWeight: FontWeight.w600)))),
                 const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _isInvalid ? null : () => Navigator.pop(context, TimeOfDay(hour: _selectedDateTime.hour, minute: _selectedDateTime.minute)),
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF006699), disabledBackgroundColor: Colors.grey.shade400, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24))),
-                    child: const Text("Simpan", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-                  ),
-                ),
+                Expanded(child: ElevatedButton(onPressed: _isInvalid ? null : () => Navigator.pop(context, TimeOfDay(hour: _selectedDateTime.hour, minute: _selectedDateTime.minute)), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF006699), disabledBackgroundColor: Colors.grey.shade400, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24))), child: const Text("Simpan", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)))),
               ],
             ),
           ],
@@ -1061,12 +929,7 @@ class _CustomTimePickerDialogState extends State<_CustomTimePickerDialog> {
 class _CustomCalendarDialog extends StatefulWidget {
   final DateTime initialDate;
   final DateTime? minDate;
-
-  const _CustomCalendarDialog({
-    required this.initialDate,
-    this.minDate,
-  });
-
+  const _CustomCalendarDialog({required this.initialDate, this.minDate});
   @override
   State<_CustomCalendarDialog> createState() => _CustomCalendarDialogState();
 }
@@ -1075,20 +938,17 @@ class _CustomCalendarDialogState extends State<_CustomCalendarDialog> {
   late DateTime _currentMonth;
   late DateTime _selectedDate;
   final List<String> _weekdays = ['MIN', 'SEN', 'SEL', 'RAB', 'KAM', 'JUM', 'SAB'];
-
   @override
   void initState() {
     super.initState();
     _selectedDate = widget.initialDate;
     _currentMonth = DateTime(widget.initialDate.year, widget.initialDate.month);
   }
-
   @override
   Widget build(BuildContext context) {
     int daysInMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 0).day;
     int firstWeekdayOffset = DateTime(_currentMonth.year, _currentMonth.month, 1).weekday;
     if (firstWeekdayOffset == 7) firstWeekdayOffset = 0;
-
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       backgroundColor: Colors.white,
@@ -1111,15 +971,9 @@ class _CustomCalendarDialogState extends State<_CustomCalendarDialog> {
                 Text(DateFormat('MMMM yyyy', 'id_ID').format(_currentMonth), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF1F2937))),
                 Row(
                   children: [
-                    InkWell(
-                        onTap: () => setState(() => _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1)),
-                        child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: const Color(0xFFE5E7EB))), child: const Icon(Icons.chevron_left, size: 18, color: Color(0xFF006699)))
-                    ),
+                    InkWell(onTap: () => setState(() => _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1)), child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: const Color(0xFFE5E7EB))), child: const Icon(Icons.chevron_left, size: 18, color: Color(0xFF006699)))),
                     const SizedBox(width: 8),
-                    InkWell(
-                        onTap: () => setState(() => _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1)),
-                        child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: const Color(0xFFE5E7EB))), child: const Icon(Icons.chevron_right, size: 18, color: Color(0xFF006699)))
-                    ),
+                    InkWell(onTap: () => setState(() => _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1)), child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: const Color(0xFFE5E7EB))), child: const Icon(Icons.chevron_right, size: 18, color: Color(0xFF006699)))),
                   ],
                 ),
               ],
@@ -1134,32 +988,20 @@ class _CustomCalendarDialogState extends State<_CustomCalendarDialog> {
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 7, mainAxisSpacing: 8, crossAxisSpacing: 8),
               itemBuilder: (context, index) {
                 if (index < firstWeekdayOffset) return const SizedBox.shrink();
-
                 int day = index - firstWeekdayOffset + 1;
                 DateTime thisDate = DateTime(_currentMonth.year, _currentMonth.month, day);
-
-                // ✅ CEK APAKAH TANGGAL INI DILARANG (PAST DATE)
                 bool isBeforeMinDate = false;
                 if (widget.minDate != null) {
                   DateTime minNormalized = DateTime(widget.minDate!.year, widget.minDate!.month, widget.minDate!.day);
                   isBeforeMinDate = thisDate.isBefore(minNormalized);
                 }
-
                 bool isSelected = _selectedDate.year == thisDate.year && _selectedDate.month == thisDate.month && _selectedDate.day == thisDate.day;
-
                 return InkWell(
                   onTap: isBeforeMinDate ? null : () => setState(() => _selectedDate = thisDate),
                   child: Container(
                     decoration: BoxDecoration(color: isSelected ? const Color(0xFF006699) : Colors.transparent, shape: BoxShape.circle),
                     alignment: Alignment.center,
-                    child: Text(
-                        day.toString(),
-                        style: TextStyle(
-                            color: isBeforeMinDate ? Colors.grey.shade300 : (isSelected ? Colors.white : const Color(0xFF4B5563)),
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                            fontSize: 14
-                        )
-                    ),
+                    child: Text(day.toString(), style: TextStyle(color: isBeforeMinDate ? Colors.grey.shade300 : (isSelected ? Colors.white : const Color(0xFF4B5563)), fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 14)),
                   ),
                 );
               },

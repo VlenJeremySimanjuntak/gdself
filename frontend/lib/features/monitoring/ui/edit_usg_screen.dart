@@ -3,12 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:dio/dio.dart'; // ✅ WAJIB
-
+import 'package:dio/dio.dart';
 import '../../../models/usg_tiroid_model.dart';
 import '../../../services/api_service.dart';
 import '../../home/providers/user_provider.dart';
 import '../providers/monitoring_provider.dart';
+import '../../../core/widgets/app_status_dialog.dart';
+import 'package:flutter/cupertino.dart';
 
 class EditUsgScreen extends ConsumerStatefulWidget {
   final UsgTiroidModel usg;
@@ -46,10 +47,10 @@ class _EditUsgScreenState extends ConsumerState<EditUsgScreen> {
   }
 
   // ------------------------------------------------------------
-  // ✅ METHOD UPDATE YANG DIPERBAIKI
+  // ✅ METHOD UPDATE (tidak diubah)
   // ------------------------------------------------------------
   Future<void> _update() async {
-    // Validasi
+    // 1. Validasi
     if (_rsController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Nama rumah sakit harus diisi')),
@@ -63,20 +64,19 @@ class _EditUsgScreenState extends ConsumerState<EditUsgScreen> {
       return;
     }
 
+    // 2. Set loading lokal (tidak merusak UI global)
     setState(() => _isLoading = true);
 
     try {
       final usgId = widget.usg.idUsg;
       if (usgId == null) throw Exception('ID USG tidak ditemukan');
 
-      // 🔥 BUAT FORM DATA (multipart/form-data) SELALU
       final formData = FormData.fromMap({
         'nama_rs': _rsController.text.trim(),
         'tgl_pemeriksaan': DateFormat('yyyy-MM-dd').format(_selectedDate!),
         'catatan_dokter': _catatanController.text.trim(),
       });
 
-      // Jika ada gambar baru, tambahkan ke FormData
       if (_imageFile != null && _isImageChanged) {
         formData.files.add(
           MapEntry(
@@ -86,35 +86,41 @@ class _EditUsgScreenState extends ConsumerState<EditUsgScreen> {
         );
       }
 
-      // Kirim PUT dengan FormData
       final response = await ApiService().sendRequest.put(
         '/usg-tiroid/$usgId',
         data: formData,
       );
 
-      if (response.statusCode == 200) {
-        // ✅ Refresh data setelah update
-        await _refreshData();
+      final bool success = response.statusCode == 200;
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Data USG berhasil diperbarui!'),
-              backgroundColor: Color(0xFF00695C),
-            ),
-          );
-          Navigator.pop(context, true);
-        }
-      } else {
-        throw Exception('Gagal memperbarui data (${response.statusCode})');
+      if (success) {
+        // Refresh background data
+        _refreshData();
+      }
+
+      // ✅ Tampilkan AppStatusDialog sebagai pengganti SnackBar
+      if (mounted) {
+        AppStatusDialog.show(
+          context,
+          isSuccess: success,
+          title: success ? "Berhasil!" : "Gagal!",
+          message: success
+              ? "Data USG berhasil diperbarui."
+              : "Terjadi kesalahan saat memperbarui data.",
+          onOk: () {
+            Navigator.pop(context); // Tutup dialog
+            if (success) Navigator.pop(context, true); // Tutup layar edit
+          },
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Terjadi kesalahan: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
+        AppStatusDialog.show(
+          context,
+          isSuccess: false,
+          title: "Kesalahan",
+          message: "Terjadi kesalahan: ${e.toString()}",
+          onOk: () => Navigator.pop(context),
         );
       }
     } finally {
@@ -123,12 +129,12 @@ class _EditUsgScreenState extends ConsumerState<EditUsgScreen> {
   }
 
   // ------------------------------------------------------------
-  // 🔄 Refresh data setelah update
+  // 🔄 Refresh data background (tanpa await agar tidak memblokir UI)
   // ------------------------------------------------------------
-  Future<void> _refreshData() async {
+  void _refreshData() {
     final userId = ref.read(userProvider).user?.idUser;
     if (userId != null) {
-      await ref.read(monitoringProvider.notifier).fetchMonitoringData(userId);
+      ref.read(monitoringProvider.notifier).fetchMonitoringData(userId);
     }
   }
 
@@ -157,64 +163,76 @@ class _EditUsgScreenState extends ConsumerState<EditUsgScreen> {
     if (picked != null) setState(() => _selectedDate = picked);
   }
 
-  // ✅ FUNGSI PICK IMAGE BARU (Pop-up Galeri / Kamera)
-  Future<void> _pickImage() async {
-    showModalBottomSheet(
+  // ✅ FUNGSI PICK IMAGE (Pop-up Galeri / Kamera)
+  void _pickImage() {
+    showCupertinoModalPopup(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (BuildContext context) {
-        return SafeArea(
-          child: Wrap(
-            children: <Widget>[
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: ListTile(
-                  leading: const Icon(Icons.photo_library_outlined, color: Color(0xFF00618A)),
-                  title: const Text('Pilih dari Galeri', style: TextStyle(fontWeight: FontWeight.w600)),
-                  onTap: () async {
-                    Navigator.of(context).pop();
-                    await _getImage(ImageSource.gallery);
-                  },
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8.0),
-                child: ListTile(
-                  leading: const Icon(Icons.camera_alt_outlined, color: Color(0xFF00618A)),
-                  title: const Text('Ambil dari Kamera', style: TextStyle(fontWeight: FontWeight.w600)),
-                  onTap: () async {
-                    Navigator.of(context).pop();
-                    await _getImage(ImageSource.camera);
-                  },
-                ),
-              ),
-            ],
+      builder: (BuildContext context) => CupertinoActionSheet(
+        title: Text(
+            'Unggah Foto USG',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: _textColor,
+            )
+        ),
+        message: const Text(
+            'Pilih sumber foto Anda',
+            style: TextStyle(fontSize: 12)
+        ),
+        actions: <CupertinoActionSheetAction>[
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(context);
+              _getImage(ImageSource.gallery);
+            },
+            child: Text(
+                'Pilih dari Galeri',
+                style: TextStyle(color: _primaryBlue, fontSize: 16)
+            ),
           ),
-        );
-      },
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(context);
+              _getImage(ImageSource.camera);
+            },
+            child: Text(
+                'Ambil Foto',
+                style: TextStyle(color: _primaryBlue, fontSize: 16)
+            ),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDestructiveAction: true,
+          onPressed: () => Navigator.pop(context),
+          child: const Text(
+              'Batal',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
+          ),
+        ),
+      ),
     );
   }
 
-  // ✅ FUNGSI EKSEKUSI KAMERA/GALERI UNTUK EDIT
   Future<void> _getImage(ImageSource source) async {
     final picker = ImagePicker();
     try {
       final pickedFile = await picker.pickImage(
         source: source,
-        imageQuality: 80, // Kompres gambar agar tidak membebani server
+        // ✅ imageQuality DIHAPUS agar detail foto USG (citra medis) tetap tajam 100%
       );
       if (pickedFile != null) {
         setState(() {
           _imageFile = File(pickedFile.path);
-          _isImageChanged = true; // ✅ Menandai bahwa foto diganti
+          _isImageChanged = true; // Menandai bahwa foto diganti
         });
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gagal mengambil gambar: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal mengambil gambar: $e')),
+        );
+      }
     }
   }
 
@@ -240,21 +258,22 @@ class _EditUsgScreenState extends ConsumerState<EditUsgScreen> {
     );
   }
 
-  String _getImageUrl(String path) {
-    if (path.isEmpty) return '';
-    String normalizedPath = path.replaceAll('\\', '/');
-    if (normalizedPath.startsWith('http')) return normalizedPath;
-    String baseUrl = ApiService().sendRequest.options.baseUrl;
-    if (baseUrl.endsWith('/api')) baseUrl = baseUrl.substring(0, baseUrl.length - 4);
-    else if (baseUrl.endsWith('/api/')) baseUrl = baseUrl.substring(0, baseUrl.length - 5);
+  // 🔧 DIUBAH: URL foto sekarang mengarah ke endpoint ber-JWT (bukan path statis /uploads).
+  // Edit view = tampilkan ORIGINAL (full-res) via GET /api/usg-tiroid/:id/foto.
+  String _getFotoUrl() {
+    final usgId = widget.usg.idUsg;
+    final fotoPath = widget.usg.fotoPath;
+    if (usgId == null || fotoPath == null || fotoPath.isEmpty) return '';
+    String baseUrl = ApiService().sendRequest.options.baseUrl; // sudah termasuk ".../api"
     final cleanBase = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
-    final cleanPath = normalizedPath.startsWith('/') ? normalizedPath : '/$normalizedPath';
-    return '$cleanBase$cleanPath';
+    return '$cleanBase/usg-tiroid/$usgId/foto';
   }
 
   @override
   Widget build(BuildContext context) {
-    final existingImageUrl = widget.usg.fotoPath != null ? _getImageUrl(widget.usg.fotoPath!) : '';
+    // 🔧 DITAMBAH: watch userProvider untuk header auth (JWT + ngrok-skip).
+    final authHeaders = ref.watch(userProvider).authHeaders;
+    final existingImageUrl = _getFotoUrl();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FBFA),
@@ -391,6 +410,8 @@ class _EditUsgScreenState extends ConsumerState<EditUsgScreen> {
                             borderRadius: BorderRadius.circular(12),
                             child: Image.network(
                               existingImageUrl,
+                              // 🔧 DITAMBAH: header JWT + ngrok-skip agar tidak 401.
+                              headers: authHeaders,
                               fit: BoxFit.cover,
                               loadingBuilder: (context, child, loadingProgress) {
                                 if (loadingProgress == null) return child;

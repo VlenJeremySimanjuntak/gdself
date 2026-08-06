@@ -1,12 +1,13 @@
-import 'dart:io'; // ✅ Wajib ditambahkan untuk menangani File
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:image_picker/image_picker.dart'; // ✅ Library untuk Galeri/Kamera
-
+import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // ✅ Import disk cache
 import '../../home/providers/user_provider.dart';
 import '../providers/profile_provider.dart';
+import '../../../core/widgets/app_status_dialog.dart';
 
 class EditProfileColors {
   static const Color background = Color(0xFFF8FAFF);
@@ -20,7 +21,7 @@ class EditProfileScreen extends ConsumerStatefulWidget {
   final String currentName;
   final String currentEmail;
   final String currentBirthday;
-  final String? currentDiagnosisDate; // ✅ Ditambahkan agar dinamis dari DB
+  final String? currentDiagnosisDate;
   final List<String> currentHealthFocus;
   final String? currentAvatarUrl;
 
@@ -29,7 +30,7 @@ class EditProfileScreen extends ConsumerStatefulWidget {
     required this.currentName,
     required this.currentEmail,
     required this.currentBirthday,
-    this.currentDiagnosisDate, // ✅ Ditambahkan ke constructor
+    this.currentDiagnosisDate,
     required this.currentHealthFocus,
     this.currentAvatarUrl,
   });
@@ -46,7 +47,6 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
   bool _isSaving = false;
 
-  // ✅ Variabel untuk menyimpan file foto sementara yang dipilih user
   File? _selectedImage;
   final ImagePicker _picker = ImagePicker();
 
@@ -67,7 +67,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       }
     }
 
-    // Parsing Tanggal Terdiagnosis secara dinamis
+    // Parsing Tanggal Terdiagnosis
     try {
       if (widget.currentDiagnosisDate != null) {
         _selectedDiagnosisDate = DateFormat('dd MMMM yyyy', 'id_ID').parse(widget.currentDiagnosisDate!);
@@ -83,12 +83,31 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     }
   }
 
-  // ✅ FUNGSI UNTUK MEMBUKA GALERI / KAMERA
+  // ✅ LANGKAH C: Precache/warm-up gambar saat layar pertama kali dibentuk
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final url = widget.currentAvatarUrl;
+    // Hanya precache jika URL ada dan user belum memilih gambar baru lokal
+    if (url != null && url.isNotEmpty && _selectedImage == null) {
+      final headers = ref.read(userProvider).authHeaders;
+      final key = ref.read(userProvider).avatarCacheKey;
+      precacheImage(
+        CachedNetworkImageProvider(
+          url,
+          headers: headers,
+          cacheKey: (key != null && key.isNotEmpty) ? key : null,
+        ),
+        context,
+      );
+    }
+  }
+
   Future<void> _pickImage(ImageSource source) async {
     try {
       final XFile? pickedFile = await _picker.pickImage(
         source: source,
-        imageQuality: 65, // Kompres ukuran sedikit lebih rendah (65) agar bandwidth hemat dan upload Railway stabil
+        imageQuality: 65,
       );
 
       if (pickedFile != null) {
@@ -97,6 +116,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         });
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Gagal mengambil foto")),
       );
@@ -113,14 +133,14 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
           CupertinoActionSheetAction(
             onPressed: () {
               Navigator.pop(context);
-              _pickImage(ImageSource.gallery); // Buka Galeri
+              _pickImage(ImageSource.gallery);
             },
             child: const Text('Pilih dari Galeri', style: TextStyle(color: EditProfileColors.primaryBlue, fontSize: 16)),
           ),
           CupertinoActionSheetAction(
             onPressed: () {
               Navigator.pop(context);
-              _pickImage(ImageSource.camera); // Buka Kamera
+              _pickImage(ImageSource.camera);
             },
             child: const Text('Ambil Foto', style: TextStyle(color: EditProfileColors.primaryBlue, fontSize: 16)),
           ),
@@ -167,10 +187,11 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     );
   }
 
-  // ✅ FUNGSI UTAMA UNTUK MENYIMPAN DATA KE BACKEND
   Future<void> _simpanProfil() async {
-    if (_nameController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Nama tidak boleh kosong")));
+    if (_nameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Nama tidak boleh kosong")),
+      );
       return;
     }
 
@@ -179,36 +200,50 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
     setState(() => _isSaving = true);
 
-    // 1. Simpan Data Teks (Nama, Tanggal Lahir, Tanggal Terdiagnosis)
     final payload = {
-      "nama": _nameController.text,
+      "nama": _nameController.text.trim(),
       "tgl_lahir": DateFormat('yyyy-MM-dd').format(_selectedBirthday),
       "tgl_terdiagnosis": DateFormat('yyyy-MM-dd').format(_selectedDiagnosisDate),
     };
 
     bool updateSuccess = await ref.read(profileProvider.notifier).updateProfile(userId, payload);
 
-    // 2. Simpan Foto (HANYA JIKA USER MEMILIH FOTO BARU)
     if (_selectedImage != null && updateSuccess) {
       updateSuccess = await ref.read(profileProvider.notifier).uploadAvatar(userId, _selectedImage!.path);
     }
 
-    if (mounted) {
-      setState(() => _isSaving = false);
-      if (updateSuccess) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profil berhasil diperbarui!")));
-        Navigator.pop(context); // Kembali ke layar sebelumnya
-      } else {
-        // Pesan error diambil langsung dari state manajemen provider kamu
-        final errorMsg = ref.read(profileProvider).errorMessage ?? "Terjadi kesalahan saat menyimpan data.";
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg)));
-      }
+    if (!mounted) return;
+
+    setState(() => _isSaving = false);
+
+    if (updateSuccess) {
+      ref.read(userProvider.notifier).refreshUser(userId);
     }
+
+    final errorMsg = ref.read(profileProvider).errorMessage;
+
+    AppStatusDialog.show(
+      context,
+      isSuccess: updateSuccess,
+      title: updateSuccess ? "Berhasil!" : "Gagal!",
+      message: updateSuccess
+          ? "Profil berhasil diperbarui."
+          : (errorMsg ?? "Terjadi kesalahan saat menyimpan data."),
+      onOk: () {
+        Navigator.pop(context);
+        if (updateSuccess) {
+          Navigator.pop(context, true);
+        }
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     String initial = widget.currentName.isNotEmpty ? widget.currentName[0].toUpperCase() : '?';
+
+    final authHeaders = ref.watch(userProvider).authHeaders;
+    final avatarCacheKey = ref.watch(userProvider).avatarCacheKey;
 
     return Scaffold(
       backgroundColor: EditProfileColors.background,
@@ -241,7 +276,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                   child: Column(
                     children: [
                       const SizedBox(height: 20),
-                      _buildAvatarSection(initial),
+
+                      _buildAvatarSection(initial, authHeaders, avatarCacheKey),
+
                       const SizedBox(height: 40),
 
                       Container(
@@ -317,14 +354,20 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     );
   }
 
-  // ✅ PERBAIKAN LOGIKA UI AVATAR (Bebas dari runtime crash casting)
-  Widget _buildAvatarSection(String initial) {
+  // ✅ LANGKAH B: Sinkronisasi dengan Disk Cache ProfileScreen
+  Widget _buildAvatarSection(String initial, Map<String, String>? headers, String? cacheKey) {
     ImageProvider? imageProvider;
 
     if (_selectedImage != null) {
       imageProvider = FileImage(_selectedImage!);
     } else if (widget.currentAvatarUrl != null && widget.currentAvatarUrl!.isNotEmpty) {
-      imageProvider = NetworkImage(widget.currentAvatarUrl!);
+      // 🔧 GANTI: pakai disk cache persis seperti ProfileScreen.
+      // URL dibiarkan bersih (tanpa ?v=...) agar matching dengan cache di lemari.
+      imageProvider = CachedNetworkImageProvider(
+        widget.currentAvatarUrl!,
+        headers: headers,
+        cacheKey: (cacheKey != null && cacheKey.isNotEmpty) ? cacheKey : null,
+      );
     }
 
     return Stack(

@@ -111,6 +111,90 @@ class ProfileNotifier extends Notifier<ProfileState> {
       return false;
     }
   }
+
+  // ==========================================================================
+  // ✅ BARU: HAPUS AKUN (Account Deletion)
+  // ==========================================================================
+
+  // 👇 Langkah 1: Minta kode OTP konfirmasi hapus akun (dikirim ke email user)
+  Future<bool> requestDeleteOtp(int userId) async {
+    state = state.copyWith(isLoading: true, errorMessage: null);
+
+    try {
+      final response = await _apiService.post('/users/$userId/account/request-otp');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        state = state.copyWith(isLoading: false);
+        return true;
+      }
+
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: (response.data is Map)
+            ? (response.data['message'] ?? "Gagal mengirim kode konfirmasi")
+            : "Gagal mengirim kode konfirmasi",
+      );
+      return false;
+    } on DioException catch (e) {
+      state = state.copyWith(isLoading: false, errorMessage: _extractError(e));
+      return false;
+    } catch (e) {
+      state = state.copyWith(isLoading: false, errorMessage: "Terjadi kesalahan jaringan: $e");
+      return false;
+    }
+  }
+
+  // 👇 Langkah 2: Eksekusi hapus akun permanen.
+  // Butuh body { code, confirmation }, jadi pakai sendRequest (Dio) langsung
+  // karena helper delete() bawaan ApiService tidak mengirim body.
+  Future<bool> deleteAccount(
+      int userId, {
+        required String code,
+        required String confirmation,
+      }) async {
+    state = state.copyWith(isLoading: true, errorMessage: null);
+
+    try {
+      final response = await _apiService.sendRequest.delete(
+        '/users/$userId/account',
+        data: {
+          'code': code,
+          'confirmation': confirmation,
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        state = state.copyWith(isLoading: false);
+        return true;
+      }
+
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: (response.data is Map)
+            ? (response.data['message'] ?? "Gagal menghapus akun")
+            : "Gagal menghapus akun",
+      );
+      return false;
+    } on DioException catch (e) {
+      state = state.copyWith(isLoading: false, errorMessage: _extractError(e));
+      return false;
+    } catch (e) {
+      state = state.copyWith(isLoading: false, errorMessage: "Terjadi kesalahan jaringan: $e");
+      return false;
+    }
+  }
+
+  // Helper kecil: ambil pesan error ramah dari DioException
+  String _extractError(DioException e) {
+    final data = e.response?.data;
+    if (data is Map) {
+      final msg = data['error'] ?? data['message'];
+      if (msg != null && msg.toString().trim().isNotEmpty) {
+        return msg.toString();
+      }
+    }
+    return "Terjadi kesalahan. Silakan coba lagi.";
+  }
 }
 
 // --- 3. PROVIDER INSTANCE ---

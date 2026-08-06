@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gdself/features/home/ui/tambah_obat_screen.dart';
@@ -12,6 +14,7 @@ import '../../../models/hasil_ai_harian_model.dart';
 import '../../../models/lab_data_model.dart';
 import '../../../models/obat_model.dart';
 import '../../../models/wearable_model.dart';
+import '../../monitoring/ui/widgets/ai_kepatuhan_dialog.dart';
 import '../../riwayat/ui/riwayat_screen.dart';
 import '../../education/ui/education_screen.dart';
 import '../../home/providers/home_provider.dart';
@@ -20,9 +23,14 @@ import '../../monitoring/ui/monitoring_screen.dart';
 import '../../../utils/design_system.dart';
 import '../../profil/ui/profile_screen.dart';
 import '../providers/wearable_provider.dart';
+import 'detail_obat_screen.dart';
 import 'jadwal_obat_screen.dart';
 import 'edit_obat_screen.dart';
 import 'wearable_sync_screen.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import '../../../services/notification_service.dart';
+import '../providers/obat_provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -35,6 +43,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
   int _selectedIndex = 0;
   bool _isDisconnected = true;
   bool _isSyncing = false;
+  bool _sudahCekAI = false; // FLAG BARU: Mencegah popup muncul berulang
   final _healthChannel = const MethodChannel('com.example.gdself/health_connect');
 
   @override
@@ -48,8 +57,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       final userId = ref.read(userProvider).user?.idUser;
       if (userId != null && mounted) {
         ref.read(homeProvider.notifier).fetchAll(userId);
+
+        // EKSEKUSI PENGECEKAN PROAKTIF AI 1 DENGAN FLAG
+        if (!_sudahCekAI) {
+          await _jalankanPengecekanAI(userId);
+        }
       }
-      _cekStatusKoneksi();
+
+      await _cekStatusKoneksi();
+      await Future.delayed(const Duration(milliseconds: 500));
+      try {
+        await NotificationService().requestPermissions();
+      } catch (e) {
+        debugPrint('⚠️ Permission notifikasi gagal: $e');
+      }
     });
   }
 
@@ -66,56 +87,143 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     }
   }
 
-  Future<void> _cekStatusKoneksi() async {
-    final Health health = Health();
-    final types = [
-      HealthDataType.HEART_RATE,
-      HealthDataType.SLEEP_SESSION,
-      HealthDataType.BLOOD_PRESSURE_SYSTOLIC,
-      HealthDataType.BLOOD_PRESSURE_DIASTOLIC,
-    ];
-    final permissions = [
-      HealthDataAccess.READ,
-      HealthDataAccess.READ,
-      HealthDataAccess.READ,
-      HealthDataAccess.READ,
-    ];
+  Future<void> _jalankanPengecekanAI(int userId) async {
+    _sudahCekAI = true; // Kunci flag agar tidak berulang saat rebuild
 
-    bool hasPermissions = false;
     try {
-      hasPermissions = await health.hasPermissions(types, permissions: permissions) ?? false;
-    } catch (_) {
-      hasPermissions = false;
-    }
+      // 1. Tambahkan tipe "dynamic" di sini agar Dart tidak memaksanya menjadi List
+      final dynamic response = await ref.read(obatProvider.notifier).cekNotifikasiKepatuhanUser(userId);
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('is_wearable_disconnected', !hasPermissions);
+      if (!mounted) return;
 
-    if (!mounted) return;
-    setState(() {
-      _isDisconnected = !hasPermissions;
-    });
+      // 2. Jika backend SUDAH menggunakan format JSON baru (Map)
+      if (response is Map<String, dynamic>) {
+        final perluPerhatian = response['perlu_perhatian'] ?? false;
+        final List<dynamic> dataObat = response['obat'] ?? [];
 
-    if (hasPermissions && !_isSyncing) {
-      _isSyncing = true;
-      try {
-        final userId = ref.read(userProvider).user?.idUser;
-        if (userId != null) {
-          debugPrint("🔄 Auto-Sync berjalan...");
-          bool syncStatus = await ref
-              .read(wearableProvider.notifier)
-              .syncRealWearableData(userId);
-
-          if (mounted && syncStatus) {
-            debugPrint("✨ Ada data baru! Me-refresh Beranda...");
-            await ref.read(homeProvider.notifier).fetchAll(userId);
-          }
+        if (perluPerhatian == true && dataObat.isNotEmpty) {
+          _showAIKepatuhanDialog(dataObat);
         }
-      } finally {
-        _isSyncing = false;
       }
+      // 3. Jika backend MASIH menggunakan format lama (List langsung)
+      else if (response is List) {
+        if (response.isNotEmpty) {
+          _showAIKepatuhanDialog(response);
+        }
+      }
+    } catch (e) {
+      debugPrint('Gagal cek kepatuhan AI: $e');
     }
   }
+
+  void _showAIKepatuhanDialog(List<dynamic> dataObat) {
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: PeringatanKepatuhanDialog(dataObat: dataObat.cast<Map<String, dynamic>>()),
+        );
+      },
+    );
+  }
+
+  Future<void> _cekStatusKoneksi() async {
+    try {
+      final Health health = Health();
+      final prefs = await SharedPreferences.getInstance();
+
+      bool skipSdkCheck = false;
+      if (Platform.isAndroid) {
+        final deviceInfo = DeviceInfoPlugin();
+        final androidInfo = await deviceInfo.androidInfo;
+        if (androidInfo.version.sdkInt >= 34) {
+          skipSdkCheck = true;
+          debugPrint("🤖 Android 14+ terdeteksi (SDK ${androidInfo.version.sdkInt}). Melewati pengecekan SDK.");
+        }
+      }
+
+      if (!skipSdkCheck) {
+        debugPrint("📱 Android < 14 terdeteksi. Menjalankan pengecekan SDK lama...");
+        HealthConnectSdkStatus? sdkStatus;
+        try {
+          sdkStatus = await health.getHealthConnectSdkStatus();
+        } catch (e) {
+          debugPrint('⚠️ Gagal cek SDK status: $e');
+          if (!mounted) return;
+          setState(() => _isDisconnected = true);
+          return;
+        }
+
+        if (sdkStatus == null || sdkStatus != HealthConnectSdkStatus.sdkAvailable) {
+          debugPrint("❌ Health Connect SDK tidak tersedia.");
+          if (!mounted) return;
+          setState(() => _isDisconnected = true);
+          await prefs.setBool('is_wearable_disconnected', true);
+          return;
+        }
+        debugPrint("✅ Health Connect SDK tersedia.");
+      }
+
+      final types = [
+        HealthDataType.HEART_RATE,
+        HealthDataType.SLEEP_SESSION,
+        HealthDataType.BLOOD_PRESSURE_SYSTOLIC,
+        HealthDataType.BLOOD_PRESSURE_DIASTOLIC,
+      ];
+      final permissions = [
+        HealthDataAccess.READ,
+        HealthDataAccess.READ,
+        HealthDataAccess.READ,
+        HealthDataAccess.READ,
+      ];
+
+      bool hasPermissions = false;
+      try {
+        debugPrint("🔄 Mengecek permission Health Connect...");
+        hasPermissions = await health.hasPermissions(types, permissions: permissions) ?? false;
+        debugPrint("📊 Status permission: $hasPermissions");
+      } catch (e) {
+        debugPrint('❌ Gagal mengecek permissions (Crash di Native?): $e');
+        hasPermissions = false;
+      }
+
+      await prefs.setBool('is_wearable_disconnected', !hasPermissions);
+
+      if (!mounted) return;
+      setState(() {
+        _isDisconnected = !hasPermissions;
+      });
+
+      if (hasPermissions && !_isSyncing) {
+        _isSyncing = true;
+        try {
+          final userId = ref.read(userProvider).user?.idUser;
+          if (userId != null) {
+            debugPrint("🔄 Auto-Sync berjalan...");
+            bool syncStatus = await ref.read(wearableProvider.notifier).syncRealWearableData(userId);
+            if (mounted && syncStatus) {
+              debugPrint("✨ Ada data baru! Me-refresh Beranda...");
+              await ref.read(homeProvider.notifier).fetchAll(userId);
+            }
+          }
+        } finally {
+          _isSyncing = false;
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Health Connect error global: $e');
+      if (!mounted) return;
+      setState(() => _isDisconnected = true);
+    }
+  }
+
 
   Future<void> _setDisconnectState(bool value) async {
     final prefs = await SharedPreferences.getInstance();
@@ -223,7 +331,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     final int userId = user?.idUser ?? user?.id ?? 0;
 
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
     final formattedDay = DateFormat('EEEE', 'id_ID').format(now);
     final formattedDate = DateFormat('dd MMMM yyyy', 'id_ID').format(now);
     final formattedTime = DateFormat('HH:mm').format(now);
@@ -236,24 +343,46 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     };
     final hariIniDbStr = dayToDbFormat[formattedDay.toLowerCase()] ?? '';
 
+    // Ambil tanggal hari ini saja (jam diset 00:00:00 agar perbandingan akurat)
+    final todayOnlyDate = DateTime(now.year, now.month, now.day);
+
     final jadwalObatHariIni = semuaJadwalObat.where((jadwal) {
       final hariKonsumsi = jadwal.hari?.toLowerCase() ?? '';
 
-      bool isHariIni = hariKonsumsi.contains(hariIniDbStr) ||
+      // 1. Cek apakah HARI INI jadwalnya minum obat tersebut
+      bool isHariSesuai = hariKonsumsi.contains(hariIniDbStr) ||
           hariKonsumsi.contains(formattedDay.toLowerCase());
 
-      bool isAktif = true;
-      if (jadwal.obat.tglSelesai != null) {
-        final batasSelesai = DateTime(
-            jadwal.obat.tglSelesai!.year,
-            jadwal.obat.tglSelesai!.month,
-            jadwal.obat.tglSelesai!.day
-        );
-        isAktif = batasSelesai.isAfter(today) || batasSelesai.isAtSameMomentAs(today);
+      if (!isHariSesuai) return false;
+
+      // 2. Cek apakah program obat masih BERLANGSUNG
+      final obat = jadwal.obat;
+
+      if (obat.tglMulai != null) {
+        final startDate = DateTime(obat.tglMulai!.year, obat.tglMulai!.month, obat.tglMulai!.day);
+        if (todayOnlyDate.isBefore(startDate)) {
+          return false; // Obat belum mulai diminum (jadwal di masa depan)
+        }
       }
 
-      return isHariIni && isAktif;
+      if (obat.tglSelesai != null) {
+        final endDate = DateTime(obat.tglSelesai!.year, obat.tglSelesai!.month, obat.tglSelesai!.day);
+        if (todayOnlyDate.isAfter(endDate)) {
+          return false; // Obat sudah SELESAI / kedaluwarsa programnya
+        }
+      }
+
+      return true; // Hari sesuai & masih dalam rentang waktu yang aktif
     }).toList();
+
+    final Map<String, List<JadwalObatModel>> groupedJadwalMap = {};
+    for (var jadwal in jadwalObatHariIni) {
+      final namaObat = jadwal.obat.namaObat;
+      if (!groupedJadwalMap.containsKey(namaObat)) {
+        groupedJadwalMap[namaObat] = [];
+      }
+      groupedJadwalMap[namaObat]!.add(jadwal);
+    }
 
     void onAturJadwalObat() {
       Navigator.push(
@@ -328,7 +457,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
               padding: const EdgeInsets.fromLTRB(24, 6, 24, 120),
               clipBehavior: Clip.none,
               children: [
-                _buildTopHeader(user),
+                _buildTopHeader(ref),
                 const SizedBox(height: 34),
                 Text(
                   '${formattedDay.toUpperCase()}, $formattedDate | $formattedTime',
@@ -355,7 +484,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                   style: TextStyle(fontSize: 16, color: Color(0xFF6B7280), height: 1.5),
                 ),
                 const SizedBox(height: 28),
-
                 _buildStatusHormonCard(laporan),
 
                 const SizedBox(height: 30),
@@ -394,8 +522,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      ...jadwalObatHariIni.map((jadwal) {
-                        return _buildMedicationCard(jadwal);
+                      ...groupedJadwalMap.values.map((listJadwalGroup) {
+                        return _buildMedicationCard(listJadwalGroup);
                       }),
                       const SizedBox(height: 8),
                       ElevatedButton(
@@ -416,6 +544,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                       ),
                     ],
                   ),
+
                 const SizedBox(height: 34),
 
                 Row(
@@ -475,13 +604,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     );
   }
 
-  Widget _buildTopHeader(dynamic user) {
-    final String initial =
-    (user?.nama != null && (user!.nama as String).isNotEmpty)
-        ? (user.nama as String)[0].toUpperCase()
-        : '?';
+  Widget _buildTopHeader(WidgetRef ref) {
+    final authState = ref.watch(userProvider);
+    final user = authState.user;
 
-    final String? avatarUrl = user?.fotoProfil;
+    final String nama = user?.nama ?? '';
+    final String initial = nama.isNotEmpty ? nama[0].toUpperCase() : '?';
+    final String? avatarUrl = authState.avatarUrl;
+    final bool hasFoto = (user?.fotoProfil ?? '').isNotEmpty && avatarUrl != null;
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -493,31 +623,40 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
             const Text(
               "Graves disease",
               style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primaryBlue,
-                  fontSize: 18),
+                fontWeight: FontWeight.bold,
+                color: AppColors.primaryBlue,
+                fontSize: 18,
+              ),
             ),
           ],
         ),
         GestureDetector(
           onTap: () {
             setState(() {
-              _selectedIndex = 4;
+              _selectedIndex = 4; // Pindah ke tab Profil
             });
           },
           child: CircleAvatar(
             radius: 18,
             backgroundColor: const Color(0xFFE3ECF7),
-            backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty
-                ? NetworkImage(avatarUrl)
+            // ✅ Disk cache + cache key stabil → repeat-load instan
+            backgroundImage: hasFoto
+                ? CachedNetworkImageProvider(
+              avatarUrl,
+              headers: authState.authHeaders,
+              cacheKey: authState.avatarCacheKey,
+            )
                 : null,
-            child: avatarUrl == null || avatarUrl.isEmpty
+            onBackgroundImageError:
+            hasFoto ? (exception, stackTrace) {} : null,
+            child: !hasFoto
                 ? Text(
               initial,
               style: const TextStyle(
-                  color: Color(0xFF334155),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14),
+                color: Color(0xFF334155),
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+              ),
             )
                 : null,
           ),
@@ -554,7 +693,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         idParameter: 0,
         idHasilLab: 0,
         namaParameter: name,
-        // ✅ JIKA HASIL DARI DB 0.0 MAKA JADIKAN 0.0 (TIDAK DIBULATKAN)
         nilaiHasil: 0.0,
         satuan: defaultSatuan,
         kategori: null,
@@ -567,23 +705,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       getParamOrDefault(ft3Lab, 'FT3', 'pg/mL'),
     ];
 
-    String displayStatus = 'Tidak Terinterpretasi';
-
-    if (laporan == null || laporan.hasilLab.isEmpty) {
-      displayStatus = 'Belum Ada';
-    } else if (laporan.kesimpulanLab != null && laporan.kesimpulanLab!.interpretasi != null) {
-      final String interpretasiBE = laporan.kesimpulanLab!.interpretasi!.trim();
-
-      if (interpretasiBE.isNotEmpty) {
-        displayStatus = interpretasiBE;
+    // ✅ LOGIKA STATUS DIPERBAIKI
+    String displayStatus = 'Status';
+    if (laporan != null && laporan.hasilLab.isNotEmpty) {
+      if (laporan.kesimpulanLab != null &&
+          laporan.kesimpulanLab!.interpretasi != null &&
+          laporan.kesimpulanLab!.interpretasi!.trim().isNotEmpty) {
+        // Ambil dari Backend
+        displayStatus = laporan.kesimpulanLab!.interpretasi!.trim();
       } else {
+        // Jika data Lab ada tapi Backend AI belum memproses/mengembalikan interpretasi
         displayStatus = 'Diproses';
       }
-    } else {
-      displayStatus = 'Diproses';
     }
 
-    final lastDate = laporan?.tglPeriksa ?? DateTime.now();
+    // ✅ LOGIKA TANGGAL DIPERBAIKI (Hilangkan default DateTime.now())
+    String stringTanggal = 'Belum ada riwayat';
+    if (laporan != null && laporan.tglPeriksa != null) {
+      stringTanggal = 'Data terakhir:\n${DateFormat('dd MMMM yyyy', 'id_ID').format(laporan.tglPeriksa!)}';
+    }
 
     return GestureDetector(
       onTap: () => setState(() => _selectedIndex = 1),
@@ -623,7 +763,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'Data terakhir:\n${DateFormat('dd MMMM yyyy', 'id_ID').format(lastDate)}',
+                        stringTanggal, // <-- Dipanggil di sini, tidak akan salah lagi
                         style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
                       ),
                     ],
@@ -631,7 +771,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                 ),
                 Expanded(
                   child: Text(
-                    displayStatus.replaceAll(' ', '\n'),
+                    displayStatus.replaceAll(' ', '\n'), // Memisahkan kata dengan Enter (contoh: "Hipertiroid\nRingan")
                     textAlign: TextAlign.right,
                     style: const TextStyle(
                       color: Colors.white,
@@ -663,15 +803,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     );
   }
 
-  // ===========================================================================
-  // ✅ REFACTORING FORMAT ANGKA (Menampilkan nilai asli tanpa pembulatan)
-  // ===========================================================================
   Widget _buildStatusMetricCard(ParameterLabModel param) {
-    // Mengecek apakah angkanya bulat murni (misal 12.0) atau ada desimalnya (misal 12.45)
-    // Jika bulat, tampilkan tanpa ".0", jika desimal tampilkan asli sesuai database
-    String displayValue = param.nilaiHasil.toString();
-    if (displayValue.endsWith('.0')) {
-      displayValue = displayValue.substring(0, displayValue.length - 2);
+    double val = param.nilaiHasil;
+
+    String displayValue;
+    if (val == 0.0) {
+      displayValue = '0';
+    } else {
+      final int decimalPlaces =
+      (param.namaParameter.toUpperCase().contains("TSH")) ? 3 : 2;
+      displayValue = val.toStringAsFixed(decimalPlaces);
     }
 
     return Container(
@@ -683,21 +824,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text(param.namaParameter,
-              style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500)),
+          Text(
+            param.namaParameter,
+            style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 11,
+                fontWeight: FontWeight.w500),
+          ),
           const SizedBox(height: 8),
-          Text(displayValue, // ✅ Variabel yang sudah diformat
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  height: 1)),
+          Text(
+            displayValue,
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                height: 1),
+          ),
           const SizedBox(height: 4),
-          Text(param.satuan ?? '',
-              style: const TextStyle(color: Colors.white70, fontSize: 10)),
+          Text(
+            param.satuan ?? '',
+            style: const TextStyle(color: Colors.white70, fontSize: 10),
+          ),
         ],
       ),
     );
@@ -785,90 +932,128 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     );
   }
 
-  Widget _buildMedicationCard(JadwalObatModel jadwal) {
+  Widget _buildMedicationCard(List<JadwalObatModel> groupedJadwal) {
+    // Ambil data detail obat dari item pertama sebagai perwakilan
+    final jadwalUtama = groupedJadwal.first;
+
+    // Kumpulkan semua jam unik dari grup obat ini
+    final Set<String> uniqueTimes = {};
+    final Set<String> uniqueDays = {};
+
+    for (var j in groupedJadwal) {
+      if (j.waktuMinumObat != null && j.waktuMinumObat!.isNotEmpty) {
+        uniqueTimes.addAll(j.waktuMinumObat!.split(',').map((t) => t.trim()));
+      }
+      if (j.hari != null && j.hari!.isNotEmpty) {
+        uniqueDays.addAll(j.hari!.split(',').map((d) => d.trim()));
+      }
+    }
+
+    // Urutkan jam dari pagi ke malam
+    final sortedTimes = uniqueTimes.toList()..sort();
+    final sortedDays = uniqueDays.toList();
+
     return GestureDetector(
       onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-              builder: (context) => EditObatScreen(jadwal: jadwal)),
+            builder: (context) => DetailObatScreen(
+              jadwal: jadwalUtama,
+              times: sortedTimes, // Kirimkan semua waktu ke halaman detail
+              days: sortedDays,
+            ),
+          ),
         ).then((_) => _refresh());
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(40),
+          borderRadius: BorderRadius.circular(40), // Tampilan luar kapsul
           boxShadow: [
             BoxShadow(
-                color: const Color(0xFF00695C).withOpacity(0.15),
-                blurRadius: 15,
-                offset: const Offset(0, 8))
+              color: const Color(0xFF00695C).withOpacity(0.12),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            )
           ],
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
+            // Ikon Bulat Obat
             Container(
-              width: 56,
-              height: 56,
+              width: 64,
+              height: 64,
               decoration: const BoxDecoration(
-                  color: Color(0xFFE8F5E9),
-                  shape: BoxShape.circle),
+                  color: Color(0xFFE9F4F1), // Hijau keabu-abuan
+                  shape: BoxShape.circle
+              ),
               child: Center(
                 child: Icon(
-                    PhosphorIcons.pill(PhosphorIconsStyle.regular),
-                    color: const Color(0xFF00695C),
-                    size: 28),
+                  PhosphorIcons.pill(PhosphorIconsStyle.regular),
+                  color: const Color(0xFF00695C), // Hijau gelap
+                  size: 32,
+                ),
               ),
             ),
             const SizedBox(width: 16),
+
+            // Detail Teks & Chips Jam
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    jadwal.obat.namaObat,
+                    jadwalUtama.obat.namaObat,
                     style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
-                        letterSpacing: -0.3,
-                        color: Colors.black),
+                        fontWeight: FontWeight.w900,
+                        fontSize: 18,
+                        color: Colors.black,
+                        letterSpacing: -0.5
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    jadwal.obat.dosis ?? '-',
-                    style: const TextStyle(
-                        color: Color(0xFF757575),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500),
+                  Row(
+                    children: [
+                      Text(
+                        jadwalUtama.obat.dosis ?? '-',
+                        style: const TextStyle(color: Color(0xFF7B838A), fontSize: 14, fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(width: 16),
+                      Text(
+                        jadwalUtama.obat.frekuensi ?? '-',
+                        style: const TextStyle(color: Color(0xFF7B838A), fontSize: 14, fontWeight: FontWeight.w500),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 10),
-                  if (jadwal.waktuMinumObat != null)
+
+                  // Bubble Waktu (Jam gabungan)
+                  if (sortedTimes.isNotEmpty)
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: jadwal.waktuMinumObat!
-                          .split(',')
-                          .map((time) => Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
+                      children: sortedTimes.map((time) => Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                            color: const Color(0xFFF0F2F5),
-                            borderRadius:
-                            BorderRadius.circular(12)),
-                        child: Text(
-                          time.trim().substring(0, 5),
-                          style: const TextStyle(
-                              color: Colors.black87,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 11),
+                            color: const Color(0xFFEAEFF2),
+                            borderRadius: BorderRadius.circular(20) // Kapsul untuk bubble waktu
                         ),
-                      ))
-                          .toList(),
+                        child: Text(
+                          (time.length >= 5) ? time.substring(0, 5) : time,
+                          style: const TextStyle(
+                              color: Color(0xFF1E293B),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13
+                          ),
+                        ),
+                      )).toList(),
                     ),
                 ],
               ),
@@ -908,7 +1093,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
           ),
           const SizedBox(height: 32),
           const Text(
-            'Hubungkan\nPerangkat',
+            '-Hubungkan\nPerangkat',
             textAlign: TextAlign.center,
             style: TextStyle(
                 fontWeight: FontWeight.w800,
@@ -1059,7 +1244,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                       color: Color(0xFF0B70C9), size: 20),
                   SizedBox(width: 8),
                   Text(
-                    "AI INSIGHT",
+                    "Informasi Aktivitas Fisiologis",
                     style: TextStyle(
                         color: Color(0xFF0B70C9),
                         fontWeight: FontWeight.w900,
@@ -1117,20 +1302,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       final double goalInMinutes = 8 * 60;
       final percent = (wearable.sleepDuration / goalInMinutes).clamp(0.0, 1.0);
       sleepPercentInt = (percent * 100).toInt();
+
       final hours = wearable.sleepDuration ~/ 60;
       final minutes = wearable.sleepDuration % 60;
       sleepTime = '${hours}j ${minutes}m Tidur';
 
-      if (sleepPercentInt >= 85) {
-        sleepStatus = 'Cukup';
-        sleepBadgeBg = const Color(0xFF8DF0A8);
-        sleepBadgeText = const Color(0xFF064E3B);
-      } else if (sleepPercentInt >= 60) {
+      if (wearable.sleepDuration < 420) {
         sleepStatus = 'Kurang';
         sleepBadgeBg = const Color(0xFFFEF3C7);
         sleepBadgeText = const Color(0xFF92400E);
+      } else if (wearable.sleepDuration <= 540) {
+        sleepStatus = 'Normal';
+        sleepBadgeBg = const Color(0xFF8DF0A8);
+        sleepBadgeText = const Color(0xFF064E3B);
       } else {
-        sleepStatus = 'Sangat Kurang';
+        sleepStatus = 'Berlebih';
         sleepBadgeBg = const Color(0xFFFADBD8);
         sleepBadgeText = const Color(0xFFC0392B);
       }
@@ -1159,7 +1345,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       hrBadgeText = const Color(0xFFC0392B);
     }
 
-    // ✅ Hitung status BP dari data real
     final int sistolik = wearable.sistolik;
     final int diastolik = wearable.diastolik;
 
@@ -1173,25 +1358,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       bpBadgeBg = const Color(0xFFF3F4F6);
       bpBadgeText = const Color(0xFF6B7280);
       bpValue = '-/-';
+    } else if (sistolik >= 130 || diastolik > 80) {
+      bpStatus = 'Tinggi';
+      bpBadgeBg = const Color(0xFFFADBD8);
+      bpBadgeText = const Color(0xFFC0392B);
+      bpValue = '$sistolik/$diastolik';
     } else if (sistolik < 90 || diastolik < 60) {
       bpStatus = 'Rendah';
       bpBadgeBg = const Color(0xFFFEF3C7);
       bpBadgeText = const Color(0xFF92400E);
       bpValue = '$sistolik/$diastolik';
-    } else if (sistolik <= 120 && diastolik <= 80) {
+    } else {
       bpStatus = 'Normal';
       bpBadgeBg = const Color(0xFF8DF0A8);
       bpBadgeText = const Color(0xFF064E3B);
-      bpValue = '$sistolik/$diastolik';
-    } else if (sistolik <= 139 || diastolik <= 89) {
-      bpStatus = 'Tinggi';
-      bpBadgeBg = const Color(0xFFFEF3C7);
-      bpBadgeText = const Color(0xFF92400E);
-      bpValue = '$sistolik/$diastolik';
-    } else {
-      bpStatus = 'Sangat Tinggi';
-      bpBadgeBg = const Color(0xFFFADBD8);
-      bpBadgeText = const Color(0xFFC0392B);
       bpValue = '$sistolik/$diastolik';
     }
 

@@ -7,7 +7,7 @@ import '../../../models/obat_model.dart';
 import '../../home/providers/user_provider.dart';
 import '../../home/providers/home_provider.dart';
 import '../providers/obat_provider.dart';
-import '../../../services/notification_service.dart';
+import '../../../core/widgets/app_status_dialog.dart';
 
 class ObatScheduleDraft {
   final int? idObat;
@@ -119,26 +119,17 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
     }
   }
 
-  bool _isDateOverlapping(DateTime startA, DateTime? endA, DateTime startB, DateTime? endB) {
-    final aStart = DateTime(startA.year, startA.month, startA.day);
-    final aEnd = endA != null ? DateTime(endA.year, endA.month, endA.day) : null;
-    final bStart = DateTime(startB.year, startB.month, startB.day);
-    final bEnd = endB != null ? DateTime(endB.year, endB.month, endB.day) : null;
-
-    bool aStartBeforeOrEqBEnd = bEnd == null || aStart.isBefore(bEnd) || aStart.isAtSameMomentAs(bEnd);
-    bool bStartBeforeOrEqAEnd = aEnd == null || bStart.isBefore(aEnd) || bStart.isAtSameMomentAs(aEnd);
-
-    return aStartBeforeOrEqBEnd && bStartBeforeOrEqAEnd;
-  }
-
   void _nextStep() {
     if (_namaObatController.text.trim().isEmpty) return _showMessage('Nama obat belum diisi');
     if (_dosisController.text.trim().isEmpty) return _showMessage('Dosis belum diisi');
-
     if (_tanggalMulai == null) return _showMessage('Tanggal mulai wajib diisi');
     if (_tanggalSelesai == null) return _showMessage('Tanggal selesai wajib diisi');
-    if (_tanggalSelesai!.isBefore(_tanggalMulai!)) {
-      return _showMessage('Tanggal selesai tidak boleh mendahului tanggal mulai');
+
+    final mulai = DateTime(_tanggalMulai!.year, _tanggalMulai!.month, _tanggalMulai!.day);
+    final selesai = DateTime(_tanggalSelesai!.year, _tanggalSelesai!.month, _tanggalSelesai!.day);
+
+    if (selesai.isBefore(mulai)) {
+      return _showMessage('Tanggal selesai tidak boleh lebih awal dari tanggal mulai');
     }
 
     setState(() => _currentStep = 1);
@@ -169,24 +160,23 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
             }
           },
         ),
-        title: const Text(
-          "Tambah Obat",
-          style: TextStyle(color: themeBlue, fontWeight: FontWeight.bold, fontSize: 18),
+        title: Text(
+          widget.title,
+          style: const TextStyle(color: themeBlue, fontWeight: FontWeight.bold, fontSize: 18),
         ),
         centerTitle: false,
       ),
       body: Stack(
         children: [
           Positioned(right: -100, top: -50, child: _GlowBubble(color: const Color(0xFFE0F7FA).withOpacity(0.5), size: 300)),
-
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(24, 10, 24, 20),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 10, 24, 20),
                 child: Text(
-                  "Tambah Obat",
-                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFF1F2937), letterSpacing: -0.5),
+                  widget.title,
+                  style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFF1F2937), letterSpacing: -0.5),
                 ),
               ),
               Expanded(
@@ -227,7 +217,7 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
                 const SizedBox(height: 6),
                 _buildDatePickerField(
                   date: _tanggalMulai,
-                  hint: "dd/mm/yyyy",
+                  hint: "Pilih tanggal mulai",
                   onTap: () async {
                     final picked = await showDialog<DateTime>(
                       context: context,
@@ -251,16 +241,23 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
                 const SizedBox(height: 6),
                 _buildDatePickerField(
                   date: _tanggalSelesai,
-                  hint: "dd/mm/yyyy",
+                  hint: "Pilih tanggal selesai",
                   onTap: () async {
+                    if (_tanggalMulai == null) {
+                      return _showMessage('Silakan pilih Tanggal Mulai terlebih dahulu');
+                    }
                     final picked = await showDialog<DateTime>(
                       context: context,
                       builder: (context) => _CustomCalendarDialog(
-                        initialDate: _tanggalSelesai ?? _tanggalMulai ?? DateTime.now(),
-                        minDate: _tanggalMulai ?? DateTime.now(),
+                        initialDate: _tanggalSelesai ?? _tanggalMulai!,
+                        minDate: _tanggalMulai,
                       ),
                     );
-                    if (picked != null) setState(() => _tanggalSelesai = picked);
+                    if (picked != null) {
+                      setState(() {
+                        _tanggalSelesai = picked;
+                      });
+                    }
                   },
                 ),
               ],
@@ -292,7 +289,7 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
                                 isExpanded: true,
                                 dropdownColor: Colors.white,
                                 icon: const Icon(Icons.keyboard_arrow_down, color: Colors.grey),
-                                items: ['Tablet', 'Kapsul', 'Sirup'].map((String value) {
+                                items: ['Tablet', 'Kapsul', 'Sirup', 'Injeksi', 'Lainnya'].map((String value) {
                                   return DropdownMenuItem<String>(
                                     value: value,
                                     child: Text(value, style: const TextStyle(fontSize: 14, color: Color(0xFF334155))),
@@ -457,9 +454,7 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
           const SizedBox(height: 4),
           const Text('Pilih waktu konsumsi obat sesuai frekuensi harian.', style: TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
           const SizedBox(height: 16),
-
           ..._times.asMap().entries.map((entry) => _buildTimeSlotCard(entry.key, entry.value)),
-
           const SizedBox(height: 32),
           SizedBox(
             width: double.infinity,
@@ -505,8 +500,7 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
         return _InputField(
           controller: controller,
           focusNode: focusNode,
-          hintText: 'Misal: Paracetamol',
-          // ✅ PERBAIKAN: Tangkap ketikan manual user secara real-time!
+          hintText: 'Masukkan Nama Obat',
           onChanged: (value) {
             _namaObatController.text = value;
           },
@@ -568,7 +562,6 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
   }
 
   Widget _buildTimeSlotCard(int index, TimeOfDay? time) {
-    // Mengecek apakah jam sudah dipilih atau belum
     final bool isFilled = time != null;
 
     return Container(
@@ -578,7 +571,7 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04), // Bayangan lembut agar card menonjol
+            color: Colors.black.withOpacity(0.04),
             blurRadius: 10,
             offset: const Offset(0, 4),
           )
@@ -597,7 +590,7 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
 
             final picked = await showDialog<TimeOfDay>(
               context: context,
-              barrierColor: Colors.black54, // ✅ EFEK FOKUS: Membuat background belakang menjadi gelap/redup
+              barrierColor: Colors.black54,
               builder: (context) => _CustomTimePickerDialog(
                 initialTime: time ?? const TimeOfDay(hour: 8, minute: 0),
                 minTime: minTime,
@@ -611,21 +604,17 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
             child: Row(
               children: [
-                // Ikon Jam Bulat Biru (Sesuai Gambar)
                 Container(
                   width: 44,
                   height: 44,
                   decoration: const BoxDecoration(
-                    color: Color(0xFFDDEBFA), // Biru sangat muda
+                    color: Color(0xFFDDEBFA),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.access_time_filled, color: Color(0xFF006699), size: 24),
                 ),
                 const SizedBox(width: 16),
-
-                // Teks Sesuai Kondisi (Kosong vs Terisi)
                 if (!isFilled)
-                // Tampilan jika BELUM diisi (Waktu - Ketuk untuk mengatur)
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -641,7 +630,6 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
                     ],
                   )
                 else
-                // Tampilan jika SUDAH diisi (08.00 WIB)
                   Text(
                     '${_formatTime(time)} WIB',
                     style: const TextStyle(
@@ -659,11 +647,9 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
     );
   }
 
-  // ✅ PERBAIKAN: _saveSchedule sekarang pakai int? dari provider
   Future<void> _saveSchedule() async {
-    if (_tanggalMulai == null || _tanggalSelesai == null) {
-      return _showMessage('Tanggal mulai dan selesai wajib diisi');
-    }
+    if (_tanggalMulai == null) return _showMessage('Tanggal mulai wajib diisi');
+    if (_tanggalSelesai == null) return _showMessage('Tanggal selesai wajib diisi');
 
     final selectedDays = <String>[];
     for (var i = 0; i < _selectedDays.length; i++) {
@@ -679,29 +665,23 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
     final namaObat = _namaObatController.text.trim();
     final dosisDenganSatuan = "${_dosisController.text.trim()} ${_getSatuanDosis()}";
 
+    // Pengecekan Bentrok (Duplikat Nama Obat)
     final semuaJadwal = ref.read(homeProvider).jadwalObat;
+    bool isDuplicate = false;
 
-    bool isBentrok = false;
     for (var jadwal in semuaJadwal) {
       if (jadwal.obat.namaObat.toLowerCase() == namaObat.toLowerCase()) {
-        final startLama = jadwal.obat.tglMulai;
-        final endLama = jadwal.obat.tglSelesai;
-
-        if (startLama != null) {
-          if (_isDateOverlapping(_tanggalMulai!, _tanggalSelesai, startLama, endLama)) {
-            isBentrok = true;
-            break;
-          }
-        }
+        isDuplicate = true;
+        break;
       }
     }
 
-    if (isBentrok) {
+    if (isDuplicate) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Gagal! Rentang tanggal bertabrakan dengan jadwal obat yang sama di riwayat/rekapan.'),
+        SnackBar(
+          content: Text('Gagal! Obat "$namaObat" sudah ada di jadwal Anda. Silakan edit jadwal yang sudah ada.'),
           backgroundColor: Colors.red,
-          duration: Duration(seconds: 4),
+          duration: const Duration(seconds: 4),
         ),
       );
       return;
@@ -709,98 +689,48 @@ class _ObatScheduleFormState extends ConsumerState<ObatScheduleForm> {
 
     final formattedMulai = DateFormat('yyyy-MM-dd').format(_tanggalMulai!);
     final formattedSelesai = DateFormat('yyyy-MM-dd').format(_tanggalSelesai!);
-
     final waktuKonsumsiList = _times.whereType<TimeOfDay>().map((time) => _formatTimeForApi(time)).toList();
 
-    // ✅ PANGGIL PROVIDER - Sekarang return int? (ID obat)
     final int? idObatDariDB = await ref.read(obatProvider.notifier).tambahObatDenganJadwal(
       userId: user.idUser,
       namaObat: namaObat,
       dosis: dosisDenganSatuan,
+      tipeObat: _tipeObat,
       waktuKonsumsi: waktuKonsumsiList,
       tanggalMulai: formattedMulai,
       tanggalSelesai: formattedSelesai,
       hariKonsumsi: selectedDays,
     );
 
-    // ✅ JIKA ID OBAT TIDAK NULL BERARTI SUKSES
     if (idObatDariDB != null) {
-      try {
-        await NotificationService().jadwalkanAlarmObat(
-          idObat: idObatDariDB, // 👈 Pakai ID Asli dari database!
-          namaObat: namaObat,
-          hariKonsumsi: selectedDays,
-          waktuKonsumsi: _times.whereType<TimeOfDay>().toList(),
+      // ❌ Blok Future(() async { NotificationService().syncSemuaAlarm(...) })
+      // yang redundan telah dihapus di sini. Sinkronisasi sudah otomatis ditangani
+      // di dalam tambahObatDenganJadwal() -> fetchObat().
+
+      if (mounted) {
+        AppStatusDialog.show(
+          context,
+          isSuccess: true,
+          title: "Berhasil!",
+          message: "Jadwal obat berhasil disimpan.",
+          onOk: () {
+            Navigator.pop(context);
+            Navigator.pop(context, true);
+          },
         );
-      } catch (e) {
-        debugPrint("Gagal menyetel alarm: $e");
       }
-
-      final draft = ObatScheduleDraft(
-        idObat: idObatDariDB,
-        namaObat: namaObat,
-        dosis: dosisDenganSatuan,
-        tanggalMulai: _tanggalMulai!,
-        tanggalSelesai: _tanggalSelesai!,
-        hariTerpilih: selectedDays,
-        waktuKonsumsi: _times.whereType<TimeOfDay>().toList(),
-      );
-      await _showSuccessPopup(draft);
     } else {
-      final errorMsg = ref.read(obatProvider).errorMessage;
-      _showMessage(errorMsg ?? 'Gagal menyimpan obat ke server');
-    }
-  }
-
-  Future<void> _showSuccessPopup(ObatScheduleDraft draft) async {
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          backgroundColor: Colors.white,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 70,
-                  height: 70,
-                  decoration: const BoxDecoration(color: Color(0xFFE8F5E9), shape: BoxShape.circle),
-                  child: const Icon(Icons.check_circle, color: Color(0xFF00695C), size: 40),
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                    'Obat Berhasil\nDitambahkan',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Color(0xFF263238), fontWeight: FontWeight.w900, fontSize: 22, height: 1.2)
-                ),
-                const SizedBox(height: 32),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(dialogContext).pop();
-                      Navigator.of(context).pop(draft);
-                    },
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF006699),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25))
-                    ),
-                    child: const Text('Selesai', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  ),
-                ),
-              ],
-            ),
-          ),
+      if (mounted) {
+        final errorMsg = ref.read(obatProvider).errorMessage;
+        AppStatusDialog.show(
+          context,
+          isSuccess: false,
+          title: "Gagal!",
+          message: errorMsg ?? 'Gagal menyimpan jadwal obat ke server.',
+          onOk: () => Navigator.pop(context),
         );
-      },
-    );
+      }
+    }
   }
 
   void _showMessage(String message) {
@@ -838,7 +768,7 @@ class _InputField extends StatelessWidget {
   final TextAlign textAlign;
   final TextInputType? keyboardType;
   final String? suffixText;
-  final ValueChanged<String>? onChanged; // ✅ TAMBAHKAN INI
+  final ValueChanged<String>? onChanged;
 
   const _InputField({
     required this.controller,
@@ -847,7 +777,7 @@ class _InputField extends StatelessWidget {
     this.textAlign = TextAlign.left,
     this.keyboardType,
     this.suffixText,
-    this.onChanged, // ✅ TAMBAHKAN INI
+    this.onChanged,
   });
 
   @override
@@ -860,7 +790,7 @@ class _InputField extends StatelessWidget {
         focusNode: focusNode,
         keyboardType: keyboardType,
         textAlign: textAlign,
-        onChanged: onChanged, // ✅ HUBUNGKAN KE TEXTFIELD
+        onChanged: onChanged,
         decoration: InputDecoration(
           hintText: hintText,
           hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),

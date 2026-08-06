@@ -27,11 +27,17 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
       final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
       final pending = await flutterLocalNotificationsPlugin.pendingNotificationRequests();
 
-      // ✅ Filter hanya notifikasi obat (bukan test)
-      final obatNotifications = pending.where((n) =>
-      n.id != 999 && // Bukan test notification
-          (n.title?.contains('Minum') ?? false) // Hanya notifikasi obat
-      ).toList();
+      // ✅ FILTERING SESUAI NOTIFICATION SERVICE:
+      // 1. Abaikan notifikasi testing (ID 999)
+      // 2. Hanya ambil alarm utama (ID di bawah 50000) agar alarm snooze tidak tampil dobel
+      // 3. Pastikan itu adalah alarm obat (ada kata 'Minum' atau 'Obat')
+      final obatNotifications = pending.where((n) {
+        bool isNotTest = n.id != 999;
+        bool isUtama = n.id < 50000;
+        bool isObat = (n.title?.toLowerCase().contains('minum') ?? false) ||
+            (n.title?.toLowerCase().contains('obat') ?? false);
+        return isNotTest && isUtama && isObat;
+      }).toList();
 
       if (mounted) {
         setState(() {
@@ -83,7 +89,6 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
               )
                   : null,
             ),
-
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
@@ -102,8 +107,8 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
                     _buildSectionHeader('Jadwal Obat Aktif'),
                     const SizedBox(height: 10),
                     ..._pendingNotifications.map((n) => _buildNotificationItem(
-                      title: n.title ?? 'Minum Obat',
-                      desc: n.body ?? 'Waktunya minum obat sesuai jadwal.',
+                      title: n.title ?? 'Waktunya Minum Obat!',
+                      desc: n.body ?? 'Jangan lewatkan jadwal obat Anda.',
                       time: _formatTime(n.id),
                       icon: CupertinoIcons.capsule_fill,
                       iconColor: const Color(0xFF006699),
@@ -303,12 +308,21 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
     );
   }
 
-  // ✅ Format ID menjadi jam (karena ID mengandung weekday dan slot)
+  // ✅ FORMAT WAKTU SESUAI NOTIFICATION SERVICE:
+  // (weekday * 10000) + (hour * 100) + minute
   String _formatTime(int id) {
-    // ID format: (idObat * 1000) + (weekday * 100) + slot
-    final weekday = ((id % 1000) / 100).floor();
-    final hari = _getHariFromWeekday(weekday);
-    return hari;
+    // Ekstrak data dari ID
+    int weekday = id ~/ 10000;
+    int timePart = id % 10000;
+    int hour = timePart ~/ 100;
+    int minute = timePart % 100;
+
+    String hari = _getHariFromWeekday(weekday);
+
+    // Pastikan format jam selalu 2 digit (contoh: 07:05)
+    String jam = '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+
+    return '$hari, $jam';
   }
 
   String _getHariFromWeekday(int weekday) {

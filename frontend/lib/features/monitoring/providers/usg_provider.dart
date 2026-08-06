@@ -57,9 +57,6 @@ class UsgNotifier extends Notifier<UsgState> {
       final apiService = ApiService();
       String fileName = imageFile.path.split('/').last;
 
-      // ✅ DISESUAIKAN: Menggunakan snake_case agar seragam dengan fungsi Update/Edit
-      // dan standar binding form pada Golang
-      // Di usg_provider.dart
       FormData formData = FormData.fromMap({
         "id_riwayat": idRiwayat,
         "nama_rs": namaRs,
@@ -69,12 +66,11 @@ class UsgNotifier extends Notifier<UsgState> {
       });
 
       final response = await apiService.sendRequest.post(
-        '/usg-tiroid', // Pastikan endpoint ini sesuai!
+        '/usg-tiroid',
         data: formData,
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        // Parsing data response ke dalam UsgTiroidModel FE
         final resData = response.data['data'];
         final usgModel = UsgTiroidModel.fromJson(resData);
 
@@ -97,6 +93,11 @@ class UsgNotifier extends Notifier<UsgState> {
       state = state.copyWith(isLoading: false, errorMessage: 'Error: $e');
       return false;
     }
+  }
+
+  // ✅ Tambahan: Fungsi untuk update state jika ada proses edit USG (jika diperlukan di masa depan)
+  void clearState() {
+    state = const UsgState();
   }
 }
 

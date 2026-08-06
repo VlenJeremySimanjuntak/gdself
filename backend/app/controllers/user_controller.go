@@ -1,12 +1,12 @@
 package controllers
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
 	"monitoring-service/app/constants"
@@ -14,7 +14,6 @@ import (
 	"monitoring-service/app/models"
 	"monitoring-service/app/usecases"
 
-	"github.com/disintegration/imaging"
 	"github.com/labstack/echo/v4"
 )
 
@@ -28,6 +27,12 @@ type UserController interface {
 	Update(c echo.Context) error
 	Delete(c echo.Context) error
 	UploadAvatar(c echo.Context) error
+
+	// ✅ BARU: Hapus Akun
+	RequestDeleteAccountOTP(c echo.Context) error
+	DeleteAccount(c echo.Context) error
+	WebDeleteForm(c echo.Context) error   // PUBLIC (jalur web)
+	WebDeleteSubmit(c echo.Context) error // PUBLIC (jalur web)
 }
 
 type userController struct {
@@ -79,6 +84,7 @@ func buildUserResponse(user models.User) map[string]interface{} {
 
 func (ctrl *userController) Create(c echo.Context) error {
 	var input models.CreateUserRequest
+
 	if err := c.Bind(&input); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
 			"error":  constants.MSG_INVALID_PAYLOAD,
@@ -122,6 +128,7 @@ func (ctrl *userController) Create(c echo.Context) error {
 
 func (ctrl *userController) Login(c echo.Context) error {
 	var input models.LoginRequest
+
 	if err := c.Bind(&input); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
 			"error":  constants.MSG_INVALID_PAYLOAD,
@@ -191,8 +198,6 @@ func (ctrl *userController) GetByID(c echo.Context) error {
 }
 
 func (ctrl *userController) GetAll(c echo.Context) error {
-	// Proteksi data pasien: user biasa hanya boleh melihat datanya sendiri,
-	// bukan daftar seluruh pengguna. Cegah kebocoran email/tgl lahir pasien lain.
 	tokenUserID, ok := c.Get("user_id").(uint)
 	if !ok {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Token tidak valid"})
@@ -248,6 +253,8 @@ func (ctrl *userController) Update(c echo.Context) error {
 	})
 }
 
+// Delete = endpoint lama DELETE /users/:id (kini sudah cascade + hapus file lewat usecase).
+// Direkomendasikan aplikasi memakai DELETE /users/:id/account yang ber-OTP.
 func (ctrl *userController) Delete(c echo.Context) error {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -276,8 +283,139 @@ func (ctrl *userController) Delete(c echo.Context) error {
 	})
 }
 
+// =============================================================================
+// ✅ BARU: HAPUS AKUN (mobile, ber-OTP)
+// =============================================================================
+
+type deleteAccountRequest struct {
+	Code         string `json:"code"`
+	Confirmation string `json:"confirmation"`
+}
+
+// RequestDeleteAccountOTP: kirim OTP delete_account ke email pemilik akun.
+// POST /api/users/:id/account/request-otp  (protected)
+func (ctrl *userController) RequestDeleteAccountOTP(c echo.Context) error {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ID tidak valid"})
+	}
+
+	tokenUserID := c.Get("user_id").(uint)
+	if tokenUserID != uint(id) {
+		return c.JSON(http.StatusForbidden, map[string]string{
+			"error": "Akses ditolak: Anda hanya boleh menghapus akun milik sendiri",
+		})
+	}
+
+	if err := ctrl.usecase.RequestDeleteAccountOTP(uint(id)); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"status_code": http.StatusOK,
+		"message":     "Kode OTP penghapusan akun telah dikirim ke email Anda",
+	})
+}
+
+// DeleteAccount: hapus akun sendiri (cascade + file). Wajib OTP + konfirmasi "HAPUS".
+// DELETE /api/users/:id/account  (protected)  body: {code, confirmation}
+func (ctrl *userController) DeleteAccount(c echo.Context) error {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ID tidak valid"})
+	}
+
+	tokenUserID := c.Get("user_id").(uint)
+	if tokenUserID != uint(id) {
+		return c.JSON(http.StatusForbidden, map[string]string{
+			"error": "Akses ditolak: Anda hanya boleh menghapus akun milik sendiri",
+		})
+	}
+
+	var body deleteAccountRequest
+	if err := c.Bind(&body); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": constants.MSG_INVALID_PAYLOAD})
+	}
+
+	if err := ctrl.usecase.DeleteAccount(uint(id), body.Code, body.Confirmation); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"status_code": http.StatusOK,
+		"message":     "Akun dan seluruh data medis Anda telah dihapus permanen",
+	})
+}
+
+// =============================================================================
+// ✅ BARU: HAPUS AKUN via WEB (PUBLIC) — untuk user yang sudah uninstall aplikasi
+// =============================================================================
+
+// GET /hapus-akun
+func (ctrl *userController) WebDeleteForm(c echo.Context) error {
+	return c.HTML(http.StatusOK, webDeletePageHTML("", ""))
+}
+
+// POST /hapus-akun  (form-urlencoded: email, password, confirmation)
+func (ctrl *userController) WebDeleteSubmit(c echo.Context) error {
+	email := c.FormValue("email")
+	password := c.FormValue("password")
+	confirmation := c.FormValue("confirmation")
+
+	if confirmation != "HAPUS" {
+		return c.HTML(http.StatusBadRequest, webDeletePageHTML(
+			"Konfirmasi gagal: ketik HAPUS (huruf kapital) pada kolom konfirmasi.", ""))
+	}
+
+	if err := ctrl.usecase.WebDeleteAccount(email, password); err != nil {
+		return c.HTML(http.StatusBadRequest, webDeletePageHTML(err.Error(), ""))
+	}
+
+	return c.HTML(http.StatusOK, webDeletePageHTML("",
+		"Akun dan seluruh data medis Anda telah dihapus permanen dari server GdSelf."))
+}
+
+// webDeletePageHTML membangun halaman form/hasil sederhana untuk jalur web.
+func webDeletePageHTML(errMsg, successMsg string) string {
+	banner := ""
+	if errMsg != "" {
+		banner = fmt.Sprintf(`<div style="background:#FFEBEE;color:#C62828;padding:12px;border-radius:8px;margin-bottom:16px;">%s</div>`, errMsg)
+	}
+	if successMsg != "" {
+		return fmt.Sprintf(`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Hapus Akun GdSelf</title></head>
+<body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:24px;">
+<div style="max-width:480px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;">
+<h2 style="color:#005F82;">GdSelf</h2>
+<div style="background:#E8F5E9;color:#00695C;padding:16px;border-radius:8px;">%s</div>
+</div></body></html>`, successMsg)
+	}
+
+	return fmt.Sprintf(`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Hapus Akun GdSelf</title></head>
+<body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:24px;">
+<div style="max-width:480px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;box-shadow:0 4px 12px rgba(0,0,0,0.08);">
+<h2 style="color:#005F82;margin-top:0;">Hapus Akun GdSelf</h2>
+<p style="color:#555;line-height:1.6;">Halaman ini untuk menghapus akun GdSelf beserta <b>seluruh data medis Anda secara permanen</b>
+(riwayat pemeriksaan, hasil lab, analisis AI, foto USG, data obat, data wearable, serta foto profil).
+Tindakan ini <b>tidak bisa dibatalkan</b>.</p>
+%s
+<form method="POST" action="/hapus-akun">
+<label style="font-size:13px;color:#555;">Email</label><br>
+<input name="email" type="email" required style="width:100%%;padding:10px;margin:6px 0 14px;border:1px solid #ccc;border-radius:8px;"><br>
+<label style="font-size:13px;color:#555;">Password</label><br>
+<input name="password" type="password" required style="width:100%%;padding:10px;margin:6px 0 14px;border:1px solid #ccc;border-radius:8px;"><br>
+<label style="font-size:13px;color:#555;">Ketik <b>HAPUS</b> untuk konfirmasi</label><br>
+<input name="confirmation" type="text" required style="width:100%%;padding:10px;margin:6px 0 20px;border:1px solid #ccc;border-radius:8px;"><br>
+<button type="submit" style="width:100%%;padding:14px;background:#C62828;color:#fff;border:none;border-radius:25px;font-weight:bold;font-size:15px;">Hapus Akun Saya Permanen</button>
+</form>
+<p style="color:#888;font-size:12px;margin-top:16px;">Butuh bantuan? Email: support@gdself.app</p>
+</div></body></html>`, banner)
+}
+
 func (ctrl *userController) GoogleLogin(c echo.Context) error {
 	var input GoogleLoginRequest
+
 	if err := c.Bind(&input); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
 			"error":  constants.MSG_INVALID_PAYLOAD,
@@ -343,7 +481,6 @@ func (ctrl *userController) UploadAvatar(c echo.Context) error {
 	}
 	defer src.Close()
 
-	// Sniff MIME dari isi file (magic bytes)
 	head := make([]byte, 512)
 	n, _ := src.Read(head)
 	if !helpers.IsAllowedImageContent(head[:n]) {
@@ -353,32 +490,23 @@ func (ctrl *userController) UploadAvatar(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "gagal memproses file"})
 	}
 
-	// ✅ FIX 2 (performa): decode → resize maks 512px (jaga rasio) → re-encode JPEG q82.
-	// Memangkas ukuran file avatar dari MB jadi puluhan KB → first-load jauh lebih cepat.
-	img, err := imaging.Decode(src, imaging.AutoOrientation(true))
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "gagal membaca gambar"})
-	}
-	img = imaging.Fit(img, 512, 512, imaging.Lanczos)
-
 	uploadDir := filepath.Join("uploads", "avatars")
 	if err := os.MkdirAll(uploadDir, 0o750); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "gagal menyiapkan folder"})
 	}
-
 	newFilename, err := helpers.RandomFileName(file.Filename)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
-	// Paksa ekstensi .jpg karena hasil selalu di-encode ke JPEG.
-	newFilename = strings.TrimSuffix(newFilename, filepath.Ext(newFilename)) + ".jpg"
-
-	dstPath := filepath.Join(uploadDir, newFilename)
-	if err := imaging.Save(img, dstPath, imaging.JPEGQuality(82)); err != nil {
+	dst, err := os.Create(filepath.Join(uploadDir, newFilename))
+	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Gagal menyimpan file"})
 	}
+	defer dst.Close()
+	if _, err = io.Copy(dst, src); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Gagal menyalin isi file"})
+	}
 
-	// Simpan path RELATIF, dilayani lewat GET /api/users/:id/avatar (ber-JWT)
 	user, err := ctrl.usecase.UploadAvatar(uint(id), "avatars/"+newFilename)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -397,7 +525,6 @@ func (ctrl *userController) ServeAvatar(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ID tidak valid"})
 	}
-
 	tokenUserID, ok := c.Get("user_id").(uint)
 	if !ok {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Token tidak valid"})
@@ -410,12 +537,10 @@ func (ctrl *userController) ServeAvatar(c echo.Context) error {
 	if err != nil || user.FotoProfil == "" {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "Avatar tidak ditemukan"})
 	}
-
 	absPath, err := helpers.SafeUploadPath(filepath.Join("uploads", "avatars"), user.FotoProfil)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "path file tidak valid"})
 	}
-
-	c.Response().Header().Set("Cache-Control", "private, max-age=86400")
+	c.Response().Header().Set("Cache-Control", "private, no-store")
 	return c.File(absPath)
 }

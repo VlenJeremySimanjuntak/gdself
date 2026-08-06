@@ -30,6 +30,7 @@ class _OTPVerifyScreenState extends ConsumerState<OTPVerifyScreen> {
 
   bool _isLoading = false;
   bool _isResending = false;
+  bool _isVerifying = false; // ✅ PERBAIKAN: Flag anti double-call
   String? _errorMessage;
   int _countdown = 60;
   Timer? _timer;
@@ -64,15 +65,19 @@ class _OTPVerifyScreenState extends ConsumerState<OTPVerifyScreen> {
     });
   }
 
-  String get _otpCode =>
-      _controllers.map((c) => c.text).join();
+  String get _otpCode => _controllers.map((c) => c.text).join();
 
   Future<void> _verify() async {
+    // ✅ PERBAIKAN: Cegah fungsi berjalan jika sedang proses verifikasi
+    if (_isVerifying) return;
+
     final code = _otpCode;
     if (code.length < 6) {
       setState(() => _errorMessage = 'Masukkan 6 digit kode OTP.');
       return;
     }
+
+    _isVerifying = true; // Kunci gerbang verifikasi
 
     setState(() {
       _isLoading = true;
@@ -82,19 +87,23 @@ class _OTPVerifyScreenState extends ConsumerState<OTPVerifyScreen> {
     try {
       await ApiService().verifyOTP(widget.email, code, widget.type);
       if (mounted) {
-        // ✅ Return Map dengan code agar forgot password bisa pakai
+        // Return Map dengan code agar forgot password bisa pakai
         Navigator.pop(context, {'verified': true, 'code': code});
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = e.toString();
+          // Sekalian bersihkan teks "Exception: " agar pesan lebih rapi di UI
+          _errorMessage = e.toString().replaceAll("Exception: ", "");
+
           // Clear semua box saat salah
           for (final c in _controllers) c.clear();
           _focusNodes[0].requestFocus();
         });
       }
+    } finally {
+      _isVerifying = false; // Buka kembali gerbang verifikasi
     }
   }
 
@@ -118,7 +127,7 @@ class _OTPVerifyScreenState extends ConsumerState<OTPVerifyScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Gagal kirim ulang: ${e.toString()}'),
+            content: Text('Gagal kirim ulang: ${e.toString().replaceAll("Exception: ", "")}'),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
           ),

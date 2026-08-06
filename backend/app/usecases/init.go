@@ -37,7 +37,8 @@ func Init(opts Options) *Main {
 	hasilAITren := NewHasilAITrenUsecase(opts.Repository.HasilAITren)
 
 	return &Main{
-		User:          NewUserUsecase(opts.Repository.User),
+		// ✅ UPDATE: inject OTP repo agar User usecase bisa kirim & verifikasi OTP hapus akun
+		User:          NewUserUsecase(opts.Repository.User, opts.Repository.OTP),
 		Auth:          NewAuthUsecase(opts.Repository.User, opts.Repository.OTP), // ✅ BARU: Inisialisasi Auth
 		Riwayat:       NewRiwayatUsecase(opts.Repository.Riwayat),
 		LaporanLab:    NewLaporanLabUsecase(opts.Repository.LaporanLab, opts.Repository.Riwayat),

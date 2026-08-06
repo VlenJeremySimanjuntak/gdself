@@ -1,12 +1,16 @@
-// providers/monitoring_provider.dart
-
 import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../services/api_service.dart';
 import '../../../models/hasil_ai_gabungan_model.dart';
 import '../../../models/usg_tiroid_model.dart';
+
+class _Sentinel {
+  const _Sentinel();
+}
+const _sentinel = _Sentinel();
 
 class MonitoringState {
   final bool isLoading;
@@ -25,16 +29,20 @@ class MonitoringState {
 
   MonitoringState copyWith({
     bool? isLoading,
-    String? errorMessage,
+    Object? errorMessage = _sentinel,
     Map<String, List<Map<String, dynamic>>>? history,
-    HasilAIGabunganModel? latestAiResult,
+    Object? latestAiResult = _sentinel, // Pakai sentinel agar bisa di-set null
     List<UsgTiroidModel>? usgList,
   }) {
     return MonitoringState(
       isLoading: isLoading ?? this.isLoading,
-      errorMessage: errorMessage ?? this.errorMessage,
+      errorMessage: errorMessage == _sentinel
+          ? this.errorMessage
+          : errorMessage as String?,
       history: history ?? this.history,
-      latestAiResult: latestAiResult ?? this.latestAiResult,
+      latestAiResult: latestAiResult == _sentinel
+          ? this.latestAiResult
+          : latestAiResult as HasilAIGabunganModel?, // Sekarang bisa menerima null murni
       usgList: usgList ?? this.usgList,
     );
   }
@@ -54,20 +62,26 @@ class MonitoringNotifier extends Notifier<MonitoringState> {
     try {
       final response = await _apiService.get('/laporan-lab/user/$userId');
 
-      debugPrint('📥 Response /laporan-lab/user/$userId: ${response.statusCode}');
-      debugPrint('📥 Response body: ${response.data}');
-
       if (response.statusCode == 200) {
         final dynamic responseData = response.data['data'];
         List<dynamic> dataList = [];
 
         if (responseData is List) {
-          dataList = responseData;
+          dataList = List.from(responseData);
         } else if (responseData != null) {
           dataList = [responseData];
         }
 
-        final listTerurut = dataList.reversed.toList();
+        // ✅ Urutkan berdasarkan tgl_periksa (tanggal lebih awal -> lebih baru di akhir list)
+        dataList.sort((a, b) {
+          DateTime dateA = DateTime.tryParse(
+              a['tgl_periksa']?.toString() ?? a['created_at']?.toString() ?? ''
+          ) ?? DateTime(1970);
+          DateTime dateB = DateTime.tryParse(
+              b['tgl_periksa']?.toString() ?? b['created_at']?.toString() ?? ''
+          ) ?? DateTime(1970);
+          return dateA.compareTo(dateB);
+        });
 
         Map<String, List<Map<String, dynamic>>> mappedHistory = {
           "TSHs": [],
@@ -76,7 +90,7 @@ class MonitoringNotifier extends Notifier<MonitoringState> {
           "TRAb": [],
         };
 
-        for (var laporan in listTerurut) {
+        for (var laporan in dataList) {
           if (laporan is Map<String, dynamic>) {
             final hasilLabList = laporan['hasil_lab'];
 
@@ -101,14 +115,10 @@ class MonitoringNotifier extends Notifier<MonitoringState> {
                       targetKey = "TRAb";
                     }
 
-                    debugPrint('🔍 Processing: $namaParam → targetKey: $targetKey');
-
                     if (mappedHistory.containsKey(targetKey)) {
                       double val = double.tryParse(hasil['nilai_hasil']?.toString() ?? "0.0") ?? 0.0;
                       double minVal = double.tryParse(hasil['nilai_batas_bawah']?.toString() ?? "0") ?? 0.0;
                       double maxVal = double.tryParse(hasil['nilai_batas_atas']?.toString() ?? "0") ?? 0.0;
-
-                      debugPrint('📊 Data: $targetKey → val=$val, min=$minVal, max=$maxVal');
 
                       double ratio = 0.5;
                       if (targetKey == "TSHs") ratio = (val / 10.0).clamp(0.1, 0.9);
@@ -143,71 +153,85 @@ class MonitoringNotifier extends Notifier<MonitoringState> {
           }
         }
 
-        // Ambil maksimal 2 data terakhir per parameter
         mappedHistory.forEach((key, value) {
           if (value.length > 2) {
             mappedHistory[key] = value.sublist(value.length - 2);
           }
         });
 
-        debugPrint('📊 mappedHistory final: $mappedHistory');
-
         state = state.copyWith(isLoading: false, history: mappedHistory);
 
-        // ── Fetch Hasil AI ──────────────────────────────────────────
+        // ── Fetch Hasil AI (per parameter, ambil yang terbaru & VALID untuk masing2 param) ──
         try {
-          if (listTerurut.isNotEmpty) {
-            final latestLaporan = listTerurut.last;
-            final latestLabId = latestLaporan['id_laporan_lab'];
+          if (dataList.isNotEmpty) {
+            final latestLaporan = dataList.last;
+            final latestLabId = latestLaporan['id_laporan_lab'] ?? latestLaporan['id_report'];
 
-            if (latestLabId != null) {
-              // 1. Fetch AI Lab
-              final aiLabResponse = await _apiService.get('/hasil-ai/lab/laporan/$latestLabId');
+            // CARI TAHU PARAMETER APA SAJA YANG ADA DI LAPORAN TERBARU
+            List<String> paramsInCurrentReport = [];
+            if (latestLaporan['hasil_lab'] != null && latestLaporan['hasil_lab'] is List) {
+              for (var h in latestLaporan['hasil_lab']) {
+                if (h is Map && h['parameter'] is Map) {
+                  String pName = h['parameter']['nama_parameter']?.toString().toUpperCase() ?? '';
+                  if (pName == 'TSHS') pName = 'TSH';
 
-              if (aiLabResponse.statusCode == 200) {
-                final dataLab = aiLabResponse.data['data'];
-
-                if (dataLab != null && dataLab is Map<String, dynamic>) {
-                  HasilAIGabunganModel aiModel = HasilAIGabunganModel.fromLabJson(dataLab);
-
-                  // 2. Fetch AI Tren (opsional — wajar 404 jika laporan pertama)
-                  try {
-                    final aiTrenResponse = await _apiService.get('/hasil-ai/tren/laporan/$latestLabId');
-
-                    if (aiTrenResponse.statusCode == 200) {
-                      final dataTren = aiTrenResponse.data['data'];
-                      if (dataTren != null && dataTren is Map<String, dynamic>) {
-                        // Gabungkan data tren ke model
-                        aiModel = aiModel.withTren(dataTren);
-                        debugPrint('✅ AI Tren berhasil digabungkan untuk laporan $latestLabId');
-                      }
-                    } else if (aiTrenResponse.statusCode == 404) {
-                      // Wajar — laporan pertama, tren belum dibuat
-                      debugPrint('⚠️ AI Tren belum tersedia (404) untuk laporan $latestLabId — wajar jika ini laporan pertama');
-                      // Tidak perlu error, lanjutkan dengan data lab saja
-                    } else {
-                      // Status lain selain 200/404 — log tapi jangan gagalkan
-                      debugPrint('⚠️ AI Tren response status ${aiTrenResponse.statusCode} untuk laporan $latestLabId');
-                    }
-                  } catch (trenError) {
-                    // Tangkap error lainnya (network, parsing, dll.)
-                    debugPrint('⚠️ Error saat fetch AI Tren (bisa jadi laporan pertama): $trenError');
-                    // Lanjutkan tanpa tren, tidak perlu throw error
+                  // ✅ CEK JUGA NILAI HASILNYA
+                  // Pastikan tidak null dan tidak berupa teks kosong
+                  var nilaiHasil = h['nilai_hasil'];
+                  if (nilaiHasil != null && nilaiHasil.toString().trim().isNotEmpty) {
+                    paramsInCurrentReport.add(pName);
                   }
-
-                  state = state.copyWith(latestAiResult: aiModel);
-                  debugPrint('✅ Hasil AI Lab berhasil di-set untuk laporan $latestLabId');
                 }
-              } else {
-                // AI Lab belum di-generate (status bukan 200)
-                state = state.copyWith(latestAiResult: null);
-                debugPrint("⚠️ AI Lab belum tersedia untuk laporan $latestLabId (status: ${aiLabResponse.statusCode})");
               }
-            } else {
-              debugPrint('⚠️ latestLabId null, skip AI fetch');
             }
+            final paramKeys = ['TSH', 'FT3', 'FT4', 'TRAB'];
+            Map<String, Map<String, dynamic>> validPerParam = {};
+
+            await Future.wait(paramKeys.map((key) async {
+              try {
+                // HANYA CEK AI JIKA PARAMETERNYA BENAR-BENAR ADA DI LAPORAN TERBARU
+                if (paramsInCurrentReport.contains(key)) {
+                  final res = await _apiService.get('/hasil-ai/lab/user/$userId/param/$key');
+                  if (res.statusCode == 200 && res.data['data'] != null) {
+                    validPerParam[key] = res.data['data'];
+                  }
+                }
+              } catch (e) {
+                debugPrint('ℹ️ Gagal ambil AI valid utk $key: $e');
+              }
+            }));
+
+            Map<String, dynamic>? dataTren;
+            if (latestLabId != null) {
+              try {
+                final aiTrenResponse = await _apiService.get('/hasil-ai/tren/laporan/$latestLabId');
+                if (aiTrenResponse.statusCode == 200) {
+                  final responseData = aiTrenResponse.data['data'];
+                  if (responseData != null && responseData is Map<String, dynamic>) {
+                    dataTren = responseData;
+                  }
+                }
+              } catch (e) {
+                debugPrint('ℹ️ AI Tren tidak ditemukan atau error: $e');
+              }
+            }
+
+            HasilAIGabunganModel? aiModel;
+            if (validPerParam.isNotEmpty) {
+              aiModel = HasilAIGabunganModel.fromMergedParams(validPerParam);
+              if (dataTren != null) {
+                aiModel = aiModel.withTren(dataTren);
+              } else {
+                aiModel = aiModel.withTrenDefault();
+              }
+            } else if (dataTren != null) {
+              aiModel = HasilAIGabunganModel.fromTrenOnly(dataTren);
+            }
+
+            state = state.copyWith(latestAiResult: aiModel);
           } else {
-            debugPrint('⚠️ listTerurut kosong, skip AI fetch');
+            // PAKSA KOSONG JIKA TIDAK ADA LAPORAN
+            state = state.copyWith(latestAiResult: null);
           }
         } catch (aiError) {
           debugPrint("❌ Gagal fetch AI secara keseluruhan: $aiError");
@@ -217,8 +241,6 @@ class MonitoringNotifier extends Notifier<MonitoringState> {
         // ── Fetch USG Tiroid ────────────────────────────────────────
         try {
           final usgResponse = await _apiService.get('/usg-tiroid/user/$userId');
-          debugPrint("USG response: ${usgResponse.data}");
-
           if (usgResponse.statusCode == 200) {
             final usgData = usgResponse.data['data'];
             if (usgData != null && usgData is List) {
@@ -226,7 +248,6 @@ class MonitoringNotifier extends Notifier<MonitoringState> {
                   .map((e) => UsgTiroidModel.fromJson(e as Map<String, dynamic>))
                   .toList();
               state = state.copyWith(usgList: usgList);
-              debugPrint('✅ USG Tiroid berhasil di-fetch: ${usgList.length} data');
             }
           }
         } catch (usgError) {
@@ -250,16 +271,13 @@ class MonitoringNotifier extends Notifier<MonitoringState> {
         'tgl_periksa': payload['tgl_periksa'],
         'nama_lab': payload['nama_lab'] ?? 'Laboratorium Klinik',
         'parameters': payload['parameters'] ?? [],
+        if (payload['id_laporan_lab'] != null)
+          'id_laporan_lab': payload['id_laporan_lab'],
       };
 
-      debugPrint('📤 Payload ke /hasil-lab: ${jsonEncode(correctedPayload)}');
-
-      // 1. Simpan Data Lab ke Database
       final response = await _apiService.post('/hasil-lab', data: correctedPayload);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-
-        // 2. 🤖 TRIGGER AI OTOMATIS
         try {
           final data = response.data['data'];
           int? newLabId;
@@ -271,18 +289,21 @@ class MonitoringNotifier extends Notifier<MonitoringState> {
           }
 
           if (newLabId != null && newLabId != 0) {
-            await _apiService.post('/hasil-ai/assess', data: {
-              "lab": { "id_laporan_lab": newLabId },
-              "is_lab_day": true
-            });
-            debugPrint("✅ AI otomatis berhasil berhitung untuk Laporan $newLabId");
+            _apiService.post('/hasil-ai/assess', data: {
+              "is_lab_day": true,
+              "lab": {
+                "id_laporan_lab": newLabId,
+                "parameters": correctedPayload['parameters']
+              }
+            }).catchError((e) => debugPrint("⚠️ Gagal memicu AI otomatis: $e"));
           }
         } catch (aiError) {
           debugPrint("⚠️ Gagal memicu AI otomatis: $aiError");
         }
 
-        // 3. Tarik ulang data untuk update UI HP
-        await fetchMonitoringData(payload['id_user']);
+        fetchMonitoringData(payload['id_user']);
+
+        state = state.copyWith(isLoading: false);
         return true;
       } else {
         state = state.copyWith(
@@ -306,7 +327,6 @@ class MonitoringNotifier extends Notifier<MonitoringState> {
     try {
       final response = await _apiService.put('/hasil-lab/$idHasilLab', data: payload);
       if (response.statusCode == 200 || response.statusCode == 201) {
-        await fetchMonitoringData(userId);
         return true;
       } else {
         state = state.copyWith(
@@ -318,6 +338,27 @@ class MonitoringNotifier extends Notifier<MonitoringState> {
       state = state.copyWith(
           isLoading: false, errorMessage: "Terjadi kesalahan jaringan: $e");
       return false;
+    }
+  }
+
+  Future<void> reassessLab({
+    required int idLaporanLab,
+    required List<Map<String, dynamic>> parameters,
+  }) async {
+    try {
+      await _apiService.post(
+        '/hasil-ai/assess',
+        data: {
+          'is_lab_day': true,
+          'lab': {
+            'id_laporan_lab': idLaporanLab,
+            'parameters': parameters,
+          },
+        },
+      );
+      debugPrint('✅ Reassess berhasil untuk laporan $idLaporanLab');
+    } catch (e) {
+      debugPrint('⚠️ Reassess gagal: $e');
     }
   }
 }

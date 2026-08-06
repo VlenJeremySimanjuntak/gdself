@@ -15,8 +15,19 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await initializeDateFormatting('id');
-  await NotificationService().init();
+
+  try {
+    await initializeDateFormatting('id');
+  } catch (e) {
+    debugPrint("⚠️ Gagal inisialisasi format tanggal: $e");
+  }
+
+  try {
+    await NotificationService().init();
+    debugPrint("✅ NotificationService berhasil diinisialisasi (plugin setup).");
+  } catch (e) {
+    debugPrint("🔥 FATAL ERROR NotificationService: $e");
+  }
 
   runApp(
     const ProviderScope(
@@ -51,7 +62,15 @@ class _AppRouter extends ConsumerWidget {
   Future<_AppState> _checkAppState() async {
     final prefs = await SharedPreferences.getInstance();
     final hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
-    final user = await ApiService().restoreSession();
+
+    UserModel? user;
+    try {
+      user = await ApiService().restoreSession();
+    } catch (e) {
+      debugPrint('🔥 Gagal restoreSession: $e');
+      user = null;
+    }
+
     return _AppState(hasSeenOnboarding: hasSeenOnboarding, user: user);
   }
 
@@ -62,8 +81,14 @@ class _AppRouter extends ConsumerWidget {
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Scaffold(
+            backgroundColor: Colors.white,
             body: Center(child: CircularProgressIndicator()),
           );
+        }
+
+        if (snapshot.hasError || !snapshot.hasData) {
+          debugPrint('🔥 FutureBuilder error: ${snapshot.error}');
+          return const LoginScreen();
         }
 
         final appState = snapshot.data!;

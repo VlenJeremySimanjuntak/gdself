@@ -29,6 +29,8 @@ dependencies:
   font_awesome_flutter: ^11.0.0
   image_picker: ^1.2.2
   url_launcher: ^6.2.6
+  device_info_plus: ^10.1.2
+  cached_network_image: ^3.4.1
 
 
 dev_dependencies:

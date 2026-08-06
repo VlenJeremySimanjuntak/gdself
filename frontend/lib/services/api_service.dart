@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/user_model.dart';
+import '../main.dart';
 
 class ApiService {
   static final ApiService _instance = ApiService._internal();
@@ -8,6 +10,25 @@ class ApiService {
 
   ApiService._internal() {
     _loadToken();
+
+    _dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) async {
+        options.headers['ngrok-skip-browser-warning'] = 'true';
+
+        String? token;
+        try {
+          token = await _secureStorage.read(key: _tokenKey);
+        } catch (e) {
+          debugPrint('⚠️ Gagal baca token dari secure storage (interceptor): $e');
+          await _clearCorruptedStorage();
+        }
+
+        if (token != null) {
+          options.headers['Authorization'] = 'Bearer $token';
+        }
+        return handler.next(options);
+      },
+    ));
   }
 
   static const String _tokenKey = 'jwt_token';
@@ -15,12 +36,10 @@ class ApiService {
   static const _secureStorage = FlutterSecureStorage();
 
   String? _token;
-  //192.168.50.45
-  //gdself-production.up.railway.app
 
   final Dio _dio = Dio(
     BaseOptions(
-      baseUrl: 'https://gdself-production.up.railway.app/api',
+      baseUrl: 'https://engaged-kick-utilize.ngrok-free.dev/api',
       connectTimeout: const Duration(seconds: 40),
       receiveTimeout: const Duration(seconds: 40),
       headers: {
@@ -32,14 +51,36 @@ class ApiService {
 
   Dio get sendRequest => _dio;
 
+  // =======================================================================
+  // ✅ TAMBAHAN BARU: Helper untuk mempermudah UI mengambil URL & Token
+  // =======================================================================
+  String get baseUrl => _dio.options.baseUrl;
+  Map<String, String> get authHeaders => {'Authorization': 'Bearer $token'};
+  // =======================================================================
+
   String _addPrefix(String endpoint) {
     return endpoint.startsWith('/') ? endpoint : '/$endpoint';
   }
 
   // ── Token helpers ─────────────────────────────────────────────────────────
   Future<void> _loadToken() async {
-    _token = await _secureStorage.read(key: _tokenKey);
-    if (_token != null) _setAuthHeader(_token!);
+    try {
+      _token = await _secureStorage.read(key: _tokenKey);
+      if (_token != null) _setAuthHeader(_token!);
+    } catch (e) {
+      debugPrint('⚠️ Gagal load token (kemungkinan data terenkripsi corrupt): $e');
+      await _clearCorruptedStorage();
+      _token = null;
+    }
+  }
+
+  Future<void> _clearCorruptedStorage() async {
+    try {
+      await _secureStorage.deleteAll();
+      debugPrint('🧹 Secure storage yang corrupt sudah dibersihkan.');
+    } catch (e) {
+      debugPrint('⚠️ Gagal membersihkan secure storage: $e');
+    }
   }
 
   void _setAuthHeader(String token) =>
@@ -55,11 +96,12 @@ class ApiService {
   }
 
   Future<UserModel?> _loadUser() async {
-    final raw = await _secureStorage.read(key: _userKey);
-    if (raw == null) return null;
     try {
+      final raw = await _secureStorage.read(key: _userKey);
+      if (raw == null) return null;
       return UserModel.fromJsonString(raw);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('⚠️ Gagal load user dari storage: $e');
       return null;
     }
   }
@@ -86,7 +128,7 @@ class ApiService {
       _setAuthHeader(_token!);
       return auth.user;
     } on DioException catch (e) {
-      throw e.response?.data?['error'] ?? e.message ?? 'Gagal login';
+      throw _extractError(e);
     }
   }
 
@@ -104,7 +146,7 @@ class ApiService {
       _setAuthHeader(_token!);
       return auth.user;
     } on DioException catch (e) {
-      throw e.response?.data?['error'] ?? e.message ?? 'Gagal Google Login';
+      throw _extractError(e);
     }
   }
 
@@ -136,7 +178,7 @@ class ApiService {
       _setAuthHeader(_token!);
       return auth.user;
     } on DioException catch (e) {
-      throw e.response?.data?['error'] ?? e.message ?? 'Gagal register';
+      throw _extractError(e);
     }
   }
 
@@ -144,13 +186,34 @@ class ApiService {
   Future<UserModel?> restoreSession() async {
     await _loadToken();
     if (!isAuthenticated) return null;
-    return await _loadUser();
+
+    final cachedUser = await _loadUser();
+    if (cachedUser == null) return null;
+
+    try {
+      await _dio.get(_addPrefix('/users/${cachedUser.idUser}'));
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401) {
+        await logout();
+        return null;
+      }
+      // Kalau errornya bukan 401 (misal koneksi/ngrok mati),
+      // tetap pakai cached user supaya app tidak macet,
+      // tapi kita log pesan ramahnya untuk keperluan debug.
+      debugPrint('⚠️ restoreSession gagal validasi ke server: ${_extractError(e)}');
+    }
+
+    return cachedUser;
   }
 
   Future<void> logout() async {
     _token = null;
-    await _secureStorage.delete(key: _tokenKey);
-    await _secureStorage.delete(key: _userKey);
+    try {
+      await _secureStorage.delete(key: _tokenKey);
+      await _secureStorage.delete(key: _userKey);
+    } catch (e) {
+      debugPrint('⚠️ Gagal hapus token saat logout: $e');
+    }
     _clearAuthHeader();
   }
 
@@ -162,7 +225,7 @@ class ApiService {
         data: {'email': email, 'type': type},
       );
     } on DioException catch (e) {
-      throw e.response?.data?['error'] ?? e.message ?? 'Gagal kirim OTP';
+      throw _extractError(e);
     }
   }
 
@@ -173,12 +236,11 @@ class ApiService {
         data: {'email': email, 'code': code, 'type': type},
       );
     } on DioException catch (e) {
-      throw e.response?.data?['error'] ?? e.message ?? 'OTP tidak valid';
+      throw _extractError(e);
     }
   }
 
   // ── Google Check (baru) ───────────────────────────────────────────────────
-  /// Return Map: {is_new_user, token?, user?, google_email?, google_name?, google_photo?}
   Future<Map<String, dynamic>> googleCheck(String idToken) async {
     try {
       final response = await _dio.post(
@@ -187,11 +249,10 @@ class ApiService {
       );
       return response.data['data'] as Map<String, dynamic>;
     } on DioException catch (e) {
-      throw e.response?.data?['error'] ?? e.message ?? 'Gagal cek akun Google';
+      throw _extractError(e);
     }
   }
 
-  /// Selesaikan registrasi user Google baru
   Future<UserModel> googleComplete({
     required String idToken,
     required String password,
@@ -217,7 +278,7 @@ class ApiService {
       _setAuthHeader(_token!);
       return auth.user;
     } on DioException catch (e) {
-      throw e.response?.data?['error'] ?? e.message ?? 'Gagal menyelesaikan registrasi';
+      throw _extractError(e);
     }
   }
 
@@ -229,7 +290,7 @@ class ApiService {
         data: {'email': email},
       );
     } on DioException catch (e) {
-      throw e.response?.data?['error'] ?? e.message ?? 'Gagal kirim email reset';
+      throw _extractError(e);
     }
   }
 
@@ -248,7 +309,7 @@ class ApiService {
         },
       );
     } on DioException catch (e) {
-      throw e.response?.data?['error'] ?? e.message ?? 'Gagal reset password';
+      throw _extractError(e);
     }
   }
 
@@ -258,7 +319,7 @@ class ApiService {
       return await _dio.post(_addPrefix(endpoint), data: data);
     } on DioException catch (e) {
       _handleAuthError(e);
-      throw e.message ?? 'Gagal POST';
+      throw _extractError(e);
     }
   }
 
@@ -267,7 +328,7 @@ class ApiService {
       return await _dio.get(_addPrefix(endpoint));
     } on DioException catch (e) {
       _handleAuthError(e);
-      throw e.message ?? 'Gagal GET';
+      throw _extractError(e);
     }
   }
 
@@ -276,7 +337,7 @@ class ApiService {
       return await _dio.put(_addPrefix(endpoint), data: data);
     } on DioException catch (e) {
       _handleAuthError(e);
-      throw e.message ?? 'Gagal PUT';
+      throw _extractError(e);
     }
   }
 
@@ -285,11 +346,67 @@ class ApiService {
       return await _dio.delete(_addPrefix(endpoint));
     } on DioException catch (e) {
       _handleAuthError(e);
-      throw e.message ?? 'Gagal DELETE';
+      throw _extractError(e);
     }
   }
 
   void _handleAuthError(DioException e) {
-    if (e.response?.statusCode == 401) logout();
+    if (e.response?.statusCode == 401) {
+      logout();
+      navigatorKey.currentState?.pushNamedAndRemoveUntil(
+        '/login',
+            (route) => false,
+      );
+    }
+  }
+
+  dynamic _extractError(DioException e) {
+    final data = e.response?.data;
+
+    if (data is Map) {
+      final msg = data['error'] ?? data['message'];
+      if (msg != null && msg.toString().trim().isNotEmpty) {
+        return msg;
+      }
+    }
+
+    return ErrorHandler.getFriendlyMessage(e);
+  }
+}
+
+// ============================================================================
+// ✅ ERROR HANDLER: Menerjemahkan Error Teknis Menjadi Bahasa Formal & Lugas
+// ============================================================================
+class ErrorHandler {
+  static String getFriendlyMessage(dynamic error) {
+    if (error is DioException) {
+      switch (error.type) {
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.receiveTimeout:
+          return "Proses memuat data tertunda. Silakan coba lagi saat koneksi lebih stabil.";
+
+        case DioExceptionType.connectionError:
+          return "Koneksi ke server terputus. Silakan periksa jaringan Anda dan coba muat ulang halaman ini.";
+
+        case DioExceptionType.badResponse:
+          final statusCode = error.response?.statusCode;
+
+          if (statusCode == 404) {
+            return "Informasi yang Anda cari belum tersedia saat ini. Silakan kembali ke Beranda atau coba muat ulang halaman.";
+          } else if (statusCode != null && statusCode >= 500) {
+            return "Terjadi kendala pada sistem kami. Silakan coba beberapa saat lagi.";
+          }
+          return "Terjadi kendala dalam menampilkan data. Silakan coba lagi nanti.";
+
+        case DioExceptionType.cancel:
+          return "Permintaan memuat data dibatalkan.";
+
+        default:
+          return "Terjadi kesalahan yang tidak terduga. Silakan muat ulang halaman ini.";
+      }
+    }
+
+    return "Terjadi kendala pada aplikasi. Silakan coba beberapa saat lagi.";
   }
 }

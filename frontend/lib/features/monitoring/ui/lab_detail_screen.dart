@@ -32,15 +32,19 @@ class _LabDetailScreenState extends ConsumerState<LabDetailScreen> {
     if (userId != null) {
       // Ambil data terbaru dari monitoringProvider
       await ref.read(monitoringProvider.notifier).fetchMonitoringData(userId);
-      // Cari data laporan terbaru dengan id yang sama
-      final latestLaporan = ref.read(monitoringProvider).history; // atau dari arsipProvider
-      // Karena kita punya idLaporanLab, kita bisa cari di arsipProvider
+      // Ambil data riwayat terbaru
       await ref.read(riwayatProvider.notifier).fetchRiwayatData(userId);
+
       final arsipList = ref.read(riwayatProvider).laporanList;
+
+      // ✅ PERBAIKAN: Mengonversi keduanya ke String untuk menghindari type mismatch
+      final targetId = _currentData['id_laporan_lab']?.toString();
+
       final updatedReport = arsipList.firstWhere(
-            (item) => item['id_laporan_lab'] == _currentData['id_laporan_lab'],
+            (item) => item['id_laporan_lab']?.toString() == targetId,
         orElse: () => _currentData,
       );
+
       setState(() {
         _currentData = updatedReport;
       });
@@ -74,6 +78,16 @@ class _LabDetailScreenState extends ConsumerState<LabDetailScreen> {
     String namaLab = _currentData['nama_lab'] ?? "Laboratorium Klinik";
     DateTime dateObj = DateTime.tryParse(_currentData['raw_date'] ?? "") ?? DateTime.now();
     String tgl = DateFormat('dd/MM/yyyy').format(dateObj);
+
+    // ✅ LOGIKA 24 JAM: Mengambil waktu pembuatan laporan
+    DateTime createdAt = DateTime.tryParse(
+        _currentData['created_at']?.toString() ??
+            _currentData['raw_date']?.toString() ??
+            ""
+    ) ?? DateTime.now();
+
+    // Cek selisih waktu sekarang dengan waktu laporan dibuat
+    bool isEditable = DateTime.now().difference(createdAt).inHours < 24;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F8FB),
@@ -113,24 +127,33 @@ class _LabDetailScreenState extends ConsumerState<LabDetailScreen> {
                 _buildGeneralInfoCard(namaLab, tgl),
                 const SizedBox(height: 16),
 
-                _buildHormoneCard("TSHs", "Thyroid Stimulating Hormone", _getParamData("TSH")),
-                const SizedBox(height: 16),
-                _buildHormoneCard("FT4", "Free Thyroxine", _getParamData("FT4")),
-                const SizedBox(height: 16),
+                // ✅ 1. FT3 dipindah ke urutan pertama
                 _buildHormoneCard("FT3", "Free Triiodothyronine", _getParamData("FT3")),
                 const SizedBox(height: 16),
-                _buildHormoneCard("TRAb", "Thyroid Receptor Antibody", _getParamData("TRAb")),
+
+                // ✅ 2. FT4 di urutan kedua
+                _buildHormoneCard("FT4", "Free Thyroxine", _getParamData("FT4")),
+                const SizedBox(height: 16),
+
+                // ✅ 3. TSHs di urutan ketiga
+                _buildHormoneCard("TSHs", "Thyroid Stimulating Hormone", _getParamData("TSH")),
+                const SizedBox(height: 16),
+
+                // ✅ 4. TRAb tetap di posisi terakhir
+                _buildHormoneCard("TRAb", "Thyrotropin Receptor Antibodies", _getParamData("TRAb")),
 
                 const SizedBox(height: 120),
               ],
             ),
           ),
 
+          // ✅ TOMBOL EDIT YANG SUDAH DILENGKAPI FITUR KUNCI 24 JAM
           Positioned(
             bottom: 30,
             right: 24,
             child: FloatingActionButton.extended(
-              onPressed: () async {
+              onPressed: isEditable
+                  ? () async {
                 final result = await Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -149,10 +172,26 @@ class _LabDetailScreenState extends ConsumerState<LabDetailScreen> {
                   // Refresh data setelah edit berhasil
                   await _refreshData();
                 }
+              }
+                  : () {
+                // Tampilkan notifikasi jika sudah lewat 24 jam
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Data tidak dapat diubah karena sudah lebih dari 24 jam sejak direkam."),
+                    backgroundColor: Colors.red,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
               },
-              backgroundColor: AppColors.primaryBlue,
-              icon: const Icon(Icons.edit_rounded, color: Colors.white),
-              label: const Text("Edit", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+              backgroundColor: isEditable ? AppColors.primaryBlue : Colors.grey,
+              icon: Icon(
+                  isEditable ? Icons.edit_rounded : Icons.lock_outline,
+                  color: Colors.white
+              ),
+              label: Text(
+                  isEditable ? "Edit" : "Terkunci",
+                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)
+              ),
             ),
           ),
         ],
@@ -180,14 +219,29 @@ class _LabDetailScreenState extends ConsumerState<LabDetailScreen> {
   }
 
   Widget _buildHormoneCard(String title, String sub, Map<String, dynamic>? data) {
-    String val = data?['nilai_hasil']?.toString() ?? "-";
-    String min = data?['nilai_batas_bawah']?.toString() ?? "-";
-    String max = data?['nilai_batas_atas']?.toString() ?? "-";
-    String unit = data?['parameter']?['satuan'] ?? "";
+    // 1. Tentukan presisi desimal: 3 untuk TSHs, 2 untuk yang lainnya
+    final int decimalPlaces = (title.toUpperCase() == "TSHS") ? 3 : 2;
+
+    // 2. Fungsi helper untuk memformat angka dengan aman
+    String formatValue(dynamic value) {
+      if (value == null) return "-";
+      final double? parsed = double.tryParse(value.toString());
+      return parsed != null ? parsed.toStringAsFixed(decimalPlaces) : "-";
+    }
+
+    // 3. Gunakan helper untuk memformat hasil, min, dan max
+    String val = formatValue(data?['nilai_hasil']);
+    String min = formatValue(data?['nilai_batas_bawah']);
+    String max = formatValue(data?['nilai_batas_atas']);
+    String unit = data?['parameter']?['satuan']?.toString() ?? "";
 
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: const [BoxShadow(color: Color(0x0A000000), blurRadius: 15, offset: Offset(0, 5))]),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: const [BoxShadow(color: Color(0x0A000000), blurRadius: 15, offset: Offset(0, 5))]
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

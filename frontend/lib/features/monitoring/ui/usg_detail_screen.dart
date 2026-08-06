@@ -18,25 +18,66 @@ class UsgDetailScreen extends ConsumerWidget {
     this.usgData,
   });
 
-  String _getImageUrl(String? path) {
-    if (path == null || path.isEmpty) return '';
-    String normalizedPath = path.replaceAll('\\', '/');
-    if (normalizedPath.startsWith('http')) return normalizedPath;
-    String baseUrl = ApiService().sendRequest.options.baseUrl;
-    if (baseUrl.endsWith('/api')) {
-      baseUrl = baseUrl.substring(0, baseUrl.length - 4);
-    } else if (baseUrl.endsWith('/api/')) {
-      baseUrl = baseUrl.substring(0, baseUrl.length - 5);
-    }
+  // 🔧 DIUBAH: Detail view = ORIGINAL (full-res) via endpoint ber-JWT.
+  String _getFotoUrl(int usgId, String? fotoPath) {
+    if (fotoPath == null || fotoPath.isEmpty) return '';
+    String baseUrl = ApiService().sendRequest.options.baseUrl; // sudah termasuk ".../api"
     final cleanBase = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
-    final cleanPath = normalizedPath.startsWith('/') ? normalizedPath : '/$normalizedPath';
-    return '$cleanBase$cleanPath';
+    return '$cleanBase/usg-tiroid/$usgId/foto';
+  }
+
+  void _showFullScreenImage(BuildContext context, String imageUrl, Map<String, String>? authHeaders) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.9),
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.zero,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              InteractiveViewer(
+                panEnabled: true,
+                minScale: 0.5,
+                maxScale: 4.0, // Zoom maksimal 4x
+                child: Image.network(
+                  imageUrl,
+                  headers: authHeaders,
+                  fit: BoxFit.contain, // Pastikan gambar tidak terpotong (contain)
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return const Center(
+                      child: CircularProgressIndicator(color: Colors.white),
+                    );
+                  },
+                  errorBuilder: (_, __, ___) => const Center(
+                    child: Icon(Icons.broken_image, size: 64, color: Colors.grey),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 40,
+                right: 20,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white, size: 32),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Pantau state monitoring
     final monitorState = ref.watch(monitoringProvider);
+
+    // 🔧 DITAMBAH: header JWT + ngrok-skip untuk gambar.
+    final authHeaders = ref.watch(userProvider).authHeaders;
 
     // ✅ PERBAIKAN: Cari dulu data TERBARU di monitorState.
     // Kalau tidak ketemu, baru pakai usgData bawaan.
@@ -49,7 +90,7 @@ class UsgDetailScreen extends ConsumerWidget {
         ? DateFormat('dd MMMM yyyy', 'id_ID').format(usg.tglPemeriksaan!)
         : '-';
 
-    final String imageUrl = _getImageUrl(usg.fotoPath);
+    final String imageUrl = _getFotoUrl(usgId, usg.fotoPath);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F9FF),
@@ -83,40 +124,42 @@ class UsgDetailScreen extends ConsumerWidget {
                   const SizedBox(height: 8),
                   Text(tanggal, style: const TextStyle(color: Color(0xFF64748B), fontSize: 15, fontWeight: FontWeight.w500)),
                   const SizedBox(height: 24),
-
                   const Text("Hasil USG Tiroid", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1E293B))),
                   const SizedBox(height: 16),
-
                   if (imageUrl.isNotEmpty) ...[
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: Image.network(
-                        imageUrl,
-                        width: double.infinity,
-                        height: 200,
-                        fit: BoxFit.cover,
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return Container(
-                            height: 200,
-                            color: const Color(0xFFE2E8F0),
-                            child: const Center(child: CircularProgressIndicator(color: Color(0xFF006699))),
-                          );
-                        },
-                        errorBuilder: (_, __, ___) => Container(
+                    GestureDetector( // ✅ BUNGKUS DENGAN GESTURE DETECTOR
+                      onTap: () => _showFullScreenImage(context, imageUrl, authHeaders),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Image.network(
+                          imageUrl,
+                          headers: authHeaders,
+                          width: double.infinity,
                           height: 200,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE2E8F0),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: const Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.broken_image, size: 48, color: Color(0xFF94A3B8)),
-                                SizedBox(height: 8),
-                                Text('Gambar tidak tersedia', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 14)),
-                              ],
+                          fit: BoxFit.cover, // Di halaman UI tetap cover agar rapi
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return Container(
+                              height: 200,
+                              color: const Color(0xFFE2E8F0),
+                              child: const Center(child: CircularProgressIndicator(color: Color(0xFF006699))),
+                            );
+                          },
+                          errorBuilder: (_, __, ___) => Container(
+                            height: 200,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE2E8F0),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.broken_image, size: 48, color: Color(0xFF94A3B8)),
+                                  SizedBox(height: 8),
+                                  Text('Gambar tidak tersedia', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 14)),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -124,7 +167,6 @@ class UsgDetailScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 24),
                   ],
-
                   const Text('Catatan/ Deskripsi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1E293B))),
                   const SizedBox(height: 12),
                   Text(
@@ -135,7 +177,6 @@ class UsgDetailScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 24),
-
             // Tombol Edit – di kanan, ukuran menyesuaikan
             Align(
               alignment: Alignment.centerRight,
@@ -146,7 +187,6 @@ class UsgDetailScreen extends ConsumerWidget {
                     context,
                     MaterialPageRoute(builder: (_) => EditUsgScreen(usg: usg)),
                   );
-
                   // Jika isEdited bernilai true, kita refresh datanya
                   if (isEdited == true) {
                     final userId = ref.read(userProvider).user?.idUser;

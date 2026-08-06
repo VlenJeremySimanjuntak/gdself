@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
-
-// Sesuaikan path import di bawah dengan struktur folder kamu
 import '../../../services/api_service.dart';
 import '../../home/providers/user_provider.dart';
+import '../providers/monitoring_provider.dart';
 import '../providers/usg_provider.dart';
-import '../../../utils/design_system.dart';
+import '../../../core/widgets/app_status_dialog.dart';
+import 'package:flutter/cupertino.dart';
 
 class InputUsgScreen extends ConsumerStatefulWidget {
   const InputUsgScreen({super.key});
@@ -22,6 +22,7 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
   final TextEditingController _catatanController = TextEditingController();
   DateTime? _selectedDate;
   File? _imageFile;
+  bool _isSaving = false;
 
   // --- Warna Kustom Berdasarkan Desain ---
   final Color _primaryBlue = const Color(0xFF00618A); // Warna biru tua tombol/header
@@ -30,55 +31,32 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
 
   // Fungsi untuk simpan data
   Future<void> _simpan() async {
-    if (_rsController.text.trim().isEmpty) {
+    // 1. Validasi Input
+    if (_rsController.text.trim().isEmpty || _selectedDate == null || _imageFile == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nama rumah sakit harus diisi')),
-      );
-      return;
-    }
-    if (_selectedDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tanggal pemeriksaan harus dipilih')),
-      );
-      return;
-    }
-    if (_imageFile == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Foto USG harus diunggah')),
+        const SnackBar(content: Text('Mohon lengkapi data wajib (*).')),
       );
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Menyimpan data...'), duration: Duration(seconds: 1)),
-    );
+    setState(() => _isSaving = true);
 
-    // 1. BUAT RIWAYAT DULU
     final userId = ref.read(userProvider).user?.idUser;
     if (userId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error: Data User tidak ditemukan')),
-      );
+      setState(() => _isSaving = false);
       return;
     }
 
     try {
+      // 2. Buat Riwayat (Request ke-1)
       final riwayatRes = await ApiService().sendRequest.post('/riwayat', data: {
         'id_user': userId,
         'tanggal': DateFormat('yyyy-MM-dd').format(DateTime.now()),
       });
 
-      final riwayatId = riwayatRes.data['data']['id_riwayat'] ?? 0;
-      if (riwayatId == 0) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Gagal membuat sesi riwayat')),
-          );
-        }
-        return;
-      }
+      final riwayatId = riwayatRes.data['data']?['id_riwayat'] ?? 0;
 
-      // 2. SIMPAN USG DENGAN ID RIWAYAT BARU
+      // 3. Simpan USG (Request ke-2)
       final success = await ref.read(usgProvider.notifier).createUsgData(
         idRiwayat: riwayatId,
         namaRs: _rsController.text.trim(),
@@ -87,26 +65,35 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
         imageFile: _imageFile!,
       );
 
-      if (!mounted) return;
-
+      // 4. Refresh background (Tanpa Await)
       if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Data USG berhasil disimpan!'),
-            backgroundColor: Color(0xFF00695C),
-          ),
-        );
-        Navigator.pop(context, true);
-      } else {
-        final errorMsg = ref.read(usgProvider).errorMessage ?? 'Gagal menyimpan data USG';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMsg), backgroundColor: Colors.red),
+        ref.read(monitoringProvider.notifier).fetchMonitoringData(userId);
+      }
+
+      // 5. Matikan loading & Tampilkan Dialog Instan
+      setState(() => _isSaving = false);
+
+      if (mounted) {
+        AppStatusDialog.show(
+          context,
+          isSuccess: success,
+          title: success ? "Berhasil!" : "Gagal!",
+          message: success ? "Data USG berhasil disimpan." : (ref.read(usgProvider).errorMessage ?? "Terjadi kesalahan."),
+          onOk: () {
+            Navigator.pop(context); // Tutup dialog
+            if (success) Navigator.pop(context, true); // Tutup layar input
+          },
         );
       }
     } catch (e) {
+      setState(() => _isSaving = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Terjadi kesalahan: $e'), backgroundColor: Colors.red),
+        AppStatusDialog.show(
+          context,
+          isSuccess: false,
+          title: "Kesalahan",
+          message: "Terjadi kesalahan: ${e.toString()}",
+          onOk: () => Navigator.pop(context),
         );
       }
     }
@@ -138,42 +125,53 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
     }
   }
 
-  Future<void> _pickImage() async {
-    showModalBottomSheet(
+  void _pickImage() {
+    showCupertinoModalPopup(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (BuildContext context) {
-        return SafeArea(
-          child: Wrap(
-            children: <Widget>[
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: ListTile(
-                  leading: const Icon(Icons.photo_library_outlined, color: Color(0xFF00618A)),
-                  title: const Text('Pilih dari Galeri', style: TextStyle(fontWeight: FontWeight.w600)),
-                  onTap: () async {
-                    Navigator.of(context).pop();
-                    await _getImage(ImageSource.gallery); // Buka galeri
-                  },
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8.0),
-                child: ListTile(
-                  leading: const Icon(Icons.camera_alt_outlined, color: Color(0xFF00618A)),
-                  title: const Text('Ambil dari Kamera', style: TextStyle(fontWeight: FontWeight.w600)),
-                  onTap: () async {
-                    Navigator.of(context).pop();
-                    await _getImage(ImageSource.camera); // Buka kamera
-                  },
-                ),
-              ),
-            ],
+      builder: (BuildContext context) => CupertinoActionSheet(
+        title: Text(
+            'Unggah Foto USG',
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: _textColor
+            )
+        ),
+        message: const Text(
+            'Pilih sumber foto Anda',
+            style: TextStyle(fontSize: 12)
+        ),
+        actions: <CupertinoActionSheetAction>[
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(context);
+              _getImage(ImageSource.gallery);
+            },
+            child: Text(
+                'Pilih dari Galeri',
+                style: TextStyle(color: _primaryBlue, fontSize: 16)
+            ),
           ),
-        );
-      },
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(context);
+              _getImage(ImageSource.camera);
+            },
+            child: Text(
+                'Ambil Foto',
+                style: TextStyle(color: _primaryBlue, fontSize: 16)
+            ),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDestructiveAction: true,
+          onPressed: () => Navigator.pop(context),
+          child: const Text(
+              'Batal',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
+          ),
+        ),
+      ),
     );
   }
 
@@ -183,7 +181,7 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
     try {
       final pickedFile = await picker.pickImage(
         source: source,
-        imageQuality: 80, // Kompres sedikit agar API tidak jebol
+        // Parameter kompresi dan batas resolusi DIHAPUS
       );
       if (pickedFile != null) {
         setState(() {
@@ -191,9 +189,11 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
         });
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gagal mengambil gambar: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal mengambil gambar: $e')),
+        );
+      }
     }
   }
 
@@ -234,7 +234,7 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FBFA), // Base background color
+      backgroundColor: const Color(0xFFF8FBFA),
       appBar: AppBar(
         titleSpacing: 0,
         title: Text(
@@ -438,19 +438,27 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
                       ),
                     ],
                   ),
-                  child: ElevatedButton.icon(
-                    onPressed: _simpan,
-                    icon: const Icon(Icons.save_outlined, color: Colors.white, size: 20),
-                    label: const Text(
-                      'Simpan Hasil USG',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
-                    ),
+                  child: ElevatedButton(
+                    onPressed: _isSaving ? null : _simpan,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _primaryBlue,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(30),
                       ),
                       elevation: 0,
+                    ),
+                    child: _isSaving
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.save_outlined, color: Colors.white, size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          'Simpan Hasil USG',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+                        ),
+                      ],
                     ),
                   ),
                 ),

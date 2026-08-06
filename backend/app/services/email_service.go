@@ -2,10 +2,13 @@ package services
 
 import (
 	"crypto/rand"
+	"crypto/tls"
 	"fmt"
 	"math/big"
+	"net"
 	"net/smtp"
 	"os"
+	"time"
 )
 
 type EmailService struct {
@@ -19,12 +22,12 @@ type EmailService struct {
 
 func NewEmailService() *EmailService {
 	return &EmailService{
-		FromEmail: os.Getenv("SMTP_FROM_EMAIL"), // Pastikan sama dengan SMTP_USER
+		FromEmail: os.Getenv("SMTP_FROM_EMAIL"), // sama dengan SMTP_USER
 		FromName:  "GdSelf App",
 		SMTPHost:  "smtp.gmail.com",
 		SMTPPort:  "587",
-		SMTPUser:  os.Getenv("SMTP_USER"),     // Email Gmail kamu
-		SMTPPass:  os.Getenv("SMTP_APP_PASS"), // App Password 16 digit
+		SMTPUser:  os.Getenv("SMTP_USER"),     // email Gmail kamu
+		SMTPPass:  os.Getenv("SMTP_APP_PASS"), // App Password 16 digit dari Google
 	}
 }
 
@@ -54,33 +57,72 @@ func (s *EmailService) SendOTPEmail(toEmail, otpCode, emailType string) error {
 	case "reset_password":
 		subject = "Kode Reset Password GdSelf"
 		htmlBody = s.buildResetPasswordEmailBody(otpCode)
+	case "delete_account":
+		subject = "Kode Konfirmasi Hapus Akun GdSelf"
+		htmlBody = s.buildDeleteAccountEmailBody(otpCode)
 	default:
 		subject = "Kode Verifikasi GdSelf"
 		htmlBody = s.buildRegisterEmailBody(otpCode)
 	}
 
 	from := fmt.Sprintf("%s <%s>", s.FromName, s.FromEmail)
+	msg := []byte(
+		"From: " + from + "\r\n" +
+			"To: " + toEmail + "\r\n" +
+			"Subject: " + subject + "\r\n" +
+			"MIME-Version: 1.0\r\n" +
+			"Content-Type: text/html; charset=\"UTF-8\"\r\n" +
+			"\r\n" +
+			htmlBody + "\r\n")
 
-	// Format Header yang bersih disesuaikan
-	headers := "From: " + from + "\r\n" +
-		"To: " + toEmail + "\r\n" +
-		"Subject: " + subject + "\r\n" +
-		"MIME-Version: 1.0;\r\n" +
-		"Content-Type: text/html; charset=\"UTF-8\";\r\n\r\n"
+	return s.sendWithTimeout(toEmail, msg, 8*time.Second)
+}
 
-	msg := []byte(headers + htmlBody)
-
-	// Menggunakan smtp.SendMail bawaan seperti kode temanmu
+// ✅ Timeout manual 8 detik, supaya kalau port diblokir, gagal cepat dan jelas
+func (s *EmailService) sendWithTimeout(toEmail string, msg []byte, timeout time.Duration) error {
 	addr := s.SMTPHost + ":" + s.SMTPPort
-	auth := smtp.PlainAuth("", s.SMTPUser, s.SMTPPass, s.SMTPHost)
 
-	err := smtp.SendMail(addr, auth, s.FromEmail, []string{toEmail}, msg)
+	conn, err := net.DialTimeout("tcp", addr, timeout)
 	if err != nil {
-		fmt.Printf("SMTP Error: %v\n", err)
-		return fmt.Errorf("gagal mengirim email: %v", err)
+		return fmt.Errorf("gagal konek ke %s (kemungkinan port diblokir): %v", addr, err)
+	}
+	defer conn.Close()
+
+	client, err := smtp.NewClient(conn, s.SMTPHost)
+	if err != nil {
+		return fmt.Errorf("gagal membuat SMTP client: %v", err)
+	}
+	defer client.Close()
+
+	if err = client.StartTLS(&tls.Config{ServerName: s.SMTPHost}); err != nil {
+		return fmt.Errorf("gagal StartTLS: %v", err)
 	}
 
-	return nil
+	auth := smtp.PlainAuth("", s.SMTPUser, s.SMTPPass, s.SMTPHost)
+	if err = client.Auth(auth); err != nil {
+		return fmt.Errorf("gagal autentikasi SMTP (cek email/App Password): %v", err)
+	}
+
+	if err = client.Mail(s.FromEmail); err != nil {
+		return fmt.Errorf("gagal set From: %v", err)
+	}
+	if err = client.Rcpt(toEmail); err != nil {
+		return fmt.Errorf("gagal set To: %v", err)
+	}
+
+	w, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("gagal membuka data writer: %v", err)
+	}
+	_, err = w.Write(msg)
+	if err != nil {
+		return fmt.Errorf("gagal menulis pesan: %v", err)
+	}
+	if err = w.Close(); err != nil {
+		return fmt.Errorf("gagal menutup data writer: %v", err)
+	}
+
+	return client.Quit()
 }
 
 func (s *EmailService) buildRegisterEmailBody(otp string) string {
@@ -125,6 +167,38 @@ func (s *EmailService) buildResetPasswordEmailBody(otp string) string {
     <div style="background: #FFF3E0; border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0;">
       <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #E65100;">%s</span>
     </div>
+    <p style="color: #888; font-size: 13px;">
+      Kode ini berlaku selama <strong>10 menit</strong>. Jangan bagikan kode ini kepada siapapun.
+    </p>
+  </div>
+</body>
+</html>`, otp)
+}
+
+func (s *EmailService) buildDeleteAccountEmailBody(otp string) string {
+	return fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px;">
+  <div style="max-width: 480px; margin: 0 auto; background: white; border-radius: 16px; padding: 32px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h2 style="color: #005F82; margin: 0;">GdSelf</h2>
+      <p style="color: #666; margin-top: 4px;">Aplikasi Pemantau Kesehatan Tiroid</p>
+    </div>
+    <h3 style="color: #C62828;">⚠️ Konfirmasi Hapus Akun</h3>
+    <p style="color: #555; line-height: 1.6;">
+      Kami menerima permintaan untuk <strong>menghapus akun GdSelf</strong> Anda secara permanen.
+      Jika ini <strong>bukan Anda</strong>, abaikan email ini dan segera ganti kata sandi Anda.
+    </p>
+    <p style="color: #555; line-height: 1.6;">Gunakan kode berikut untuk mengonfirmasi penghapusan:</p>
+    <div style="background: #FFEBEE; border: 1px dashed #C62828; border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0;">
+      <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #C62828;">%s</span>
+    </div>
+    <p style="color: #B71C1C; font-size: 13px; line-height: 1.6;">
+      <strong>Peringatan:</strong> Setelah dikonfirmasi, SELURUH data medis Anda (riwayat, hasil lab,
+      foto USG, jadwal &amp; log obat, data wearable, dan hasil analisis AI) akan
+      <strong>dihapus permanen dan tidak dapat dipulihkan.</strong>
+    </p>
     <p style="color: #888; font-size: 13px;">
       Kode ini berlaku selama <strong>10 menit</strong>. Jangan bagikan kode ini kepada siapapun.
     </p>

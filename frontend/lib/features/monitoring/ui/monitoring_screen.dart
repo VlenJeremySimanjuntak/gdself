@@ -1,23 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:gdself/features/monitoring/ui/usg_detail_screen.dart';
 import 'package:intl/intl.dart';
 import 'dart:ui' as ui;
-
 import '../../../models/usg_tiroid_model.dart';
 import '../../../utils/design_system.dart';
-import '../../../models/lab_data_model.dart';
-import '../../../models/wearable_model.dart';
 import '../../../models/hasil_ai_gabungan_model.dart';
 import '../../riwayat/provider/riwayat_provider.dart';
 import '../../home/providers/home_provider.dart';
 import '../../home/providers/user_provider.dart';
 import '../providers/monitoring_provider.dart';
 import '../../../services/api_service.dart';
-
+import 'widgets/self_report_kondisi_dialog.dart';
 import 'input_lab_screen.dart';
 import 'lab_detail_screen.dart';
 import 'input_usg_screen.dart';
+import 'usg_detail_screen.dart';
 
 class MonitoringScreen extends ConsumerStatefulWidget {
   const MonitoringScreen({super.key});
@@ -27,7 +24,7 @@ class MonitoringScreen extends ConsumerStatefulWidget {
 }
 
 class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
-  String _selectedTab = "TSHs";
+  String _selectedTab = "FT3";
   int? _visibleTooltipIndex;
   final Set<int> _expandedUsgIds = {};
 
@@ -43,33 +40,82 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     }
   }
 
-  String _getImageUrl(String? path) {
-    if (path == null || path.isEmpty) return '';
-    String normalizedPath = path.replaceAll('\\', '/');
-    if (normalizedPath.startsWith('http')) return normalizedPath;
-    String baseUrl = ApiService().sendRequest.options.baseUrl;
-    if (baseUrl.endsWith('/api')) {
-      baseUrl = baseUrl.substring(0, baseUrl.length - 4);
-    } else if (baseUrl.endsWith('/api/')) {
-      baseUrl = baseUrl.substring(0, baseUrl.length - 5);
-    }
+  // 🔧 DIUBAH: Monitoring/list = THUMBNAIL (~400px) via endpoint ber-JWT.
+  String _getFotoThumbnailUrl(int? usgId, String? fotoPath) {
+    if (usgId == null || fotoPath == null || fotoPath.isEmpty) return '';
+    String baseUrl = ApiService().sendRequest.options.baseUrl; // sudah termasuk ".../api"
     final cleanBase = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
-    final cleanPath = normalizedPath.startsWith('/') ? normalizedPath : '/$normalizedPath';
-    return '$cleanBase$cleanPath';
+    return '$cleanBase/usg-tiroid/$usgId/foto/thumbnail';
+  }
+
+  String _getFotoOriginalUrl(int? usgId, String? fotoPath) {
+    if (usgId == null || fotoPath == null || fotoPath.isEmpty) return '';
+    String baseUrl = ApiService().sendRequest.options.baseUrl;
+    final cleanBase = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+    return '$cleanBase/usg-tiroid/$usgId/foto'; // Mengarah ke endpoint foto asli
+  }
+
+  bool _checkHasAlertData(HasilAIGabunganModel? aiResult, String selectedTab) {
+    if (aiResult == null) return false;
+    String status = "";
+    String reminderLab = "";
+    switch (selectedTab) {
+      case "FT3":
+        status = aiResult.statusFt3;
+        reminderLab = aiResult.reminderFt3;
+        break;
+      case "FT4":
+        status = aiResult.statusFt4;
+        reminderLab = aiResult.reminderFt4;
+        break;
+      case "TSHs":
+        status = aiResult.statusTsh;
+        reminderLab = aiResult.reminderTsh;
+        break;
+      case "TRAb":
+        status = aiResult.statusTrab;
+        reminderLab = aiResult.reminderTrab;
+        break;
+    }
+
+    String cleanStatus = status.trim().toLowerCase();
+    String cleanReminder = reminderLab.toLowerCase();
+
+    bool isPerluVerifikasi = cleanReminder.contains("di luar rentang yang wajar") ||
+        cleanReminder.contains("periksa kembali angka");
+
+    bool isBelumAdaData = cleanStatus.isEmpty ||
+        cleanStatus == "null" ||
+        (cleanStatus.contains("tidak diketahui") && !isPerluVerifikasi) ||
+        cleanStatus.contains("tidak terinterpretasi");
+
+    return !isBelumAdaData;
   }
 
   @override
   Widget build(BuildContext context) {
     final double screenWidth = MediaQuery.of(context).size.width;
     final monitorState = ref.watch(monitoringProvider);
-    final homeState = ref.watch(homeProvider);
     final user = ref.watch(userProvider).user;
 
-    List<Map<String, dynamic>> currentData = monitorState.history[_selectedTab] ?? [];
+    // 🔧 DITAMBAH: header JWT + ngrok-skip untuk gambar USG.
+    final authHeaders = ref.watch(userProvider).authHeaders;
+
+    List<Map<String, dynamic>> currentData = List.from(monitorState.history[_selectedTab] ?? []);
+    currentData.sort((a, b) {
+      try {
+        DateTime dateA = DateFormat('dd MMM yyyy', 'id_ID').parse(a['date'] ?? '');
+        DateTime dateB = DateFormat('dd MMM yyyy', 'id_ID').parse(b['date'] ?? '');
+        return dateA.compareTo(dateB);
+      } catch (e) {
+        return 0;
+      }
+    });
+
     bool hasLabDataForTab = currentData.isNotEmpty;
-    bool hasAnyLabData = monitorState.history.values.any((list) => list.isNotEmpty);
     bool hasUsgData = monitorState.usgList.isNotEmpty;
     final aiResult = monitorState.latestAiResult;
+    final bool showAlertCard = _checkHasAlertData(aiResult, _selectedTab);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -83,51 +129,30 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
           children: [
             _buildTopHeader(user),
             const SizedBox(height: 24),
-
             _buildHeaderTitle(),
             const SizedBox(height: 24),
-
-            if (homeState.laporanTerbaru != null || hasAnyLabData) ...[
-              _buildAlertCard(aiResult, _selectedTab),
+            if (showAlertCard) ...[
+              _buildAlertCard(aiResult!, _selectedTab),
               const SizedBox(height: 32),
             ],
-
             _buildChartCard(screenWidth, hasLabDataForTab, currentData),
             const SizedBox(height: 16),
-
             Align(
               alignment: Alignment.centerRight,
               child: _buildActionButton(
                 icon: Icons.add_circle_outline,
                 label: "Tambah Data Laboratorium",
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const InputLabScreen()),
-                  ).then((_) {
-                    final userId = ref.read(userProvider).user?.idUser;
-                    if (userId != null) {
-                      ref.read(monitoringProvider.notifier).fetchMonitoringData(userId);
-                      ref.read(homeProvider.notifier).fetchAll(userId);
-                      ref.read(riwayatProvider.notifier).fetchRiwayatData(userId);
-                    }
-                  });
-                },
+                onPressed: () => _mulaiInputLab(context),
               ),
             ),
-
             const SizedBox(height: 40),
-
             _buildSectionHeaderWithoutMenu("Hasil USG Tiroid"),
             const SizedBox(height: 16),
-
             if (hasUsgData)
-              _buildFilledUsgCard(monitorState.usgList.first)
+              _buildFilledUsgCard(monitorState.usgList.first, authHeaders)
             else
               _buildUsgEmptyStateCard(),
-
             const SizedBox(height: 16),
-
             Align(
               alignment: Alignment.centerRight,
               child: _buildActionButton(
@@ -137,21 +162,135 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const InputUsgScreen()),
-                  ).then((_) {
-                    final userId = ref.read(userProvider).user?.idUser;
-                    if (userId != null) {
-                      ref.read(monitoringProvider.notifier).fetchMonitoringData(userId);
-                    }
-                  });
+                  ).then((_) => _refresh());
                 },
               ),
             ),
-
             const SizedBox(height: 100),
           ],
         ),
       ),
     );
+  }
+
+  void _refresh() {
+    final userId = ref.read(userProvider).user?.idUser;
+    if (userId != null) {
+      ref.read(monitoringProvider.notifier).fetchMonitoringData(userId);
+      ref.read(homeProvider.notifier).fetchAll(userId);
+      ref.read(riwayatProvider.notifier).fetchRiwayatData(userId);
+    }
+  }
+
+  Future<void> _mulaiInputLab(BuildContext context) async {
+    final kondisi = await SelfReportKondisiDialog.show(context);
+    if (kondisi == null || !context.mounted) return;
+
+    bool lanjut = true;
+    if (kondisi == KondisiPengguna.tidakNyaman) {
+      lanjut = await _tampilkanSaranJeda(context);
+    }
+
+    if (!lanjut || !context.mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => InputLabScreen(kondisiSaatIni: kondisi),
+      ),
+    ).then((_) => _refresh());
+  }
+
+  Future<bool> _tampilkanSaranJeda(BuildContext context) async {
+    final lanjut = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        backgroundColor: Colors.white,
+        elevation: 6,
+        child: Padding(
+          padding: const EdgeInsets.all(28.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryBlue.withOpacity(0.08),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.spa_rounded,
+                  color: AppColors.primaryBlue,
+                  size: 36,
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                "Sebelum Melanjutkan",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textDark,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                "Kondisi tremor atau kurang nyaman bisa memengaruhi ketepatan Anda saat mengetik angka hasil lab. Ambil napas sejenak dulu, atau lanjutkan jika Anda sudah siap sistem akan membantu memeriksa ulang data yang tampak tidak wajar.",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF475569),
+                  height: 1.6,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 28),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: BorderSide(color: Colors.grey.shade300, width: 1.5),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        foregroundColor: const Color(0xFF64748B),
+                      ),
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text(
+                        "Nanti Dulu",
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primaryBlue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        elevation: 0,
+                      ),
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text(
+                        "Lanjutkan",
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return lanjut ?? false;
   }
 
   Widget _buildTopHeader(dynamic user) {
@@ -272,47 +411,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
                     ),
                 ],
               ),
-              if (hasData)
-                Theme(
-                  data: Theme.of(context).copyWith(
-                      splashColor: Colors.transparent,
-                      highlightColor: Colors.transparent),
-                  child: PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert, color: AppColors.textDark, size: 24),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    offset: const Offset(0, 40),
-                    elevation: 4,
-                    itemBuilder: (BuildContext context) => [
-                      const PopupMenuItem<String>(
-                        value: 'detail',
-                        height: 40,
-                        padding: EdgeInsets.symmetric(horizontal: 20),
-                        child: Text("Detail",
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                                color: AppColors.textDark)),
-                      ),
-                    ],
-                  ),
-                )
-              else
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE2E8F0),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Text(
-                    "Menunggu\nData",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF334155),
-                        height: 1.2),
-                  ),
-                ),
             ],
           ),
           const SizedBox(height: 16),
@@ -369,10 +467,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
       builder: (context, constraints) {
         return GestureDetector(
           onTapDown: (details) {
-
-            // =========================================================
-            // ✅ BUG NAVIGASI DIPERBAIKI DI SINI: AUTO-REFRESH SETELAH EDIT
-            // =========================================================
             void navigateToDetail(String shortDate) {
               try {
                 DateTime parsed = DateFormat('dd MMM yyyy', 'id_ID').parse(shortDate);
@@ -383,29 +477,18 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
                       rDate.month == parsed.month &&
                       rDate.day == parsed.day;
                 });
-
                 if (reportIndex != -1) {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => LabDetailScreen(reportData: arsipList[reportIndex]),
                     ),
-                  ).then((_) {
-                    // Ketika user klik tombol kembali/kembali dari layar Detail (setelah diedit)
-                    // Maka ambil ulang data terbaru dari Backend!
-                    final userId = ref.read(userProvider).user?.idUser;
-                    if (userId != null) {
-                      ref.read(monitoringProvider.notifier).fetchMonitoringData(userId);
-                      ref.read(homeProvider.notifier).fetchAll(userId);
-                      ref.read(riwayatProvider.notifier).fetchRiwayatData(userId);
-                    }
-                  });
+                  ).then((_) => _refresh());
                 }
               } catch (e) {}
             }
 
             if (currentData.isEmpty) return;
-
             final double chartWidth = constraints.maxWidth;
             final double leftPadding = 30;
             final double rightPadding = 10;
@@ -424,7 +507,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
             double tapX = details.localPosition.dx;
             int closestIndex = 0;
             double minDist = double.infinity;
-
             for (int i = 0; i < currentData.length; i++) {
               double pointX = leftPadding + i * step;
               double dist = (tapX - pointX).abs();
@@ -462,7 +544,7 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
 
   Widget _buildTabSelector(double width) {
     return Row(
-      children: ["TSHs", "FT4", "FT3", "TRAb"].map((tab) {
+      children: ["FT3", "FT4", "TSHs", "TRAb"].map((tab) {
         bool isSelected = _selectedTab == tab;
         return GestureDetector(
           onTap: () => setState(() {
@@ -526,12 +608,12 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  Widget _buildFilledUsgCard(UsgTiroidModel usg) {
+  // 🔧 DIUBAH: terima authHeaders + pakai THUMBNAIL untuk preview kartu.
+  Widget _buildFilledUsgCard(UsgTiroidModel usg, Map<String, String>? authHeaders) {
     final String tanggal = usg.tglPemeriksaan != null
         ? DateFormat('dd MMMM yyyy', 'id_ID').format(usg.tglPemeriksaan!)
         : '-';
-
-    final String imageUrl = _getImageUrl(usg.fotoPath);
+    final String imageUrl = _getFotoThumbnailUrl(usg.idUsg, usg.fotoPath);
     final bool isExpanded = _expandedUsgIds.contains(usg.idUsg);
     final String deskripsi = usg.catatanDokter?.isNotEmpty == true ? usg.catatanDokter! : '-';
 
@@ -558,7 +640,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
           Text(tanggal,
               style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
           const SizedBox(height: 20),
-
           Container(
             height: 200,
             width: double.infinity,
@@ -567,20 +648,29 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: imageUrl.isNotEmpty
-                ? ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                imageUrl,
-                fit: BoxFit.cover,
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return const Center(
-                      child: CircularProgressIndicator(
-                          color: AppColors.primaryBlue));
-                },
-                errorBuilder: (_, __, ___) => const Center(
-                  child: Icon(Icons.broken_image,
-                      size: 40, color: Colors.grey),
+                ? GestureDetector( // ✅ Bungkus dengan GestureDetector
+              onTap: () {
+                // ✅ Dapatkan URL original (bukan thumbnail)
+                final String originalUrl = _getFotoOriginalUrl(usg.idUsg, usg.fotoPath);
+                // ✅ Tampilkan dialog full screen
+                _showFullScreenImage(context, originalUrl, authHeaders);
+              },
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  imageUrl, // Di kartu tetap pakai thumbnail
+                  headers: authHeaders,
+                  fit: BoxFit.cover, // Tetap pakai cover agar kartu rapi
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return const Center(
+                        child: CircularProgressIndicator(
+                            color: AppColors.primaryBlue));
+                  },
+                  errorBuilder: (_, __, ___) => const Center(
+                    child: Icon(Icons.broken_image,
+                        size: 40, color: Colors.grey),
+                  ),
                 ),
               ),
             )
@@ -589,14 +679,12 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
                     size: 48, color: Color(0xFF94A3B8))),
           ),
           const SizedBox(height: 20),
-
           const Text("Catatan Dokter / Deskripsi",
               style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF1E293B))),
           const SizedBox(height: 12),
-
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -706,97 +794,72 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  Widget _buildAlertCard(HasilAIGabunganModel? aiResult, String selectedTab) {
-    if (aiResult == null) {
-      return _buildBaseAlertCard(
-          "Lonjakan Hormon",
-          "MEMPROSES",
-          const Color(0xFF64748B),
-          const Color(0xFFF1F5F9),
-          "Data laboratorium Anda sedang diproses oleh sistem untuk menghasilkan interpretasi.");
-    }
+  Widget _buildAlertCard(HasilAIGabunganModel aiResult, String selectedTab) {
+    // 🛠️ FIX: Warna background telah disesuaikan dengan kode Hex Figma E2EAE9
+    const Color fixedBgColor = Color(0xFFE2EAE9);
 
     String status = "";
-    String tren = "";
-
+    String reminderLab = "";
+    String reminderTren = "";
     switch (selectedTab) {
-      case "TSHs":
-        status = aiResult.statusTsh;
-        tren = aiResult.trenTsh ?? "";
+      case "FT3":
+        status = aiResult.statusFt3;
+        reminderLab = aiResult.reminderFt3;
+        reminderTren = aiResult.reminderTrenFt3 ?? "-";
         break;
       case "FT4":
         status = aiResult.statusFt4;
-        tren = aiResult.trenFt4 ?? "";
+        reminderLab = aiResult.reminderFt4;
+        reminderTren = aiResult.reminderTrenFt4 ?? "-";
         break;
-      case "FT3":
-        status = aiResult.statusFt3;
-        tren = aiResult.trenFt3 ?? "";
+      case "TSHs":
+        status = aiResult.statusTsh;
+        reminderLab = aiResult.reminderTsh;
+        reminderTren = aiResult.reminderTrenTsh ?? "-";
         break;
       case "TRAb":
         status = aiResult.statusTrab;
-        tren = aiResult.trenTrab ?? "";
+        reminderLab = aiResult.reminderTrab;
+        reminderTren = aiResult.reminderTrenTrab ?? "-";
         break;
     }
 
-    bool isTidakDiketahui = (status == "Tidak Diketahui" || status.isEmpty);
-    bool isNormal = (status == "Normal" || status == "Negatif");
+    String cleanStatus = status.trim().toLowerCase();
+    String cleanReminder = reminderLab.toLowerCase();
+
+    bool isPerluVerifikasi = cleanReminder.contains("di luar rentang yang wajar") ||
+        cleanReminder.contains("periksa kembali angka");
 
     String statusLabel = "";
-    if (isTidakDiketahui) {
-      statusLabel = "BELUM ADA DATA";
-    } else {
-      statusLabel = isNormal ? "NORMAL" : "PERINGATAN";
-    }
-
-    Color statusColor = isTidakDiketahui
-        ? const Color(0xFF64748B)
-        : (isNormal ? const Color(0xFF16A34A) : const Color(0xFFDC2626));
-
-    Color bgColor = isTidakDiketahui
-        ? const Color(0xFFF8FAFC)
-        : (isNormal ? const Color(0xFFE8F5E9) : const Color(0xFFFEECEB));
-
+    Color statusColor;
     String deskripsi = "";
-    if (isTidakDiketahui) {
-      deskripsi = "Anda belum menginput data untuk hormon $selectedTab pada tes laboratorium kali ini. Silakan lengkapi data untuk melihat analisis AI dan tren kesehatannya.";
+
+    if (isPerluVerifikasi) {
+      statusLabel = "PERLU VERIFIKASI";
+      statusColor = const Color(0xFFD97706);
+      deskripsi = reminderLab;
     } else {
-      String baseText = "";
-      if (selectedTab == "TRAb") {
-        baseText = status == "Positif"
-            ? "Hasil TRAb Anda saat ini positif"
-            : "Hasil TRAb Anda saat ini negatif";
-      } else {
-        if (status == "Rendah") {
-          baseText = "Hasil hormon $selectedTab Anda saat ini berada di bawah rentang normal";
-        } else if (status == "Normal") {
-          baseText = "Hasil hormon $selectedTab Anda saat ini berada dalam rentang normal";
-        } else if (status == "Tinggi") {
-          baseText = "Hasil hormon $selectedTab Anda saat ini berada di atas rentang normal";
-        }
-      }
+      bool isNormal = cleanStatus == "normal" || cleanStatus == "negatif";
+      statusLabel = status.trim().toUpperCase();
+      statusColor = isNormal ? const Color(0xFF16A34A) : const Color(0xFFDC2626);
+      deskripsi = reminderLab;
 
-      String trenText = "";
-      if (tren.isNotEmpty && tren != "Tidak Diketahui") {
-        if (tren == "Tetap Normal" || tren == "Mendekati Normal") {
-          trenText = " dan menunjukkan perkembangan yang baik dibandingkan pemeriksaan sebelumnya.\nPertahankan pola hidup sehat Anda.";
-        } else if (tren == "Menjauhi Normal") {
-          trenText = " dan menunjukkan tren yang kurang baik dibandingkan pemeriksaan sebelumnya.\nSegera konsultasikan dengan dokter Anda.";
-        } else if (tren == "Tidak Berubah") {
-          trenText = " dan belum menunjukkan perubahan signifikan dibandingkan pemeriksaan sebelumnya.";
-        }
-      } else {
-        trenText = ".";
-        if (isNormal) {
-          trenText += "\nPertahankan pola hidup sehat Anda.";
+      bool trenValid = reminderTren.isNotEmpty &&
+          reminderTren != "-" &&
+          reminderTren.toLowerCase() != "tidak diketahui";
+
+      if (trenValid) {
+        if (!deskripsi.trim().endsWith('.')) {
+          deskripsi += ". ";
         } else {
-          trenText += "\nSilakan konsultasikan dengan dokter Anda.";
+          deskripsi += " ";
         }
+        deskripsi += reminderTren;
       }
-
-      deskripsi = baseText + trenText;
     }
 
-    return _buildBaseAlertCard("Lonjakan Hormon", statusLabel, statusColor, bgColor, deskripsi);
+    return _buildBaseAlertCard(
+        "Kondisi Hormon", statusLabel, statusColor, fixedBgColor, deskripsi);
   }
 
   Widget _buildBaseAlertCard(String title, String statusLabel, Color statusColor, Color bgColor, String deskripsi) {
@@ -842,6 +905,55 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
   }
 }
 
+void _showFullScreenImage(BuildContext context, String imageUrl, Map<String, String>? authHeaders) {
+  showDialog(
+    context: context,
+    barrierColor: Colors.black.withOpacity(0.9), // Latar belakang gelap
+    builder: (BuildContext context) {
+      return Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // InteractiveViewer agar gambar bisa di-zoom (dicubit)
+            InteractiveViewer(
+              panEnabled: true,
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image.network(
+                imageUrl,
+                headers: authHeaders,
+                fit: BoxFit.contain,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return const Center(
+                    child: CircularProgressIndicator(color: Colors.white),
+                  );
+                },
+                errorBuilder: (_, __, ___) => const Center(
+                  child: Icon(Icons.broken_image, size: 64, color: Colors.grey),
+                ),
+              ),
+            ),
+
+            // Tombol Close (Silang) di pojok kanan atas
+            Positioned(
+              top: 40,
+              right: 20,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white, size: 32),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+// ========== CUSTOM PAINTER ==========
 class HormoneChartPainter extends CustomPainter {
   final int? visibleIndex;
   final List<Map<String, dynamic>> points;
@@ -859,17 +971,17 @@ class HormoneChartPainter extends CustomPainter {
 
     if (minRujukan == 0.0 && maxRujukan == 0.0) {
       switch (paramName) {
+        case "FT3":
+          minRujukan = 2.6;
+          maxRujukan = 5.7;
+          break;
+        case "FT4":
+          minRujukan = 9.0;
+          maxRujukan = 19.0;
+          break;
         case "TSHs":
           minRujukan = 0.35;
           maxRujukan = 4.94;
-          break;
-        case "FT4":
-          minRujukan = 0.70;
-          maxRujukan = 1.48;
-          break;
-        case "FT3":
-          minRujukan = 1.71;
-          maxRujukan = 3.71;
           break;
         case "TRAb":
           minRujukan = 0.0;
@@ -883,7 +995,6 @@ class HormoneChartPainter extends CustomPainter {
 
     List<double> allValues = points.map((p) => double.tryParse(p['val']?.toString() ?? "0") ?? 0.0).toList();
     double maxValueInChart = [maxRujukan, ...allValues].reduce((a, b) => a > b ? a : b);
-
     double chartMax = maxValueInChart + (maxValueInChart * 0.2);
     if (chartMax == 0) chartMax = 10;
     double chartMin = 0.0;
@@ -896,12 +1007,12 @@ class HormoneChartPainter extends CustomPainter {
     final gridPaint = Paint()
       ..color = const Color(0xFFF1F5F9)
       ..strokeWidth = 1;
+
     const int gridLines = 6;
     for (int i = 0; i < gridLines; i++) {
       double val = chartMax - (i * (chartMax / (gridLines - 1)));
       double yPos = calculateYPos(val);
       canvas.drawLine(Offset(25, yPos), Offset(size.width, yPos), gridPaint);
-
       String labelText = val.toStringAsFixed(1);
       if (labelText.endsWith(".0")) {
         labelText = labelText.substring(0, labelText.length - 2);
@@ -916,10 +1027,8 @@ class HormoneChartPainter extends CustomPainter {
     if (points.length == 1) {
       double val = allValues[0];
       final Offset point = Offset(leftPadding + (usableWidth / 2), calculateYPos(val));
-
       _drawText(canvas, Offset(point.dx - 10, chartHeight + 10), points[0]['month'] ?? "", 11, Colors.grey.shade600, true);
       _drawPoint(canvas, point, const Color(0xFF006699));
-
       if (visibleIndex == 0) {
         _drawTooltip(canvas, point, points[0], paramName, minRujukan, maxRujukan);
       }
@@ -962,6 +1071,7 @@ class HormoneChartPainter extends CustomPainter {
         const Color(0xFF006699).withOpacity(0.0),
       ],
     );
+
     canvas.drawPath(
         fillPath,
         Paint()..shader = gradient.createShader(Rect.fromLTRB(0, 0, 0, chartHeight)));
@@ -975,7 +1085,6 @@ class HormoneChartPainter extends CustomPainter {
 
     for (int i = 0; i < positions.length; i++) {
       double val = allValues[i];
-
       if (visibleIndex == i) {
         canvas.drawCircle(positions[i], 8, Paint()..color = Colors.white);
         canvas.drawCircle(
@@ -985,12 +1094,11 @@ class HormoneChartPainter extends CustomPainter {
               ..color = const Color(0xFFD32F2F)
               ..style = PaintingStyle.stroke
               ..strokeWidth = 2.5);
-
         _drawTooltip(canvas, positions[i], points[i], paramName, minRujukan, maxRujukan);
       } else {
-        Color pointColor = (val > maxRujukan || val < minRujukan)
-            ? AppColors.alertRed
-            : const Color(0xFF006699);
+        Color pointColor = (maxRujukan > 0 && val > (maxRujukan * 10.0))
+            ? const Color(0xFFD97706)
+            : ((val > maxRujukan || val < minRujukan) ? AppColors.alertRed : const Color(0xFF006699));
         _drawPoint(canvas, positions[i], pointColor);
       }
     }
@@ -1007,22 +1115,35 @@ class HormoneChartPainter extends CustomPainter {
     String status = "Normal";
     Color statusColor = const Color(0xFF4CAF50);
 
-    if (val < min) {
-      status = "Rendah";
-      statusColor = Colors.orange;
-    } else if (val > max) {
-      status = "Tinggi";
-      statusColor = const Color(0xFFF44336);
+    if (max > 0 && val > (max * 10.0)) {
+      status = "Perlu Verifikasi";
+      statusColor = const Color(0xFFD97706);
+    } else if (paramName == "TRAb") {
+      if (val > max) {
+        status = "Positif";
+        statusColor = const Color(0xFFD32F2F);
+      } else {
+        status = "Negatif";
+        statusColor = const Color(0xFF4CAF50);
+      }
+    } else {
+      if (val < min) {
+        status = "Rendah";
+        statusColor = Colors.orange;
+      } else if (val > max) {
+        status = "Tinggi";
+        statusColor = const Color(0xFFF44336);
+      }
     }
 
     final rect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(anchor.dx - 45, anchor.dy - 65, 100, 50),
+        Rect.fromLTWH(anchor.dx - 60, anchor.dy - 65, 120, 50),
         const Radius.circular(8));
     canvas.drawRRect(rect, Paint()..color = const Color(0xFF111827));
 
-    _drawText(canvas, Offset(anchor.dx - 35, anchor.dy - 55), data['date'] ?? "", 9, Colors.white, true);
-    _drawText(canvas, Offset(anchor.dx - 35, anchor.dy - 40), "$paramName: ${data['val']} ${data['unit']}", 9, Colors.white, true);
-    _drawText(canvas, Offset(anchor.dx - 35, anchor.dy - 25), status, 9, statusColor, true);
+    _drawText(canvas, Offset(anchor.dx - 50, anchor.dy - 55), data['date'] ?? "", 9, Colors.white, true);
+    _drawText(canvas, Offset(anchor.dx - 50, anchor.dy - 40), "$paramName: ${data['val']} ${data['unit']}", 9, Colors.white, true);
+    _drawText(canvas, Offset(anchor.dx - 50, anchor.dy - 25), status, 9, statusColor, true);
   }
 
   void _drawText(Canvas canvas, Offset offset, String text, double fontSize, Color color, bool isBold) {

@@ -136,48 +136,52 @@ class WearableNotifier extends Notifier<WearableState> {
         return false;
       }
 
-      int totalHR = 0, countHR = 0, totalSleepMinutes = 0;
-      int totalSistolik = 0, countSistolik = 0;
-      int totalDiastolik = 0, countDiastolik = 0;
+      int finalHR = 0;
+      int finalSistolik = 0;
+      int finalDiastolik = 0;
+      int finalSleepSeconds = 0;
+      DateTime? waktuDataHC;
 
-      // ✅ Ambil timestamp dari Health Connect untuk jadi acuan waktu_data
-      DateTime? waktuDataHC; // Timestamp data terbaru dari Health Connect
+      // 1. Filter data berdasarkan tipenya
+      var hrList = healthData.where((p) => p.type == HealthDataType.HEART_RATE).toList();
+      var sysList = healthData.where((p) => p.type == HealthDataType.BLOOD_PRESSURE_SYSTOLIC).toList();
+      var diaList = healthData.where((p) => p.type == HealthDataType.BLOOD_PRESSURE_DIASTOLIC).toList();
+      var sleepList = healthData.where((p) => p.type == HealthDataType.SLEEP_SESSION).toList();
 
-      for (var point in healthData) {
-        if (point.type == HealthDataType.HEART_RATE && point.value is NumericHealthValue) {
-          totalHR += (point.value as NumericHealthValue).numericValue.toInt();
-          countHR++;
+      // 2. Urutkan data dari yang paling TERBARU ke terlama (berdasarkan dateTo)
+      hrList.sort((a, b) => b.dateTo.compareTo(a.dateTo));
+      sysList.sort((a, b) => b.dateTo.compareTo(a.dateTo));
+      diaList.sort((a, b) => b.dateTo.compareTo(a.dateTo));
 
-          // ✅ Ambil dateFrom dari data HR sebagai waktu_data
-          // (HR adalah data paling representatif untuk timestamp)
-          if (waktuDataHC == null || point.dateFrom.isAfter(waktuDataHC)) {
-            waktuDataHC = point.dateFrom;
-          }
-
-        } else if (point.type == HealthDataType.SLEEP_SESSION) {
-          totalSleepMinutes += point.dateTo.difference(point.dateFrom).inMinutes;
-
-        } else if (point.type == HealthDataType.BLOOD_PRESSURE_SYSTOLIC && point.value is NumericHealthValue) {
-          totalSistolik += (point.value as NumericHealthValue).numericValue.toInt();
-          countSistolik++;
-
-        } else if (point.type == HealthDataType.BLOOD_PRESSURE_DIASTOLIC && point.value is NumericHealthValue) {
-          totalDiastolik += (point.value as NumericHealthValue).numericValue.toInt();
-          countDiastolik++;
-        }
+      // 3. Ambil data HANYA dari urutan pertama (paling terbaru)
+      if (hrList.isNotEmpty) {
+        finalHR = (hrList.first.value as NumericHealthValue).numericValue.toInt();
+        waktuDataHC = hrList.first.dateTo; // Jadikan waktu detak jantung terbaru sebagai acuan
       }
 
-      final int finalHR = countHR > 0 ? (totalHR ~/ countHR) : 0;
-      final int finalSleepSeconds = totalSleepMinutes * 60;
-      final int finalSistolik = countSistolik > 0 ? (totalSistolik ~/ countSistolik) : 0;
-      final int finalDiastolik = countDiastolik > 0 ? (totalDiastolik ~/ countDiastolik) : 0;
+      if (sysList.isNotEmpty) {
+        finalSistolik = (sysList.first.value as NumericHealthValue).numericValue.toInt();
+        waktuDataHC ??= sysList.first.dateTo; // Jika HR kosong, pakai waktu tensi
+      }
 
-      // ✅ Fallback ke waktu sekarang jika tidak ada data HR sama sekali
+      if (diaList.isNotEmpty) {
+        finalDiastolik = (diaList.first.value as NumericHealthValue).numericValue.toInt();
+      }
+
+      // 4. Khusus durasi tidur, dijumlahkan (karena tidur bisa terbagi beberapa sesi dalam 24 jam)
+      int totalSleepMinutes = 0;
+      for (var sleep in sleepList) {
+        totalSleepMinutes += sleep.dateTo.difference(sleep.dateFrom).inMinutes;
+      }
+      finalSleepSeconds = totalSleepMinutes * 60;
+
+      // Fallback ke waktu sekarang jika tidak ada data waktu sama sekali
       waktuDataHC ??= now;
 
+      // 5. Kirim data TERBARU tersebut ke Backend Golang
       return await _sendDataToBackend(
         userId, finalHR, finalSleepSeconds, finalSistolik, finalDiastolik,
-        waktuDataHC, // ✅ Kirim timestamp dari Health Connect
+        waktuDataHC,
       );
 
     } catch (e) {
@@ -206,8 +210,6 @@ class WearableNotifier extends Notifier<WearableState> {
       // ✅ waktu_data dari Health Connect, bukan dari DateTime.now()
       final String waktuData =
           "${waktuDataHC.hour.toString().padLeft(2, '0')}:${waktuDataHC.minute.toString().padLeft(2, '0')}:${waktuDataHC.second.toString().padLeft(2, '0')}";
-
-      debugPrint("📡 Kirim wearable: tgl=$tglData waktu=$waktuData hr=$hr sleep=${sleepSeconds ~/ 60}mnt");
 
       final wearableRes = await _apiService.post(
         '/wearable',

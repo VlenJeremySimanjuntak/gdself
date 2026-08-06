@@ -2,9 +2,10 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:health/health.dart';
-
 import '../../home/providers/user_provider.dart';
 import '../providers/wearable_provider.dart';
+import '../../../core/widgets/app_status_dialog.dart';
+
 
 class WearableSyncScreen extends ConsumerStatefulWidget {
   const WearableSyncScreen({super.key});
@@ -23,22 +24,27 @@ class _WearableSyncScreenState extends ConsumerState<WearableSyncScreen> {
     if (!mounted) return;
     setState(() => _isLoading = false);
 
-    // ✅ PERBAIKAN LOGIKA:
-    // Jika gagal menarik data (karena jam tangan kosong), tapi pesannya mengatakan
-    // "tidak ditemukan data", kita ANGGAP SUKSES karena IZIN SUDAH DIBERIKAN.
+    // ✅ Jika sinkronisasi berhasil atau tidak ada data baru (tetap dianggap sukses/terhubung)
     if (success || message.toLowerCase().contains('tidak ditemukan data') || message.toLowerCase().contains('izin aktif')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Akses berhasil terhubung. Data akan muncul saat aktivitas tersedia.'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 3),
-        ),
+      AppStatusDialog.show(
+        context,
+        isSuccess: true,
+        title: "Terhubung!",
+        message: "Akses berhasil terhubung. Data akan muncul saat aktivitas tersedia.",
+        onOk: () {
+          Navigator.pop(context); // Tutup dialog
+          Navigator.pop(context, true); // Kembali ke Home dengan status sukses
+        },
       );
-      // Kembali ke Home, parameter "true" akan memicu Home mengubah state _isDisconnected jadi false
-      Navigator.pop(context, true);
     } else {
-      // Jika error asli (seperti batal memberi izin atau sistem error)
-      _showFeedbackDialog(context, message);
+      // ✅ Ganti _showFeedbackDialog dengan AppStatusDialog untuk error
+      AppStatusDialog.show(
+        context,
+        isSuccess: false,
+        title: "Sinkronisasi Gagal!",
+        message: message,
+        onOk: () => Navigator.pop(context),
+      );
     }
   }
 

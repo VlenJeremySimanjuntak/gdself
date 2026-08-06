@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../models/obat_model.dart';
 import '../providers/obat_provider.dart';
-import '../../home/providers/home_provider.dart';
 
 class RekapObatScreen extends ConsumerStatefulWidget {
   final JadwalObatModel jadwal;
@@ -28,18 +27,20 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // ✅ KITA AMBIL SEMUA ID JADWAL UNTUK OBAT INI DARI PROVIDER
-      final semuaJadwalDb = ref.read(homeProvider).jadwalObat;
-      final jadwalTerkait = semuaJadwalDb.where((j) => j.idObat == widget.jadwal.obat.idObat).toList();
-      final listJadwalId = jadwalTerkait.map((j) => j.idJadwalObat).toList();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final obatId = widget.jadwal.obat.idObat;
+      final obatNotifier = ref.read(obatProvider.notifier);
+
+      await obatNotifier.fetchJadwal(obatId);
+      await obatNotifier.fetchRekapObat(obatId);
+
+      final jadwalList = ref.read(obatProvider).jadwalList;
+      final listJadwalId = jadwalList.map((j) => j.idJadwalObat).toList();
 
       if (listJadwalId.isNotEmpty) {
-        // Panggil fungsi baru kita untuk menarik semua data sekaligus!
-        ref.read(obatProvider.notifier).fetchSemuaLogUntukObat(listJadwalId);
+        await obatNotifier.fetchSemuaLogUntukObat(listJadwalId);
       } else {
-        // Fallback aman
-        ref.read(obatProvider.notifier).fetchLogKonsumsi(widget.jadwal.idJadwalObat);
+        await obatNotifier.fetchLogKonsumsi(widget.jadwal.idJadwalObat);
       }
     });
   }
@@ -50,7 +51,6 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
     super.dispose();
   }
 
-  // ✅ Cek apakah tanggal tersebut termasuk dalam daftar SEMUA hari (SEN, RAB, JUM)
   bool _isHariKonsumsi(DateTime date, List<String> semuaHari) {
     final weekdays = ['SEN', 'SEL', 'RAB', 'KAM', 'JUM', 'SAB', 'MIN'];
     final dayName = weekdays[date.weekday - 1];
@@ -61,13 +61,11 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
     return true;
   }
 
-  // ✅ LOGIKA PENGECEKAN STATUS 'Diminum' / 'Teratur'
   Map<String, int> _buildKepatuhanCount(List<LogKonsumsiObatModel> logs) {
     final map = <String, int>{};
     for (final log in logs) {
       if (log.tglKonsumsi != null) {
         final status = log.status.toLowerCase();
-        // Hitung HANYA yang statusnya sukses (diminum / teratur)
         if (status == 'diminum' || status == 'teratur') {
           final key = DateFormat('yyyy-MM-dd').format(log.tglKonsumsi!);
           map[key] = (map[key] ?? 0) + 1;
@@ -77,40 +75,69 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
     return map;
   }
 
-  // ✅ LOGIKA PENENTUAN STATUS HARIAN (Teratur / Sebagian / Terlewat)
-  String _getStatusHarian(DateTime date, Map<String, int> kepatuhanCount, int targetFrekuensi, List<String> semuaHari) {
+  String _getStatusHarian(DateTime date, Map<String, int> kepatuhanCount, int targetFrekuensi, List<String> semuaHari, DateTime maxDate) {
     if (!_isHariKonsumsi(date, semuaHari)) return 'Bukan Jadwal';
 
-    final today = DateTime.now();
-    final todayNorm = DateTime(today.year, today.month, today.day);
+    final now = DateTime.now();
+    final todayNorm = DateTime(now.year, now.month, now.day);
     final dateNorm = DateTime(date.year, date.month, date.day);
+    final maxDateNorm = DateTime(maxDate.year, maxDate.month, maxDate.day);
 
+    if (dateNorm.isAfter(maxDateNorm)) return 'Belum';
     if (dateNorm.isAfter(todayNorm)) return 'Belum';
 
     final key = DateFormat('yyyy-MM-dd').format(date);
     int jumlahDiminum = kepatuhanCount[key] ?? 0;
 
+    if (dateNorm.isBefore(todayNorm)) {
+      if (jumlahDiminum >= targetFrekuensi) {
+        return 'Teratur';
+      } else if (jumlahDiminum > 0) {
+        return 'Sebagian';
+      } else {
+        return 'Terlewat';
+      }
+    }
+
+    int passedSchedules = 0;
+    List<String> timeList = widget.times.isNotEmpty ? widget.times : ["08:00:00"];
+    for (String t in timeList) {
+      List<String> parts = t.split(':');
+      int hour = parts.isNotEmpty ? int.parse(parts[0]) : 0;
+      int minute = parts.length > 1 ? int.parse(parts[1]) : 0;
+      DateTime targetTime = DateTime(date.year, date.month, date.day, hour, minute);
+      if (now.isAfter(targetTime)) {
+        passedSchedules++;
+      }
+    }
+
     if (jumlahDiminum >= targetFrekuensi) {
       return 'Teratur';
-    } else if (jumlahDiminum > 0 && jumlahDiminum < targetFrekuensi) {
+    } else if (jumlahDiminum > 0) {
       return 'Sebagian';
     } else {
-      return 'Terlewat';
+      if (passedSchedules > 0) {
+        return 'Terlewat';
+      } else {
+        return 'Belum';
+      }
     }
   }
 
   Color _getWarnaStatus(String status) {
     switch (status) {
       case 'Teratur':
-        return const Color(0xFF00695C);
+        return const Color(0xFF0C7D6A); // Sesuai warna Teal di mockup
       case 'Sebagian':
-        return Colors.amber.shade600;
+        return Colors.amber.shade700;
       case 'Terlewat':
-        return const Color(0xFFC62828);
+        return const Color(0xFFFF4B4B); // Merah cerah sesuai mockup
       case 'Bukan Jadwal':
-        return Colors.grey.shade300;
+        return Colors.transparent;
+      case 'Belum':
+        return const Color(0xFF94A3B8);
       default:
-        return const Color(0xFF1F2937);
+        return const Color(0xFF94A3B8);
     }
   }
 
@@ -131,136 +158,263 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
     final obatState = ref.watch(obatProvider);
     final obat = widget.jadwal.obat;
     final logs = obatState.logKonsumsiList;
-
-    // Menggabungkan semua jadwal untuk mendapatkan "SEN, RAB, JUM" secara akurat
-    final semuaJadwalDb = ref.watch(homeProvider).jadwalObat;
-    final jadwalTerkait = semuaJadwalDb.where((j) => j.idObat == obat.idObat).toList();
+    final jadwalTerkait = obatState.jadwalList;
 
     List<String> gabunganHari = obat.hariKonsumsi ?? [];
     if (gabunganHari.isEmpty) {
       gabunganHari = jadwalTerkait.map((j) => j.hari ?? '').where((h) => h.isNotEmpty).toSet().toList();
     }
 
-    // Persiapan Data
     final targetFrekuensi = widget.times.isNotEmpty ? widget.times.length : 1;
     final kepatuhanCount = _buildKepatuhanCount(logs);
 
     final tglMulai = obat.tglMulai ?? DateTime.now();
-    final tglSelesai = obat.tglSelesai ?? DateTime.now().add(const Duration(days: 30));
-    final monthsList = _getMonthsList(tglMulai, tglSelesai);
+    final tglAkhirKalender = obat.tglSelesai ?? DateTime.now();
+    final monthsList = _getMonthsList(tglMulai, tglAkhirKalender);
 
-    int statTotal = 0;
-    int statDiminum = 0;
-    int statTerlewat = 0;
+    // Cek apakah terapi sudah selesai
+    final nowNorm = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    final akhirNorm = DateTime(tglAkhirKalender.year, tglAkhirKalender.month, tglAkhirKalender.day);
+    final isTerapiSelesai = nowNorm.isAfter(akhirNorm);
 
-    DateTime currentCounter = DateTime(tglMulai.year, tglMulai.month, tglMulai.day);
-    final endCounter = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    final rekapMap = obatState.rekapData;
+    final rekapObat = rekapMap[widget.jadwal.obat.idObat] as Map<String, dynamic>?;
 
-    while (!currentCounter.isAfter(endCounter) && !currentCounter.isAfter(tglSelesai)) {
-      // Hitung hanya jika hari tersebut masuk dalam gabunganHari
-      if (_isHariKonsumsi(currentCounter, gabunganHari)) {
-        statTotal += targetFrekuensi;
-        final key = DateFormat('yyyy-MM-dd').format(currentCounter);
-        statDiminum += (kepatuhanCount[key] ?? 0);
-      }
-      currentCounter = currentCounter.add(const Duration(days: 1));
+    final int statDiminum = (rekapObat?['stat_diminum'] as num?)?.toInt() ?? 0;
+    final int statTotal = (rekapObat?['stat_total'] as num?)?.toInt() ?? 0;
+    final int statTerlewat = (statTotal - statDiminum).clamp(0, 9999);
+    final double persentaseKepatuhan = (rekapObat?['persentase'] as num?)?.toDouble() ?? 0.0;
+
+    String rawStatus = rekapObat?['status_kepatuhan'] as String? ?? 'Menunggu Data';
+    String rawPesan = rekapObat?['pesan_edukasi'] as String? ?? 'Belum ada jadwal konsumsi obat yang tercatat.';
+
+    String aiStatusTitle = rawStatus.toUpperCase();
+    String aiSubtitle = rawPesan;
+    Color aiColor = Colors.grey.shade600; // Default warna untuk 'Menunggu Data'
+
+    // Mapping warna UI berdasarkan status string dari backend
+    if (rawStatus.toLowerCase() == 'kepatuhan baik') {
+      aiColor = const Color(0xFF0C7D6A); // Teal (Sesuai mockup)
+    } else if (rawStatus.toLowerCase() == 'perlu peninjauan') {
+      aiColor = const Color(0xFFFF4B4B); // Merah cerah
     }
 
-    statTerlewat = (statTotal - statDiminum).clamp(0, 9999);
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9FF),
+      backgroundColor: const Color(0xFFF7F9FC), // Background abu sangat tipis/biru muda
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF006699)),
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF546E7A)),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text("Rekap Obat", style: TextStyle(color: Color(0xFF006699), fontWeight: FontWeight.bold, fontSize: 18)),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 20, top: 18),
-            child: Text(
-              '${DateFormat('d MMM yyyy').format(tglMulai)} - ${DateFormat('d MMM yyyy').format(tglSelesai)}',
-              style: const TextStyle(color: Color(0xFF6B7280), fontSize: 11, fontWeight: FontWeight.w600),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "Rekap Obat",
+              style: TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.bold, fontSize: 18),
             ),
-          ),
-        ],
+            const SizedBox(height: 2),
+            Text(
+              '${DateFormat('d MMM yyyy', 'id_ID').format(tglMulai)} - ${DateFormat('d MMM yyyy', 'id_ID').format(tglAkhirKalender)}',
+              style: const TextStyle(color: Color(0xFF78909C), fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
       ),
       body: obatState.isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF006699)))
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFF0C7D6A)))
           : SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         physics: const BouncingScrollPhysics(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 1. CARD INFO OBAT (Sesuai Mockup)
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(40),
-                border: Border.all(color: const Color(0xFF00695C), width: 2),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10))],
+                borderRadius: BorderRadius.circular(32), // Sudut dibuat lebih membulat
+                border: Border.all(color: const Color(0xFFB8E7D5), width: 1.5), // Warna border hijau mint tipis
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10, offset: const Offset(0, 4))],
               ),
-              child: Column(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: const BoxDecoration(color: Color(0xFFE8F5E9), shape: BoxShape.circle),
-                        child: Icon(PhosphorIcons.pill(PhosphorIconsStyle.regular), color: const Color(0xFF00695C), size: 32),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                  Container(
+                    width: 72, // Lingkaran ikon diperbesar
+                    height: 72,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFEAF5F3), // Background lingkaran hijau sangat pudar
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(PhosphorIcons.pill(PhosphorIconsStyle.regular), color: const Color(0xFF00695C), size: 36),
+                  ),
+                  const SizedBox(width: 20),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          obat.namaObat,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 22,
+                            color: Color(0xFF131F33), // Biru dongker gelap/hitam
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
                           children: [
-                            Text(obat.namaObat, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-                            Text("${obat.dosis ?? '-'}    ${obat.frekuensi ?? '-'}", style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600)),
+                            Text(
+                              "${obat.dosis ?? '-'} ",
+                              style: const TextStyle(
+                                color: Color(0xFF64748B), // Abu-abu tua
+                                fontWeight: FontWeight.bold, // Dosis di-bold
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Text(
+                              "${obat.frekuensi ?? '-'}",
+                              style: const TextStyle(
+                                color: Color(0xFF64748B),
+                                fontWeight: FontWeight.w500, // Frekuensi medium
+                                fontSize: 16,
+                              ),
+                            ),
                           ],
                         ),
-                      )
-                    ],
-                  ),
-                  if (widget.times.isNotEmpty) ...[
-                    const SizedBox(height: 20),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: widget.times.map((t) {
-                        String shortTime = t.length >= 5 ? t.substring(0, 5) : t;
-                        return Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 4),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(color: const Color(0xFFF0F2F5), borderRadius: BorderRadius.circular(20)),
-                          child: Text("$shortTime WIB", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                        );
-                      }).toList(),
-                    )
-                  ]
+                        const SizedBox(height: 16),
+
+                        // Jam Pill (Sesuai gambar: background abu muda, teks hitam)
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: widget.times.map((t) {
+                            // Mengubah format "08:00" menjadi "08.00"
+                            String shortTime = t.length >= 5 ? t.substring(0, 5).replaceAll(':', '.') : t;
+                            return Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEAEFEB), // Abu-abu dengan sentuhan hijau pudar
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                shortTime,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                  color: Colors.black, // Teks hitam tebal
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+                  )
                 ],
               ),
             ),
             const SizedBox(height: 24),
 
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _StatBox(label: 'Total Target', value: '$statTotal', bgColor: const Color(0xFFEFEFEF), textColor: Colors.black),
-                _StatBox(label: 'Diminum', value: '$statDiminum', bgColor: const Color(0xFFE0F2F1), textColor: const Color(0xFF00695C)),
-                _StatBox(label: 'Terlewat', value: '$statTerlewat', bgColor: const Color(0xFFFFEBEE), textColor: const Color(0xFFC62828)),
-              ],
-            ),
-            const SizedBox(height: 24),
+            // 2. CARD KEPATUHAN TERAPI
+            const Text("KEPATUHAN TERAPI", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8), letterSpacing: 0.8)),
+            const SizedBox(height: 12),
 
             Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10)]
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(32), // Mengikuti lengkungan card sebelumnya
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.015), blurRadius: 10, offset: const Offset(0, 4))],
+              ),
+              child: Column(
+                children: [
+                  // Bagian Persentase & Edukasi (Background Biru Muda)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF4F7FB), // Biru-abu sangat muda
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        // Kiri: Lingkaran Persentase & Status Title
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                SizedBox(
+                                  width: 65,
+                                  height: 65,
+                                  child: CircularProgressIndicator(
+                                    value: persentaseKepatuhan / 100,
+                                    backgroundColor: const Color(0xFFE2E8F0),
+                                    color: aiColor,
+                                    strokeWidth: 6,
+                                    strokeCap: StrokeCap.round,
+                                  ),
+                                ),
+                                Text(
+                                  "${persentaseKepatuhan.toInt()}%",
+                                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: aiColor),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              aiStatusTitle,
+                              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 10, color: aiColor, letterSpacing: 0.5),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(width: 20),
+                        // Kanan: Pesan Edukasi
+                        Expanded(
+                          child: Text(
+                            aiSubtitle,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF475569),
+                              fontWeight: FontWeight.w600, // Sedikit ditebalkan sesuai gambar
+                              height: 1.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Tiga Kolom Statistik
+                  Row(
+                    children: [
+                      Expanded(child: _StatCard(label: 'Total', value: '$statTotal', bgColor: const Color(0xFFEBEBEB), labelColor: const Color(0xFF333333))),
+                      const SizedBox(width: 12),
+                      Expanded(child: _StatCard(label: 'Diminum', value: '$statDiminum', bgColor: const Color(0xFFE0F7F6), labelColor: const Color(0xFF00695C))),
+                      const SizedBox(width: 12),
+                      Expanded(child: _StatCard(label: 'Terlewat', value: '$statTerlewat', bgColor: const Color(0xFFFFEBEE), labelColor: const Color(0xFFB71C1C))),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 28),
+
+            // 3. CARD KALENDER KEPATUHAN (Teks bewarna tanpa background lingkaran penuh)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.015), blurRadius: 12, offset: const Offset(0, 4))],
               ),
               child: Column(
                 children: [
@@ -268,7 +422,7 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.chevron_left, color: Color(0xFF006699)),
+                        icon: const Icon(Icons.chevron_left, color: Color(0xFF0C7D6A)),
                         onPressed: _currentMonthIndex > 0
                             ? () {
                           _monthPageController.previousPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
@@ -277,10 +431,10 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
                       ),
                       Text(
                         monthsList.isNotEmpty ? DateFormat('MMMM yyyy', 'id').format(monthsList[_currentMonthIndex]) : '',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF0C7D6A)),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.chevron_right, color: Color(0xFF006699)),
+                        icon: const Icon(Icons.chevron_right, color: Color(0xFF0C7D6A)),
                         onPressed: _currentMonthIndex < monthsList.length - 1
                             ? () {
                           _monthPageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
@@ -290,20 +444,18 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
-
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: ['S', 'S', 'R', 'K', 'J', 'S', 'M']
                         .map((day) => SizedBox(
                       width: 32,
-                      child: Center(child: Text(day, style: const TextStyle(fontWeight: FontWeight.w900))),
+                      child: Center(child: Text(day, style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF1E293B)))),
                     ))
                         .toList(),
                   ),
-                  const SizedBox(height: 16),
-
+                  const SizedBox(height: 12),
                   SizedBox(
-                    height: 250,
+                    height: 250, // Disesuaikan agar muat
                     child: PageView.builder(
                       controller: _monthPageController,
                       itemCount: monthsList.length,
@@ -314,7 +466,7 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
                         return _buildMonthGrid(
                           monthDate: monthsList[index],
                           tglMulai: tglMulai,
-                          tglSelesai: tglSelesai,
+                          maxDate: tglAkhirKalender,
                           kepatuhanCount: kepatuhanCount,
                           targetFrekuensi: targetFrekuensi,
                           gabunganHari: gabunganHari,
@@ -322,28 +474,35 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
                       },
                     ),
                   ),
-
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 8),
+                  // Legend
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      _LegendDot(color: const Color(0xFF00695C), label: 'Teratur'),
-                      const SizedBox(width: 12),
-                      if (targetFrekuensi > 1) ...[
-                        _LegendDot(color: Colors.amber.shade600, label: 'Sebagian'),
-                        const SizedBox(width: 12),
-                      ],
-                      _LegendDot(color: const Color(0xFFC62828), label: 'Terlewat'),
+                      const _LegendDot(color: Color(0xFF0C7D6A), label: 'Teratur'),
+                      const SizedBox(width: 16),
+                      _LegendDot(color: Colors.amber.shade700, label: 'Sebagian'), // Ditambahkan untuk status Sebagian
+                      const SizedBox(width: 16),
+                      const _LegendDot(color: Color(0xFFFF4B4B), label: 'Terlewat'),
                     ],
                   )
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+
+            // Teks Bantuan
+            const Center(
+              child: Text(
+                  "Ketuk tanggal di kalender untuk melihat detail.",
+                  style: TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w500, fontSize: 12)
+              ),
+            ),
             const SizedBox(height: 24),
 
-            _buildDailyDetailSection(logs, kepatuhanCount, targetFrekuensi, gabunganHari),
-
-            const SizedBox(height: 80),
+            // 4. DETAIL RIWAYAT HARIAN
+            _buildDailyDetailSection(logs, kepatuhanCount, targetFrekuensi, gabunganHari, tglAkhirKalender),
+            const SizedBox(height: 40),
           ],
         ),
       ),
@@ -353,7 +512,7 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
   Widget _buildMonthGrid({
     required DateTime monthDate,
     required DateTime tglMulai,
-    required DateTime tglSelesai,
+    required DateTime maxDate,
     required Map<String, int> kepatuhanCount,
     required int targetFrekuensi,
     required List<String> gabunganHari,
@@ -365,8 +524,8 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 7,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
       ),
       itemCount: daysInMonth + firstWeekdayOffset,
       itemBuilder: (context, index) {
@@ -376,14 +535,18 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
         DateTime thisDate = DateTime(monthDate.year, monthDate.month, day);
 
         bool isOutsideRange = thisDate.isBefore(DateTime(tglMulai.year, tglMulai.month, tglMulai.day)) ||
-            thisDate.isAfter(DateTime(tglSelesai.year, tglSelesai.month, tglSelesai.day));
+            thisDate.isAfter(DateTime(maxDate.year, maxDate.month, maxDate.day));
 
         if (isOutsideRange) {
-          return Center(child: Text('$day', style: const TextStyle(color: Color(0xFFD1D5DB), fontWeight: FontWeight.w400)));
+          return const SizedBox.shrink();
         }
 
-        String status = _getStatusHarian(thisDate, kepatuhanCount, targetFrekuensi, gabunganHari);
+        String status = _getStatusHarian(thisDate, kepatuhanCount, targetFrekuensi, gabunganHari, maxDate);
         Color textColor = _getWarnaStatus(status);
+
+        if (status == 'Bukan Jadwal') {
+          return Center(child: Text('$day', style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w500)));
+        }
 
         bool isSelected = _selectedDate != null &&
             _selectedDate!.year == thisDate.year &&
@@ -399,15 +562,15 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
           child: Container(
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: isSelected ? const Color(0xFFEAF5FF) : Colors.transparent,
-              border: isSelected ? Border.all(color: const Color(0xFF006699), width: 2) : null,
+              // Jika dipilih, berikan background tipis agar terlihat
+              color: isSelected ? const Color(0xFFF1F5F9) : Colors.transparent,
             ),
             alignment: Alignment.center,
             child: Text(
               '$day',
               style: TextStyle(
-                color: textColor,
-                fontWeight: FontWeight.w800,
+                color: textColor, // Warna menyesuaikan status (Teal/Merah)
+                fontWeight: FontWeight.w900,
                 fontSize: 14,
               ),
             ),
@@ -417,32 +580,23 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
     );
   }
 
-  Widget _buildDailyDetailSection(List<LogKonsumsiObatModel> logs, Map<String, int> kepatuhanCount, int targetFrekuensi, List<String> gabunganHari) {
+  Widget _buildDailyDetailSection(List<LogKonsumsiObatModel> logs, Map<String, int> kepatuhanCount, int targetFrekuensi, List<String> gabunganHari, DateTime maxDate) {
     if (_selectedDate == null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 30),
-          child: Text(
-            "Ketuk tanggal di kalender untuk melihat detail.",
-            style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.w500),
-          ),
-        ),
-      );
+      return const SizedBox.shrink(); // Disembunyikan jika belum dipilih
     }
 
     String formattedDate = DateFormat('EEEE, d MMMM yyyy', 'id').format(_selectedDate!);
-    String statusHarian = _getStatusHarian(_selectedDate!, kepatuhanCount, targetFrekuensi, gabunganHari);
+    String statusHarian = _getStatusHarian(_selectedDate!, kepatuhanCount, targetFrekuensi, gabunganHari, maxDate);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Riwayat: $formattedDate', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-        const SizedBox(height: 16),
-
+        Text(formattedDate, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF1E293B))),
+        const SizedBox(height: 12),
         if (statusHarian == 'Bukan Jadwal')
-          _buildInfoCard(Icons.bedtime_outlined, "Bukan Jadwal", "Hari ini tidak ada jadwal minum obat ini.", Colors.grey.shade600)
+          _buildInfoCard(Icons.bedtime_outlined, "Bukan Jadwal", "Hari ini tidak ada jadwal minum obat ini.", Colors.grey)
         else if (statusHarian == 'Belum')
-          _buildInfoCard(Icons.hourglass_empty, "Belum Tiba", "Jadwal konsumsi untuk tanggal ini belum tiba.", Colors.blue.shade600)
+          _buildInfoCard(Icons.hourglass_empty, "Belum Tiba", "Jadwal konsumsi untuk tanggal ini belum tiba.", Colors.blue)
         else
           ..._buildHourlyCards(logs),
       ],
@@ -452,100 +606,90 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
   List<Widget> _buildHourlyCards(List<LogKonsumsiObatModel> logs) {
     List<Widget> cards = [];
     DateTime now = DateTime.now();
-
     final selectedKey = DateFormat('yyyy-MM-dd').format(_selectedDate!);
-    final logsToday = logs.where((l) {
-      if (l.tglKonsumsi == null) return false;
-      bool isDateMatch = DateFormat('yyyy-MM-dd').format(l.tglKonsumsi!) == selectedKey;
-
-      // Cek semua variasi status berhasil
-      String s = l.status.toLowerCase();
-      bool isSuccessStatus = (s == 'diminum' || s == 'teratur');
-
-      return isDateMatch && isSuccessStatus;
-    }).toList();
-
+    final jadwalTerkait = ref.watch(obatProvider).jadwalList;
     List<String> timeList = widget.times.isNotEmpty ? widget.times : ["08:00:00"];
 
     for (int i = 0; i < timeList.length; i++) {
-      String timeStr = timeList[i];
-      String displayTime = timeStr.length >= 5 ? timeStr.substring(0, 5) : timeStr;
+      String timeStr = timeList[i].trim();
+      String displayTime = timeStr.length >= 5 ? timeStr.substring(0, 5).replaceAll(':', '.') : timeStr;
 
       List<String> parts = timeStr.split(':');
       int hour = parts.isNotEmpty ? int.parse(parts[0]) : 0;
       int minute = parts.length > 1 ? int.parse(parts[1]) : 0;
-
-      DateTime targetTimeObj = DateTime(
-          _selectedDate!.year, _selectedDate!.month, _selectedDate!.day, hour, minute
-      );
+      DateTime targetTimeObj = DateTime(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day, hour, minute);
 
       LogKonsumsiObatModel? actualLog;
+      for (var log in logs) {
+        if (log.tglKonsumsi == null) continue;
+        if (DateFormat('yyyy-MM-dd').format(log.tglKonsumsi!) == selectedKey) {
+          final matchingJadwal = jadwalTerkait.firstWhere(
+                (j) => j.idJadwalObat == log.idJadwalObat,
+            orElse: () => JadwalObatModel(idJadwalObat: 0, idObat: 0, obat: widget.jadwal.obat),
+          );
 
-      if (i < logsToday.length) {
-        actualLog = logsToday[i];
+          String dbTime = matchingJadwal.waktuMinumObat?.trim() ?? "";
+          if (matchingJadwal.idJadwalObat != 0 &&
+              (dbTime.length >= 5 ? dbTime.substring(0, 5) : dbTime) == (timeStr.length >= 5 ? timeStr.substring(0, 5) : timeStr)) {
+            String s = log.status.trim().toLowerCase();
+            if (s == 'diminum' || s == 'teratur') {
+              actualLog = log;
+              break;
+            }
+          }
+        }
       }
 
       String slotStatus;
       Color slotColor;
       IconData slotIcon;
-      String slotDesc;
 
       if (actualLog != null) {
-        // Karena kita sudah memfilter hanya 'diminum' / 'teratur' di logsToday
         slotStatus = "Diminum";
-        slotColor = const Color(0xFF00695C);
+        slotColor = const Color(0xFF0C7D6A);
         slotIcon = Icons.check_circle;
-        slotDesc = "Riwayat konsumsi tercatat.";
       } else {
         if (now.isAfter(targetTimeObj)) {
           slotStatus = "Terlewat";
-          slotColor = const Color(0xFFC62828);
+          slotColor = const Color(0xFFFF4B4B);
           slotIcon = Icons.cancel;
-          slotDesc = "Anda melewatkan jadwal konsumsi obat jam ini.";
         } else {
           slotStatus = "Belum Waktunya";
-          slotColor = Colors.blue.shade600;
+          slotColor = Colors.grey;
           slotIcon = Icons.hourglass_empty;
-          slotDesc = "Waktu konsumsi untuk jam ini belum tiba.";
         }
       }
 
       cards.add(
-          Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: slotColor.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: slotColor.withOpacity(0.3)),
-            ),
-            child: Row(
-              children: [
-                Icon(slotIcon, color: slotColor, size: 30),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(slotStatus, style: TextStyle(color: slotColor, fontWeight: FontWeight.bold, fontSize: 15)),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-                            child: Text("$displayTime WIB", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: Colors.black87)),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(slotDesc, style: const TextStyle(color: Colors.black87, fontSize: 12)),
-                    ],
-                  ),
-                )
-              ],
-            ),
-          )
+        Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: slotColor.withOpacity(0.2), width: 1.2),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(color: slotColor.withOpacity(0.1), shape: BoxShape.circle),
+                child: Icon(slotIcon, color: slotColor, size: 22),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("$displayTime WIB", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF1E293B))),
+                    const SizedBox(height: 2),
+                    Text(slotStatus, style: TextStyle(color: slotColor, fontWeight: FontWeight.w600, fontSize: 12)),
+                  ],
+                ),
+              )
+            ],
+          ),
+        ),
       );
     }
     return cards;
@@ -553,23 +697,18 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
 
   Widget _buildInfoCard(IconData icon, String title, String subtitle, Color color) {
     return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: color.withOpacity(0.3))),
       child: Row(
         children: [
-          Icon(icon, color: color, size: 30),
-          const SizedBox(width: 16),
+          Icon(icon, color: color, size: 24),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(height: 4),
-                Text(subtitle, style: const TextStyle(color: Colors.black87, fontSize: 13)),
+                Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14)),
+                Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 12)),
               ],
             ),
           )
@@ -579,19 +718,47 @@ class _RekapObatScreenState extends ConsumerState<RekapObatScreen> {
   }
 }
 
-class _StatBox extends StatelessWidget {
+// KOTAK STATISTIK BAWAH (TOTAL, DIMINUM, TERLEWAT)
+class _StatCard extends StatelessWidget {
   final String label, value;
-  final Color bgColor, textColor;
-  const _StatBox({required this.label, required this.value, required this.bgColor, required this.textColor});
+  final Color bgColor, labelColor;
+
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.bgColor,
+    required this.labelColor,
+  });
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 105, padding: const EdgeInsets.symmetric(vertical: 16),
-      decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(20)),
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(16),
+        // Border dihilangkan agar sesuai gambar referensi
+      ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF6B7280))),
-          Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: textColor)),
+          Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500, // Regular/Medium
+                color: labelColor,
+              )
+          ),
+          const SizedBox(height: 6),
+          Text(
+              value,
+              style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.black // Angka selalu hitam sesuai gambar
+              )
+          ),
         ],
       ),
     );
@@ -601,13 +768,17 @@ class _StatBox extends StatelessWidget {
 class _LegendDot extends StatelessWidget {
   final Color color;
   final String label;
+
   const _LegendDot({required this.color, required this.label});
+
   @override
   Widget build(BuildContext context) {
-    return Row(children: [
-      Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-      const SizedBox(width: 6),
-      Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF4B5563), fontWeight: FontWeight.w500))
-    ]);
+    return Row(
+        children: [
+          Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          const SizedBox(width: 6),
+          Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF78909C), fontWeight: FontWeight.w600))
+        ]
+    );
   }
 }

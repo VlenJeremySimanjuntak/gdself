@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:gdself/features/home/ui/rekap_obat_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -17,21 +16,29 @@ class JadwalObatScreen extends ConsumerStatefulWidget {
   ConsumerState<JadwalObatScreen> createState() => _JadwalObatScreenState();
 }
 
-class _JadwalObatScreenState extends ConsumerState<JadwalObatScreen> {
+class _JadwalObatScreenState extends ConsumerState<JadwalObatScreen> with SingleTickerProviderStateMixin {
   String _searchQuery = '';
-  int _selectedTab = 0;
   late ScrollController _scrollController;
+  late TabController _tabController;
   bool _isScrolled = false;
 
   @override
   void initState() {
     super.initState();
     _scrollController = ScrollController();
+    _tabController = TabController(length: 2, vsync: this);
+
     _scrollController.addListener(() {
       if (_scrollController.offset > 10 && !_isScrolled) {
         setState(() => _isScrolled = true);
       } else if (_scrollController.offset <= 10 && _isScrolled) {
         setState(() => _isScrolled = false);
+      }
+    });
+
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        setState(() {}); // Pemicu re-render list saat tab ditekan
       }
     });
 
@@ -44,6 +51,7 @@ class _JadwalObatScreenState extends ConsumerState<JadwalObatScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
@@ -100,10 +108,26 @@ class _JadwalObatScreenState extends ConsumerState<JadwalObatScreen> {
                     const Text("Daftar Obat", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1F2937))),
                     const SizedBox(height: 16),
                     _buildSearchBar(),
-                    const SizedBox(height: 16),
-                    _buildCustomTabBar(),
-                    const SizedBox(height: 32),
-                    _buildMedicationList(homeState.jadwalObat),
+                    const SizedBox(height: 24),
+
+                    TabBar(
+                      controller: _tabController,
+                      indicatorColor: const Color(0xFF006699),
+                      indicatorWeight: 3,
+                      labelColor: const Color(0xFF006699),
+                      unselectedLabelColor: Colors.grey,
+                      labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                      unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                      tabs: const [
+                        Tab(text: "Sedang Berjalan"),
+                        Tab(text: "Rekapan Obat"),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Filter list data berdasarkan status aktif atau selesai (index tab)
+                    _buildMedicationList(homeState.jadwalObat, isSelesai: _tabController.index == 1),
+
                     const SizedBox(height: 100),
                   ],
                 ),
@@ -118,7 +142,11 @@ class _JadwalObatScreenState extends ConsumerState<JadwalObatScreen> {
             context,
             MaterialPageRoute(builder: (context) => const TambahObatScreen()),
           );
-          if (result != null && mounted) await _refresh();
+
+          if (result == true && mounted) {
+            await Future.delayed(const Duration(milliseconds: 300));
+            await _refresh();
+          }
         },
         icon: Icon(PhosphorIcons.plusCircle(PhosphorIconsStyle.regular), size: 20),
         label: const Text("Tambah Obat", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
@@ -169,138 +197,57 @@ class _JadwalObatScreenState extends ConsumerState<JadwalObatScreen> {
     );
   }
 
-  Widget _buildCustomTabBar() {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: const Color(0xFFE8ECEE), borderRadius: BorderRadius.circular(20)),
-      child: Row(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _selectedTab = 0),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: _selectedTab == 0 ? Colors.white : Colors.transparent,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: _selectedTab == 0 ? [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 4, offset: const Offset(0, 2))] : [],
-                ),
-                child: Center(
-                  child: Text(
-                    "Sedang Dikonsumsi",
-                    style: TextStyle(
-                      color: _selectedTab == 0 ? const Color(0xFF1F2937) : Colors.grey.shade600,
-                      fontWeight: _selectedTab == 0 ? FontWeight.w600 : FontWeight.normal,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _selectedTab = 1),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: _selectedTab == 1 ? Colors.white : Colors.transparent,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: _selectedTab == 1 ? [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 4, offset: const Offset(0, 2))] : [],
-                ),
-                child: Center(
-                  child: Text(
-                    "Rekapan Obat",
-                    style: TextStyle(
-                      color: _selectedTab == 1 ? const Color(0xFF1F2937) : Colors.grey.shade600,
-                      fontWeight: _selectedTab == 1 ? FontWeight.w600 : FontWeight.normal,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMedicationList(List<JadwalObatModel> jadwalObat) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-
+  Widget _buildMedicationList(List<JadwalObatModel> jadwalObat, {required bool isSelesai}) {
     final groupedById = <int, List<JadwalObatModel>>{};
     for (final j in jadwalObat) {
       groupedById.putIfAbsent(j.idObat, () => []).add(j);
     }
 
-    final Map<String, List<JadwalObatModel>> groupedByDate = {};
-
+    final filteredList = <List<JadwalObatModel>>[];
     for (final entry in groupedById.entries) {
       final list = entry.value;
       final obat = list.first.obat;
 
-      bool isAktif = true;
-      if (obat.tglSelesai != null) {
-        final batas = DateTime(obat.tglSelesai!.year, obat.tglSelesai!.month, obat.tglSelesai!.day);
-        isAktif = batas.isAfter(today) || batas.isAtSameMomentAs(today);
-      }
+      if (obat.namaObat.toLowerCase().contains(_searchQuery.toLowerCase())) {
+        // ✅ LOGIKA BARU UNTUK MEMASTIKAN STATUS:
+        // Karena semua obat sekarang pasti ada tanggal_selesai,
+        // Status "Selesai" berlaku JIKA HARI INI > TANGGAL SELESAI
+        bool statusObatSelesai = false;
 
-      if ((_selectedTab == 0 && !isAktif) || (_selectedTab == 1 && isAktif)) continue;
-      if (!obat.namaObat.toLowerCase().contains(_searchQuery.toLowerCase())) continue;
+        if (obat.tglSelesai != null) {
+          final now = DateTime.now();
+          final today = DateTime(now.year, now.month, now.day);
+          final endDate = DateTime(obat.tglSelesai!.year, obat.tglSelesai!.month, obat.tglSelesai!.day);
 
-      final startStr = obat.tglMulai != null ? DateFormat('d MMMM yyyy', 'id_ID').format(obat.tglMulai!) : '-';
-      final endStr = obat.tglSelesai != null ? DateFormat('d MMMM yyyy', 'id_ID').format(obat.tglSelesai!) : '-';
-      final dateKey = "$startStr - $endStr";
+          // True jika batas waktu sudah lewat dari hari ini
+          statusObatSelesai = endDate.isBefore(today);
+        }
 
-      groupedByDate.putIfAbsent(dateKey, () => []).addAll(list);
-    }
-
-    if (groupedByDate.isEmpty) return _buildEmptyState();
-
-    return Column(
-      children: groupedByDate.entries.map((entry) {
-        final dateKey = entry.key;
-        final jadwalList = entry.value;
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Align(
-              alignment: Alignment.centerRight,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 16, bottom: 12, right: 8),
-                child: Text(
-                  dateKey,
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF6B7280)),
-                ),
-              ),
-            ),
-            ..._renderCardsForDateGroup(jadwalList),
-          ],
-        );
-      }).toList(),
-    );
-  }
-
-  List<Widget> _renderCardsForDateGroup(List<JadwalObatModel> list) {
-    final uniqueObatIds = list.map((j) => j.idObat).toSet();
-
-    return uniqueObatIds.map((id) {
-      final obatJadwals = list.where((j) => j.idObat == id).toList();
-      final obat = obatJadwals.first.obat;
-
-      final times = <String>{};
-      for (var j in obatJadwals) {
-        if (j.waktuMinumObat != null) {
-          for (var t in j.waktuMinumObat!.split(',')) {
-            final trimmed = t.trim();
-            if (trimmed.length >= 5) times.add(trimmed.substring(0, 5));
-          }
+        if (statusObatSelesai == isSelesai) {
+          filteredList.add(list);
         }
       }
+    }
 
-      return _buildMedicationItem(context, obat, times.toList()..sort(), obatJadwals);
-    }).toList();
+    if (filteredList.isEmpty) return _buildEmptyState();
+
+    return Column(
+      children: filteredList.map((list) {
+        final obat = list.first.obat;
+
+        final times = <String>{};
+        for (var j in list) {
+          if (j.waktuMinumObat != null) {
+            for (var t in j.waktuMinumObat!.split(',')) {
+              final trimmed = t.trim();
+              if (trimmed.length >= 5) times.add(trimmed.substring(0, 5));
+            }
+          }
+        }
+
+        return _buildMedicationItem(context, obat, times.toList()..sort(), list);
+      }).toList(),
+    );
   }
 
   Widget _buildEmptyState() {
@@ -311,11 +258,7 @@ class _JadwalObatScreenState extends ConsumerState<JadwalObatScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          )
+          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 10))
         ],
       ),
       child: Column(
@@ -332,21 +275,13 @@ class _JadwalObatScreenState extends ConsumerState<JadwalObatScreen> {
           const SizedBox(height: 20),
           const Text(
             'Belum Ada Obat',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 17,
-              color: Color(0xFF263238),
-            ),
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: Color(0xFF263238)),
           ),
           const SizedBox(height: 8),
           const Text(
-            'Anda belum menambahkan\njadwal konsumsi obat untuk hari ini.',
+            'Tidak ada jadwal obat yang\nsesuai dengan pencarian/kategori ini.',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 14,
-              height: 1.5,
-              color: Color(0xFF667085),
-            ),
+            style: TextStyle(fontSize: 14, height: 1.5, color: Color(0xFF667085)),
           ),
         ],
       ),
@@ -354,6 +289,14 @@ class _JadwalObatScreenState extends ConsumerState<JadwalObatScreen> {
   }
 
   Widget _buildMedicationItem(BuildContext context, ObatModel obat, List<String> times, List<JadwalObatModel> allJadwal) {
+    // Membentuk string rentang tanggal: 12 Jul 2026 - 20 Jul 2026
+    String rentangTgl = "-";
+    if (obat.tglMulai != null && obat.tglSelesai != null) {
+      final mulai = DateFormat('d MMM yyyy', 'id_ID').format(obat.tglMulai!);
+      final selesai = DateFormat('d MMM yyyy', 'id_ID').format(obat.tglSelesai!);
+      rentangTgl = "$mulai - $selesai";
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: GestureDetector(
@@ -363,32 +306,18 @@ class _JadwalObatScreenState extends ConsumerState<JadwalObatScreen> {
             if (j.hari != null) daysSet.addAll(j.hari!.split(',').map((e) => e.trim()));
           }
 
-          if (_selectedTab == 0) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => DetailObatScreen(
-                  jadwal: allJadwal.first,
-                  times: times,
-                  days: daysSet.toList(),
-                ),
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => DetailObatScreen(
+                jadwal: allJadwal.first,
+                times: times,
+                days: daysSet.toList(),
               ),
-            ).then((result) {
-              if (result == true && mounted) _refresh();
-            });
-          } else {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => RekapObatScreen(
-                  jadwal: allJadwal.first,
-                  times: times,
-                ),
-              ),
-            ).then((result) {
-              if (result == true && mounted) _refresh();
-            });
-          }
+            ),
+          ).then((result) {
+            if (result == true && mounted) _refresh();
+          });
         },
         child: Container(
           padding: const EdgeInsets.all(20),
@@ -397,11 +326,7 @@ class _JadwalObatScreenState extends ConsumerState<JadwalObatScreen> {
             borderRadius: BorderRadius.circular(40),
             border: Border.all(color: const Color(0xFF00695C), width: 1.5),
             boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF00695C).withOpacity(0.15),
-                blurRadius: 15,
-                offset: const Offset(0, 6),
-              )
+              BoxShadow(color: const Color(0xFF00695C).withOpacity(0.15), blurRadius: 15, offset: const Offset(0, 6))
             ],
           ),
           child: Row(
@@ -424,6 +349,12 @@ class _JadwalObatScreenState extends ConsumerState<JadwalObatScreen> {
                     Text(
                       "${obat.dosis ?? '-'}    ${obat.frekuensi ?? '-'}",
                       style: const TextStyle(color: Colors.grey, fontSize: 13, fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 4),
+                    // Menampilkan Tanggal Mulai dan Selesai
+                    Text(
+                      rentangTgl,
+                      style: TextStyle(color: Colors.grey.shade600, fontSize: 12, fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 12),
                     if (times.isNotEmpty)

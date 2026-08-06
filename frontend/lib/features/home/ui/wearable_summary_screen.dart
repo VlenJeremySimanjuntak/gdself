@@ -22,18 +22,13 @@ class WearableSummaryScreen extends ConsumerStatefulWidget {
 }
 
 class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
-  // ✅ Variabel untuk melacak tab yang dipilih (0: Hari, 1: Minggu, 2: Bulan)
   int _selectedTabIndex = 0;
-
-  // ✅ Variabel untuk navigasi tanggal
   late DateTime _currentDate;
   late DateTime _todayDate;
 
   @override
   void initState() {
     super.initState();
-
-    // ✅ Inisialisasi tanggal
     _todayDate = DateTime.now();
     _todayDate = DateTime(_todayDate.year, _todayDate.month, _todayDate.day);
     _currentDate = _todayDate;
@@ -41,32 +36,23 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
     Future.microtask(() => ref.read(wearableProvider.notifier).fetchWearableData(widget.userId));
   }
 
-  // ✅ Fungsi untuk mendapatkan rentang tanggal berdasarkan tab dan currentDate
   Map<String, DateTime> _getDateRange() {
     DateTime startDate;
     DateTime endDate;
 
     if (_selectedTabIndex == 0) {
-      // Mode Harian: 1 hari saja
       startDate = _currentDate;
-      endDate = _currentDate.add(const Duration(days: 1)); // Sampai akhir hari
+      endDate = _currentDate.add(const Duration(days: 1));
     } else if (_selectedTabIndex == 1) {
-      // Mode Mingguan: 7 hari ke belakang dari currentDate
       startDate = _currentDate.subtract(const Duration(days: 6));
-      endDate = _currentDate.add(const Duration(days: 1)); // Sampai akhir hari
+      endDate = _currentDate.add(const Duration(days: 1));
     } else {
-      // Mode Bulanan: 30 hari ke belakang dari currentDate
       startDate = _currentDate.subtract(const Duration(days: 29));
-      endDate = _currentDate.add(const Duration(days: 1)); // Sampai akhir hari
+      endDate = _currentDate.add(const Duration(days: 1));
     }
-
-    return {
-      'start': startDate,
-      'end': endDate,
-    };
+    return {'start': startDate, 'end': endDate};
   }
 
-  // ✅ Fungsi untuk filter data berdasarkan rentang tanggal
   List<WearableModel> _filterDataByDateRange(List<WearableModel> allData) {
     final dateRange = _getDateRange();
     final startDate = dateRange['start']!;
@@ -74,18 +60,13 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
 
     return allData.where((w) {
       if (w.tglData == null) return false;
-
-      // Konversi tglData ke DateTime (hanya tanggal, abaikan waktu)
       final dataDate = DateTime(w.tglData!.year, w.tglData!.month, w.tglData!.day);
-
-      // Cek apakah data dalam rentang
       return (dataDate.isAfter(startDate.subtract(const Duration(days: 1))) ||
           dataDate.isAtSameMomentAs(startDate)) &&
           dataDate.isBefore(endDate);
     }).toList();
   }
 
-  // ✅ Fungsi untuk navigasi tanggal
   void _goToPreviousDate() {
     setState(() {
       if (_selectedTabIndex == 0) {
@@ -108,15 +89,10 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
       newDate = _currentDate.add(const Duration(days: 30));
     }
 
-    // Cegah melewati tanggal hari ini
     if (newDate.isAfter(_todayDate)) return;
-
-    setState(() {
-      _currentDate = newDate;
-    });
+    setState(() => _currentDate = newDate);
   }
 
-  // ✅ Format tanggal untuk label
   String _formatDate(DateTime? date) {
     if (date == null) return "Hari ini";
     const days = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
@@ -124,7 +100,6 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
     return "${date.day} ${months[date.month - 1]} (${days[date.weekday - 1]})";
   }
 
-  // ✅ Fungsi untuk mendapatkan label tanggal sesuai mode
   String _getDateLabel() {
     final dateRange = _getDateRange();
     final startDate = dateRange['start']!;
@@ -137,13 +112,8 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
     }
   }
 
-  // ✅ Cek apakah tombol next bisa ditekan
   bool get _canGoNext {
-    if (_selectedTabIndex == 0) {
-      return _currentDate.isBefore(_todayDate);
-    } else {
-      return _currentDate.isBefore(_todayDate);
-    }
+    return _currentDate.isBefore(_todayDate);
   }
 
   bool _hasValidData(List<WearableModel> data) {
@@ -176,8 +146,6 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
     }
 
     final allData = wearableState.wearableData ?? [];
-
-    // ✅ Filter data berdasarkan rentang tanggal yang dipilih
     final filteredData = _filterDataByDateRange(allData);
 
     if (filteredData.isEmpty || !_hasValidData(filteredData)) {
@@ -193,7 +161,6 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
   // 1. UI REKAP DETAK JANTUNG
   // ==========================================
   Widget _buildHeartRateSummary(List<WearableModel> data) {
-    // ✅ Urutkan data berdasarkan tanggal (terlama ke terbaru untuk grafik)
     data.sort((a, b) {
       if (a.tglData == null || b.tglData == null) return 0;
       return a.tglData!.compareTo(b.tglData!);
@@ -202,15 +169,17 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
     final validData = data.where((w) => w.heartRateRHR > 0).toList();
     if (validData.isEmpty) return _buildEmptyDataScreen('detak jantung');
 
-    // Data untuk grafik (urutan dari terlama ke terbaru)
-    final chartData = validData.map((w) => w.heartRateRHR.toDouble()).toList();
+    // ✅ PERBAIKAN: Bungkus value & waktu untuk dikirim ke Painter grafik
+    final chartData = validData.map((w) => {
+      'val': w.heartRateRHR.toDouble(),
+      'time': w.waktuData != null && w.waktuData!.length >= 5 ? w.waktuData!.substring(0, 5) : ''
+    }).toList();
 
-    // Data terbaru untuk tampilan
-    final latestData = validData.last; // ✅ Ambil data terakhir (terbaru)
+    final latestData = validData.last;
     final double latestVal = latestData.heartRateRHR.toDouble();
-    final double maxVal = chartData.reduce(max);
-    final double minVal = chartData.reduce(min);
-    final double avgVal = chartData.reduce((a, b) => a + b) / chartData.length;
+    final double maxVal = chartData.map((e) => e['val'] as double).reduce(max);
+    final double minVal = chartData.map((e) => e['val'] as double).reduce(min);
+    final double avgVal = chartData.map((e) => e['val'] as double).reduce((a, b) => a + b) / chartData.length;
 
     String updateTime = latestData.waktuData?.substring(0, 5) ?? "--:--";
     if (updateTime == "null:null") updateTime = "--:--";
@@ -258,7 +227,7 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
           ),
           const SizedBox(height: 32),
           Container(
-            height: 180,
+            height: 200, // ✅ Diperbesar sedikit agar ada ruang untuk teks waktu
             width: double.infinity,
             padding: const EdgeInsets.only(top: 16),
             decoration: BoxDecoration(
@@ -293,7 +262,6 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
   // 2. UI REKAP TIDUR
   // ==========================================
   Widget _buildSleepSummary(List<WearableModel> data) {
-    // ✅ Urutkan data berdasarkan tanggal
     data.sort((a, b) {
       if (a.tglData == null || b.tglData == null) return 0;
       return a.tglData!.compareTo(b.tglData!);
@@ -302,13 +270,10 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
     final validData = data.where((w) => w.sleepDuration > 0).toList();
     if (validData.isEmpty) return _buildEmptyDataScreen('tidur');
 
-    // ✅ Hitung rata-rata atau total sesuai mode
     int totalMinutes;
     if (_selectedTabIndex == 0) {
-      // Mode Harian: tampilkan data terbaru
       totalMinutes = validData.last.sleepDuration;
     } else {
-      // Mode Mingguan/Bulanan: hitung rata-rata
       totalMinutes = (validData.map((w) => w.sleepDuration).reduce((a, b) => a + b) / validData.length).round();
     }
 
@@ -377,7 +342,6 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
   // 3. UI REKAP TEKANAN DARAH
   // ==========================================
   Widget _buildBloodPressureSummary(List<WearableModel> data) {
-    // ✅ Urutkan data berdasarkan tanggal
     data.sort((a, b) {
       if (a.tglData == null || b.tglData == null) return 0;
       return a.tglData!.compareTo(b.tglData!);
@@ -386,19 +350,19 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
     final validData = data.where((w) => w.sistolik > 0 && w.diastolik > 0).toList();
     if (validData.isEmpty) return _buildEmptyDataScreen('tekanan darah');
 
-    // Data untuk grafik (urutan dari terlama ke terbaru)
+    // ✅ PERBAIKAN: Sertakan waktu_data untuk X-Axis label
     final chartData = validData.map((w) => {
       'sys': w.sistolik.toDouble(),
-      'dia': w.diastolik.toDouble()
+      'dia': w.diastolik.toDouble(),
+      'time': w.waktuData != null && w.waktuData!.length >= 5 ? w.waktuData!.substring(0, 5) : ''
     }).toList();
 
-    // Data terbaru untuk tampilan
-    final latestData = validData.last; // ✅ Ambil data terakhir (terbaru)
+    final latestData = validData.last;
     double latestSys = latestData.sistolik.toDouble();
     double latestDia = latestData.diastolik.toDouble();
 
-    double avgSys = chartData.map((e) => e['sys']!).reduce((a, b) => a + b) / chartData.length;
-    double avgDia = chartData.map((e) => e['dia']!).reduce((a, b) => a + b) / chartData.length;
+    double avgSys = chartData.map((e) => e['sys'] as double).reduce((a, b) => a + b) / chartData.length;
+    double avgDia = chartData.map((e) => e['dia'] as double).reduce((a, b) => a + b) / chartData.length;
 
     String updateTime = latestData.waktuData?.substring(0, 5) ?? "--:--";
 
@@ -423,7 +387,7 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
           const SizedBox(height: 32),
 
           Container(
-            height: 180,
+            height: 200, // ✅ Diperbesar sedikit untuk ruang label
             width: double.infinity,
             padding: const EdgeInsets.only(top: 16),
             decoration: BoxDecoration(
@@ -436,7 +400,6 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
 
           const SizedBox(height: 12),
 
-          // Legenda
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -501,7 +464,6 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Tab interaktif
             Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(color: const Color(0xFFF0F2F5), borderRadius: BorderRadius.circular(24)),
@@ -514,33 +476,20 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
               ),
             ),
             const SizedBox(height: 24),
-
-            // Navigasi tanggal dengan tombol interaktif
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Tombol Previous
                 GestureDetector(
                   onTap: _goToPreviousDate,
                   child: Container(
                     padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF0F2F5),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    decoration: BoxDecoration(color: const Color(0xFFF0F2F5), borderRadius: BorderRadius.circular(12)),
                     child: const Icon(Icons.chevron_left, color: AppColors.textDark, size: 20),
                   ),
                 ),
                 const SizedBox(width: 16),
-
-                // Label Tanggal
-                Text(
-                  dateLabel,
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textDark),
-                ),
+                Text(dateLabel, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textDark)),
                 const SizedBox(width: 16),
-
-                // Tombol Next
                 GestureDetector(
                   onTap: _canGoNext ? _goToNextDate : null,
                   child: Container(
@@ -549,11 +498,7 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
                       color: _canGoNext ? const Color(0xFFF0F2F5) : Colors.grey.shade200,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(
-                      Icons.chevron_right,
-                      color: _canGoNext ? AppColors.textDark : Colors.grey.shade400,
-                      size: 20,
-                    ),
+                    child: Icon(Icons.chevron_right, color: _canGoNext ? AppColors.textDark : Colors.grey.shade400, size: 20),
                   ),
                 ),
               ],
@@ -566,7 +511,6 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
     );
   }
 
-  // Helper untuk membuat tab yang bisa ditekan
   Widget _buildInteractiveTab(int index, String title) {
     bool isSelected = _selectedTabIndex == index;
     return Expanded(
@@ -574,7 +518,6 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
         onTap: () {
           setState(() {
             _selectedTabIndex = index;
-            // Reset ke tanggal hari ini saat ganti tab
             _currentDate = _todayDate;
           });
         },
@@ -603,21 +546,25 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
   // LAYAR DATA KOSONG
   // ==========================================
   Widget _buildEmptyDataScreen(String metric) {
-    String title;
+    String emptyTitle;
+    String appBarTitle;
     IconData icon;
 
+    // ✅ PERBAIKAN: Menentukan judul AppBar saat data kosong
     if (metric == 'tidur') {
-      title = 'Belum Ada Data Tidur';
+      emptyTitle = 'Belum Ada Data Tidur';
+      appBarTitle = 'Tidur';
       icon = Icons.nightlight_round;
     } else if (metric == 'tekanan darah') {
-      title = 'Belum Ada Data Tekanan Darah';
+      emptyTitle = 'Belum Ada Data Tekanan Darah';
+      appBarTitle = 'Tekanan Darah';
       icon = Icons.water_drop;
     } else {
-      title = 'Belum Ada Data Detak Jantung';
+      emptyTitle = 'Belum Ada Data Detak Jantung';
+      appBarTitle = 'Jantung';
       icon = Icons.favorite;
     }
 
-    // ✅ Tampilkan informasi rentang tanggal yang dipilih
     String dateInfo = _getDateLabel();
 
     return Scaffold(
@@ -626,15 +573,16 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(icon: const Icon(Icons.arrow_back, color: AppColors.textDark), onPressed: () => Navigator.pop(context)),
+        // ✅ PERBAIKAN: Menambahkan Teks Judul pada AppBar!
+        title: Text(appBarTitle, style: const TextStyle(color: AppColors.textDark, fontSize: 18, fontWeight: FontWeight.bold)),
+        centerTitle: false,
       ),
       body: Column(
         children: [
-          // ✅ Tambahkan navigasi tab dan tanggal di halaman kosong
           Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
               children: [
-                // Tab interaktif
                 Container(
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(color: const Color(0xFFF0F2F5), borderRadius: BorderRadius.circular(24)),
@@ -647,8 +595,6 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-
-                // Navigasi tanggal
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -656,18 +602,12 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
                       onTap: _goToPreviousDate,
                       child: Container(
                         padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF0F2F5),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        decoration: BoxDecoration(color: const Color(0xFFF0F2F5), borderRadius: BorderRadius.circular(12)),
                         child: const Icon(Icons.chevron_left, color: AppColors.textDark, size: 20),
                       ),
                     ),
                     const SizedBox(width: 16),
-                    Text(
-                      dateInfo,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textDark),
-                    ),
+                    Text(dateInfo, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textDark)),
                     const SizedBox(width: 16),
                     GestureDetector(
                       onTap: _canGoNext ? _goToNextDate : null,
@@ -677,11 +617,7 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
                           color: _canGoNext ? const Color(0xFFF0F2F5) : Colors.grey.shade200,
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Icon(
-                          Icons.chevron_right,
-                          color: _canGoNext ? AppColors.textDark : Colors.grey.shade400,
-                          size: 20,
-                        ),
+                        child: Icon(Icons.chevron_right, color: _canGoNext ? AppColors.textDark : Colors.grey.shade400, size: 20),
                       ),
                     ),
                   ],
@@ -689,8 +625,6 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
               ],
             ),
           ),
-
-          // Konten kosong di tengah
           Expanded(
             child: Center(
               child: Padding(
@@ -700,7 +634,7 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
                   children: [
                     Icon(icon, size: 80, color: Colors.grey.shade300),
                     const SizedBox(height: 24),
-                    Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textDark)),
+                    Text(emptyTitle, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textDark)),
                     const SizedBox(height: 12),
                     const Text(
                       'Data aktivitas belum tersedia untuk rentang tanggal ini.\nCoba pilih tanggal lain atau pastikan jam tangan Anda telah terhubung.',
@@ -722,16 +656,20 @@ class _WearableSummaryScreenState extends ConsumerState<WearableSummaryScreen> {
 // PAINTER GRAFIK
 // =======================================================
 class HeartLineChartPainter extends CustomPainter {
-  final List<double> data;
+  // ✅ PERBAIKAN: Painter sekarang menerima Map berisi value dan time
+  final List<Map<String, dynamic>> data;
   HeartLineChartPainter({required this.data});
 
   @override
   void paint(Canvas canvas, Size size) {
     if (data.isEmpty) return;
 
+    // Sisakan ruang 20 pixel di bawah untuk teks waktu
+    double chartHeight = size.height - 25;
+
     final gridPaint = Paint()..color = Colors.grey.shade200..strokeWidth = 1..style = PaintingStyle.stroke;
     for (int label in [0, 50, 100, 150, 200]) {
-      double yPos = size.height - ((label / 200) * size.height);
+      double yPos = chartHeight - ((label / 200) * chartHeight);
 
       final textPainter = TextPainter(
           text: TextSpan(text: label.toString(), style: const TextStyle(color: AppColors.textGrey, fontSize: 10)),
@@ -753,7 +691,8 @@ class HeartLineChartPainter extends CustomPainter {
 
     for (int i = 0; i < data.length; i++) {
       double x = 40 + (i * stepX);
-      double y = size.height - ((data[i] / 200) * size.height);
+      double y = chartHeight - ((data[i]['val'] / 200) * chartHeight);
+
       if (i == 0) {
         path.moveTo(x, y);
       } else {
@@ -762,15 +701,23 @@ class HeartLineChartPainter extends CustomPainter {
     }
     canvas.drawPath(path, linePaint);
 
-    // ✅ Tambahkan titik pada setiap data point
     for (int i = 0; i < data.length; i++) {
       double x = 40 + (i * stepX);
-      double y = size.height - ((data[i] / 200) * size.height);
-      canvas.drawCircle(
-          Offset(x, y),
-          4,
-          Paint()..color = AppColors.primaryBlue
-      );
+      double y = chartHeight - ((data[i]['val'] / 200) * chartHeight);
+
+      // Menggambar titik
+      canvas.drawCircle(Offset(x, y), 4, Paint()..color = AppColors.primaryBlue);
+
+      // ✅ PERBAIKAN: Menggambar Label Waktu di bawah titik
+      String timeStr = data[i]['time'];
+      if (timeStr.isNotEmpty) {
+        final timePainter = TextPainter(
+            text: TextSpan(text: timeStr, style: const TextStyle(color: AppColors.textGrey, fontSize: 9)),
+            textDirection: ui.TextDirection.ltr
+        )..layout();
+        // Pusatkan teks di bawah koordinat x
+        timePainter.paint(canvas, Offset(x - (timePainter.width / 2), chartHeight + 8));
+      }
     }
   }
 
@@ -778,16 +725,19 @@ class HeartLineChartPainter extends CustomPainter {
 }
 
 class BloodPressureChartPainter extends CustomPainter {
-  final List<Map<String, double>> data;
+  // ✅ PERBAIKAN: Painter sekarang menerima Map beserta time
+  final List<Map<String, dynamic>> data;
   BloodPressureChartPainter({required this.data});
 
   @override
   void paint(Canvas canvas, Size size) {
     if (data.isEmpty) return;
 
+    double chartHeight = size.height - 25;
+
     final gridPaint = Paint()..color = Colors.grey.shade200..strokeWidth = 1..style = PaintingStyle.stroke;
     for (int label in [40, 80, 120, 160]) {
-      double yPos = size.height - (((label - 40) / 120) * size.height);
+      double yPos = chartHeight - (((label - 40) / 120) * chartHeight);
       final textPainter = TextPainter(
           text: TextSpan(text: label.toString(), style: const TextStyle(color: AppColors.textGrey, fontSize: 10)),
           textDirection: ui.TextDirection.ltr
@@ -814,11 +764,8 @@ class BloodPressureChartPainter extends CustomPainter {
 
     for (int i = 0; i < data.length; i++) {
       double x = 40 + (i * stepX);
-      double sysY = size.height - (((data[i]['sys']! - 40) / 120) * size.height);
-      double diaY = size.height - (((data[i]['dia']! - 40) / 120) * size.height);
-
-      canvas.drawCircle(Offset(x, sysY), 4, Paint()..color = const Color(0xFFE5A93D));
-      canvas.drawCircle(Offset(x, diaY), 4, Paint()..color = AppColors.primaryBlue);
+      double sysY = chartHeight - (((data[i]['sys']! - 40) / 120) * chartHeight);
+      double diaY = chartHeight - (((data[i]['dia']! - 40) / 120) * chartHeight);
 
       if (i == 0) {
         sysPath.moveTo(x, sysY);
@@ -831,6 +778,25 @@ class BloodPressureChartPainter extends CustomPainter {
 
     canvas.drawPath(sysPath, sysLinePaint);
     canvas.drawPath(diaPath, diaLinePaint);
+
+    for (int i = 0; i < data.length; i++) {
+      double x = 40 + (i * stepX);
+      double sysY = chartHeight - (((data[i]['sys']! - 40) / 120) * chartHeight);
+      double diaY = chartHeight - (((data[i]['dia']! - 40) / 120) * chartHeight);
+
+      canvas.drawCircle(Offset(x, sysY), 4, Paint()..color = const Color(0xFFE5A93D));
+      canvas.drawCircle(Offset(x, diaY), 4, Paint()..color = AppColors.primaryBlue);
+
+      // ✅ PERBAIKAN: Menggambar Label Waktu di bawah sumbu X
+      String timeStr = data[i]['time'];
+      if (timeStr.isNotEmpty) {
+        final timePainter = TextPainter(
+            text: TextSpan(text: timeStr, style: const TextStyle(color: AppColors.textGrey, fontSize: 9)),
+            textDirection: ui.TextDirection.ltr
+        )..layout();
+        timePainter.paint(canvas, Offset(x - (timePainter.width / 2), chartHeight + 8));
+      }
+    }
   }
 
   @override bool shouldRepaint(covariant CustomPainter oldDelegate) => true;

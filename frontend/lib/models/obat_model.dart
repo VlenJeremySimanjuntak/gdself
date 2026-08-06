@@ -7,7 +7,7 @@ class ObatModel {
   final String? frekuensi;
   final DateTime? tglMulai;
   final DateTime? tglSelesai;
-  final List<String>? hariKonsumsi; // ✅ 1. Tambahkan variabel hariKonsumsi
+  final List<String>? hariKonsumsi;
 
   ObatModel({
     required this.idObat,
@@ -18,18 +18,15 @@ class ObatModel {
     this.frekuensi,
     this.tglMulai,
     this.tglSelesai,
-    this.hariKonsumsi, // ✅ 2. Masukkan ke constructor
+    this.hariKonsumsi,
   });
 
   factory ObatModel.fromJson(Map<String, dynamic> json) {
-    // ✅ 3. Logika aman untuk membaca data hari konsumsi dari backend
     List<String>? parsedHari;
     if (json['hari_konsumsi'] != null) {
       if (json['hari_konsumsi'] is List) {
-        // Jika dari backend bentuknya Array: ["SEN", "SEL"]
         parsedHari = List<String>.from(json['hari_konsumsi']);
       } else if (json['hari_konsumsi'] is String) {
-        // Jika dari backend bentuknya String koma: "SEN, SEL"
         parsedHari = (json['hari_konsumsi'] as String)
             .split(',')
             .map((e) => e.trim())
@@ -46,7 +43,7 @@ class ObatModel {
       frekuensi: json['frekuensi'] as String?,
       tglMulai: _parseDateTime(json['tgl_mulai']),
       tglSelesai: _parseDateTime(json['tgl_selesai']),
-      hariKonsumsi: parsedHari, // ✅ 4. Masukkan hasil parsing
+      hariKonsumsi: parsedHari,
     );
   }
 }
@@ -57,6 +54,7 @@ class JadwalObatModel {
   final String? hari;
   final String? waktuMinumObat;
   final ObatModel obat;
+  final String? statusHariIni;
 
   JadwalObatModel({
     required this.idJadwalObat,
@@ -64,6 +62,7 @@ class JadwalObatModel {
     this.hari,
     this.waktuMinumObat,
     required this.obat,
+    this.statusHariIni,
   });
 
   factory JadwalObatModel.fromJson(Map<String, dynamic> json) {
@@ -81,25 +80,8 @@ class JadwalObatModel {
       hari: json['hari'] as String?,
       waktuMinumObat: json['waktu_minum_obat'] as String?,
       obat: obatData,
+      statusHariIni: json['status_hari_ini'] ?? json['status'],
     );
-  }
-}
-
-// Helper functions (Tetap Biarkan di bawah file)
-int? _toInt(dynamic value) {
-  if (value == null) return null;
-  if (value is int) return value;
-  if (value is num) return value.toInt();
-  return int.tryParse(value.toString());
-}
-
-DateTime? _parseDateTime(dynamic value) {
-  if (value == null) return null;
-  if (value is DateTime) return value.toLocal();
-  try {
-    return DateTime.parse(value.toString()).toLocal();
-  } catch (e) {
-    return null;
   }
 }
 
@@ -107,7 +89,7 @@ class LogKonsumsiObatModel {
   final int idLog;
   final int idJadwalObat;
   final DateTime? tglKonsumsi;
-  final String status; // "Diminum" atau "Terlewat"
+  final String status;
 
   LogKonsumsiObatModel({
     required this.idLog,
@@ -125,5 +107,25 @@ class LogKonsumsiObatModel {
           : null,
       status: json['status'] ?? '',
     );
+  }
+}
+
+// ==========================================
+// Helper functions untuk parsing JSON yang aman
+// ==========================================
+int? _toInt(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value.toString());
+}
+
+DateTime? _parseDateTime(dynamic value) {
+  if (value == null) return null;
+  if (value is DateTime) return value.toLocal();
+  try {
+    return DateTime.parse(value.toString()).toLocal();
+  } catch (e) {
+    return null;
   }
 }

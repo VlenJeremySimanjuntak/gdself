@@ -18,6 +18,14 @@ func ConfigureRouter(e *echo.Echo, controller *controllers.Main) {
 	e.GET("/ping", debugCtrl.Ping)
 	e.GET("/test-json", debugCtrl.TestJSON)
 
+	// =======================================================
+	// PUBLIC WEB — HAPUS AKUN (untuk kebijakan Google Play)
+	// URL publik yang bisa diakses user yang sudah uninstall.
+	// Sengaja di root (bukan /api) supaya gampang dibuka di browser.
+	// =======================================================
+	e.GET("/hapus-akun", controller.User.WebDeleteForm)
+	e.POST("/hapus-akun", controller.User.WebDeleteSubmit)
+
 	api := e.Group("/api")
 
 	api.Use(middleware.CORSWithConfig(middleware.CORSConfig{
@@ -59,6 +67,12 @@ func ConfigureRouter(e *echo.Echo, controller *controllers.Main) {
 	protected.GET("/users/:id", controller.User.GetByID)
 	protected.PUT("/users/:id", controller.User.Update)
 	protected.DELETE("/users/:id", controller.User.Delete)
+
+	// ======================== Hapus Akun (Account Deletion) ========================
+	// ✅ BARU: minta OTP konfirmasi hapus akun, lalu eksekusi hapus permanen.
+	// Ownership check (user_id == :id) dilakukan di controller/usecase.
+	protected.POST("/users/:id/account/request-otp", controller.User.RequestDeleteAccountOTP)
+	protected.DELETE("/users/:id/account", controller.User.DeleteAccount)
 
 	// ======================== Riwayat ========================
 	protected.POST("/riwayat", controller.Riwayat.Create)
@@ -148,7 +162,6 @@ func ConfigureRouter(e *echo.Echo, controller *controllers.Main) {
 	protected.GET("/usg-tiroid/riwayat/:riwayat_id", controller.USGTiroid.GetByRiwayatID)
 	protected.GET("/usg-tiroid/user/:user_id", controller.USGTiroid.GetByUserID)
 	protected.GET("/usg-tiroid/:id/foto", controller.USGTiroid.ServeFoto)
-	protected.GET("/usg-tiroid/:id/foto/thumbnail", controller.USGTiroid.ServeFotoThumbnail) // 🔧 TAMBAHAN: preview thumbnail (~400px) untuk Monitoring/list
 	protected.GET("/usg-tiroid/:id", controller.USGTiroid.GetByID)
 	protected.PUT("/usg-tiroid/:id", controller.USGTiroid.Update)
 	protected.DELETE("/usg-tiroid/:id", controller.USGTiroid.Delete)

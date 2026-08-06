@@ -5,6 +5,7 @@ import '../../../models/obat_model.dart';
 import '../../../models/wearable_model.dart';
 import '../../../models/hasil_ai_gabungan_model.dart';
 import '../../../services/api_service.dart';
+import 'package:gdself/features/home/providers/user_provider.dart';
 
 class HomeState {
   final bool isLoading;
@@ -12,6 +13,8 @@ class HomeState {
   final LaporanLabModel? laporanTerbaru;
   final List<JadwalObatModel> jadwalObat;
   final WearableModel? wearableTerbaru;
+  final String? statusKepatuhan;
+  final String? pesanEdukasi;
 
   const HomeState({
     this.isLoading = false,
@@ -19,6 +22,8 @@ class HomeState {
     this.laporanTerbaru,
     this.jadwalObat = const [],
     this.wearableTerbaru,
+    this.pesanEdukasi,
+    this.statusKepatuhan,
   });
 
   HomeState copyWith({
@@ -27,6 +32,8 @@ class HomeState {
     LaporanLabModel? laporanTerbaru,
     List<JadwalObatModel>? jadwalObat,
     WearableModel? wearableTerbaru,
+    String? statusKepatuhan,
+    String? pesanEdukasi,
   }) {
     return HomeState(
       isLoading: isLoading ?? this.isLoading,
@@ -34,6 +41,8 @@ class HomeState {
       laporanTerbaru: laporanTerbaru ?? this.laporanTerbaru,
       jadwalObat: jadwalObat ?? this.jadwalObat,
       wearableTerbaru: wearableTerbaru ?? this.wearableTerbaru,
+      statusKepatuhan: statusKepatuhan ?? this.statusKepatuhan,
+      pesanEdukasi: pesanEdukasi ?? this.pesanEdukasi,
     );
   }
 }
@@ -45,7 +54,6 @@ class HomeNotifier extends Notifier<HomeState> {
   }
 
   Future<void> fetchAll(int userId) async {
-    debugPrint('🔄 [HomeProvider] fetchAll called for userId=$userId');
     state = state.copyWith(isLoading: true, errorMessage: null);
     final api = ApiService();
 
@@ -56,133 +64,124 @@ class HomeNotifier extends Notifier<HomeState> {
       LaporanLabModel? laporanTerbaru;
 
       if (laporanData.isNotEmpty) {
-        // 👇 TAMBAHAN: Sorting data lab berdasarkan tanggal terbaru (Descending)
         laporanData.sort((a, b) {
           final dateA = DateTime.tryParse(a['tgl_periksa']?.toString() ?? a['created_at']?.toString() ?? '') ?? DateTime(2000);
           final dateB = DateTime.tryParse(b['tgl_periksa']?.toString() ?? b['created_at']?.toString() ?? '') ?? DateTime(2000);
           return dateB.compareTo(dateA);
         });
 
-        debugPrint("======== 🔍 RAW JSON LAPORAN LAB TERBARU ========");
-        debugPrint(laporanData.first.toString());
-        debugPrint("=========================================");
-
-        // Mengambil data index ke-0 yang SUDAH PASTI terbaru berkat sorting di atas
         laporanTerbaru = LaporanLabModel.fromJson(
-          laporanData.first as Map<String, dynamic>,
+          Map<String, dynamic>.from(laporanData.first as Map),
         );
-        debugPrint('📋 [HomeProvider] Laporan lab ditemukan: id=${laporanTerbaru.idLaporanLab}, id_riwayat=${laporanTerbaru.idRiwayat}');
-
-        // Inject kesimpulanLab (Mengambil HasilAIGabunganModel)
         laporanTerbaru = await _fetchKesimpulanLab(api, laporanTerbaru);
-      } else {
-        debugPrint('📋 [HomeProvider] Tidak ada laporan lab');
       }
 
-      // ── 2. Fetch Obat ─────────────────────────────────────────
-      debugPrint('🔄 [HomeProvider] Fetching obat...');
-      final obatResponse = await api.get('/obat/user/$userId');
-      final obatData = _parseResponseToList(obatResponse.data);
-      debugPrint('📥 [HomeProvider] obatData length=${obatData.length}');
+      // ── 2. Fetch Evaluasi Kepatuhan Obat ──
+      String? statusKepatuhan;
+      String? pesanEdukasi;
+      try {
+        debugPrint('🔄 [HomeProvider] Fetching Evaluasi Kepatuhan...');
+        final kepatuhanResponse = await api.get('/kepatuhan/evaluasi?user_id=$userId');
 
-      final List<JadwalObatModel> jadwalObatList = [];
-      for (final obatJson in obatData) {
-        final obatMap = Map<String, dynamic>.from(obatJson as Map);
+        final dynamic rawData = kepatuhanResponse.data;
+        debugPrint('🔍 [HomeProvider] Tipe data kepatuhan: ${rawData.runtimeType}'); // <--- Debugger ini penting!
 
-        final nestedSchedule = obatMap['jadwal_obat'];
+        // Logic ekstra aman:
+        if (rawData is Map<String, dynamic>) {
+          // Jika backend membungkus di 'data'
+          final Map<String, dynamic> dataMap = rawData.containsKey('data')
+              ? (rawData['data'] is Map ? rawData['data'] : rawData)
+              : rawData;
 
-        if (nestedSchedule is List && nestedSchedule.isNotEmpty) {
-          // 👇 KELOMPOKKAN WAKTU BERDASARKAN HARI
-          final Map<String, List<String>> timesByDay = {};
-          final Map<String, int> idJadwalByDay = {};
-
-          for (final item in nestedSchedule) {
-            if (item is Map) {
-              final scheduleMap = Map<String, dynamic>.from(item);
-              final hari = scheduleMap['hari']?.toString().trim() ?? '';
-              final rawTime = scheduleMap['waktu_minum_obat']?.toString();
-              final idJadwal = _toInt(scheduleMap['id_jadwal_obat']) ?? _toInt(scheduleMap['id_jadwal']) ?? 0;
-
-              if (hari.isNotEmpty && rawTime != null && rawTime.isNotEmpty) {
-                // Masukkan jam ke kelompok harinya masing-masing
-                timesByDay.putIfAbsent(hari, () => []).add(_normalizeTime(rawTime));
-                idJadwalByDay.putIfAbsent(hari, () => idJadwal);
-              }
-            }
-          }
-
-          if (timesByDay.isNotEmpty) {
-            // 👇 BUAT MODEL JADWAL PER HARI
-            for (final entry in timesByDay.entries) {
-              final hari = entry.key;
-              final times = entry.value..sort(); // Urutkan jam dari pagi ke malam
-
-              final merged = Map<String, dynamic>.from(obatMap)
-                ..['id_jadwal_obat'] = idJadwalByDay[hari]
-                ..['id_jadwal'] = idJadwalByDay[hari]
-                ..['hari'] = hari
-                ..['waktu_minum_obat'] = times.join(', ') // Gabungkan jam dengan koma (Contoh: "08:00, 12:00")
-                ..['obat'] = obatMap;
-
-              jadwalObatList.add(JadwalObatModel.fromJson(merged));
-            }
-            continue; // Lanjut ke obat berikutnya
+          statusKepatuhan = dataMap['status_kepatuhan']?.toString();
+          pesanEdukasi = dataMap['pesan_edukasi']?.toString();
+        } else if (rawData is List && rawData.isNotEmpty) {
+          // Jika backend langsung kirim List
+          final firstItem = rawData[0];
+          if (firstItem is Map<String, dynamic>) {
+            statusKepatuhan = firstItem['status_kepatuhan']?.toString();
+            pesanEdukasi = firstItem['pesan_edukasi']?.toString();
           }
         }
 
-        jadwalObatList.add(JadwalObatModel.fromJson(obatMap));
+        debugPrint('✅ [HomeProvider] Evaluasi berhasil diproses');
+      } catch (e) {
+        debugPrint('⚠️ [HomeProvider] Gagal proses data kepatuhan: $e');
       }
-      debugPrint('✅ [HomeProvider] Total jadwalObat: ${jadwalObatList.length}');
 
-      // ── 3. Fetch Wearable (Jam Tangan & AI Harian) ────────────
+      // ── 3. Fetch Obat ─────────────────────────────────────────
+      final obatResponse = await api.get('/obat/user/$userId');
+      final obatData = _parseResponseToList(obatResponse.data);
+
+      final List<JadwalObatModel> jadwalObatList = [];
+      for (final obatJson in obatData) {
+        if (obatJson is Map) {
+          final obatMap = Map<String, dynamic>.from(obatJson);
+          final nestedSchedule = obatMap['jadwal_obat'];
+
+          if (nestedSchedule is List && nestedSchedule.isNotEmpty) {
+            for (final item in nestedSchedule) {
+              if (item is Map) {
+                final scheduleMap = Map<String, dynamic>.from(item);
+
+                // ✅ KUNCI PERBAIKAN: Tangkap ID secara eksplisit seperti sedia kala!
+                // (Berjaga-jaga jika backend mengirim 'id_jadwal' alih-alih 'id_jadwal_obat')
+                final int idJadwal = _toInt(scheduleMap['id_jadwal_obat']) ?? _toInt(scheduleMap['id_jadwal']) ?? 0;
+
+                if (scheduleMap['waktu_minum_obat'] != null) {
+                  scheduleMap['waktu_minum_obat'] = _normalizeTime(scheduleMap['waktu_minum_obat'].toString());
+                }
+
+                // Gabungkan data dan paksa suntikkan ID yang valid
+                final merged = Map<String, dynamic>.from(obatMap)
+                  ..addAll(scheduleMap)
+                  ..['id_jadwal_obat'] = idJadwal
+                  ..['id_jadwal'] = idJadwal
+                  ..['obat'] = obatMap;
+
+                jadwalObatList.add(JadwalObatModel.fromJson(merged));
+              }
+            }
+          } else {
+            // Fallback jika tidak ada jadwal terlampir
+            jadwalObatList.add(JadwalObatModel.fromJson(obatMap));
+          }
+        }
+      }
+
+      // ── 4. Fetch Wearable ────────────
       final wearableResponse = await api.get('/wearable/user/$userId');
-      debugPrint('📡 [HomeProvider] Raw wearable response: ${wearableResponse.data}');
-
       final wearableData = _parseResponseToList(wearableResponse.data);
       WearableModel? wearableTerbaru;
 
       if (wearableData.isNotEmpty) {
-        // Sorting data wearable berdasarkan tanggal & waktu terbaru (Descending)
         wearableData.sort((a, b) {
           final dateA = DateTime.tryParse(a['tgl_data']?.toString() ?? a['created_at']?.toString() ?? '') ?? DateTime(2000);
           final dateB = DateTime.tryParse(b['tgl_data']?.toString() ?? b['created_at']?.toString() ?? '') ?? DateTime(2000);
           return dateB.compareTo(dateA);
         });
 
-        // Menggunakan .first (karena yang terbaru sudah di posisi atas berkat sorting)
         final latestRaw = Map<String, dynamic>.from(wearableData.first as Map);
-        debugPrint('📡 [HomeProvider] wearable terbaru raw: $latestRaw');
-
-        // Antisipasi key dari Backend Golang (bisa 'hasil_ai_harian' atau 'hasil_ai')
         final hasilAiRaw = latestRaw['hasil_ai_harian'] ?? latestRaw['hasil_ai'];
-
-        // Memastikan key yang benar dipakai oleh WearableModel.fromJson
-        if (hasilAiRaw != null) {
-          latestRaw['hasil_ai'] = hasilAiRaw;
-        }
-
+        if (hasilAiRaw != null) latestRaw['hasil_ai'] = hasilAiRaw;
         wearableTerbaru = WearableModel.fromJson(latestRaw);
-
-        // 👇 PERBAIKAN ERROR: Menggunakan field yang baru (reminderHr) untuk debugPrint
-        debugPrint('📡 [HomeProvider] AI Harian count: ${wearableTerbaru.hasilAI.length}');
-        if (wearableTerbaru.hasilAI.isNotEmpty) {
-          debugPrint('📡 [HomeProvider] Reminder HR: ${wearableTerbaru.hasilAI.last.reminderHr}');
-          debugPrint('📡 [HomeProvider] Reminder Tidur: ${wearableTerbaru.hasilAI.last.reminderTidur}');
-        }
       }
 
-      // ── 4. Update state ───────────────────────────────────────
       state = state.copyWith(
         isLoading: false,
         laporanTerbaru: laporanTerbaru,
         jadwalObat: jadwalObatList,
         wearableTerbaru: wearableTerbaru,
+        statusKepatuhan: statusKepatuhan,
+        pesanEdukasi: pesanEdukasi,
       );
-      debugPrint('✅ [HomeProvider] State updated');
 
     } catch (e) {
-      debugPrint('❌ [HomeProvider] Error: $e');
-      state = state.copyWith(isLoading: false, errorMessage: e.toString());
+      debugPrint('❌ [HomeProvider] Error Fatal: $e');
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: _resolveDisplayMessage(e),
+      );
     }
   }
 
@@ -200,7 +199,6 @@ class HomeNotifier extends Notifier<HomeState> {
     try {
       debugPrint('🔄 [HomeProvider] Fetching AI Lab untuk id_laporan_lab=${laporan.idLaporanLab}');
 
-      // Sesuai route: /hasil-ai/lab/laporan/:laporan_lab_id
       final response = await api.get('/hasil-ai/lab/laporan/${laporan.idLaporanLab}');
 
       if (response.statusCode != 200) {
@@ -208,29 +206,42 @@ class HomeNotifier extends Notifier<HomeState> {
         return laporan;
       }
 
-      final data = response.data['data'];
+      // 👇 PERBAIKAN: Keamanan tipe data juga diterapkan di sini
+      final rawData = response.data;
+      Map<String, dynamic>? data;
+
+      if (rawData is Map) {
+        data = rawData['data'] as Map<String, dynamic>? ?? Map<String, dynamic>.from(rawData);
+      } else if (rawData is List && rawData.isNotEmpty) {
+        data = rawData.first as Map<String, dynamic>?;
+      }
+
       if (data == null || data is! Map<String, dynamic>) {
-        debugPrint('⚠️ [HomeProvider] Data AI Lab kosong');
+        debugPrint('⚠️ [HomeProvider] Data AI Lab kosong atau format salah');
         return laporan;
       }
 
-      // Parse AI Lab
       HasilAIGabunganModel aiModel = HasilAIGabunganModel.fromLabJson(data);
 
-      // Coba fetch tren (opsional)
       try {
         final trenResponse = await api.get('/hasil-ai/tren/laporan/${laporan.idLaporanLab}');
         if (trenResponse.statusCode == 200) {
-          final dataTren = trenResponse.data['data'];
-          if (dataTren != null && dataTren is Map<String, dynamic>) {
+          final rawTren = trenResponse.data;
+          Map<String, dynamic>? dataTren;
+
+          if (rawTren is Map) {
+            dataTren = rawTren['data'] as Map<String, dynamic>? ?? Map<String, dynamic>.from(rawTren);
+          }
+
+          if (dataTren != null) {
             aiModel = aiModel.withTren(dataTren);
           }
         }
       } catch (e) {
-        debugPrint('⚠️ [HomeProvider] Tren belum tersedia (wajar untuk laporan pertama): $e');
+        debugPrint('⚠️ [HomeProvider] Tren belum tersedia (wajar untuk laporan pertama)');
       }
 
-      debugPrint('✅ [HomeProvider] AI Lab injected! Interpretasi: ${aiModel.interpretasi}');
+      debugPrint('✅ [HomeProvider] AI Lab injected! Interpretasi berhasil');
       return laporan.copyWith(kesimpulanLab: aiModel);
 
     } catch (e) {
@@ -269,4 +280,13 @@ String _normalizeTime(String value) {
   final cleaned = value.trim();
   if (cleaned.length >= 5) return cleaned.substring(0, 5);
   return cleaned;
+}
+
+String _resolveDisplayMessage(Object e) {
+  if (e is String) {
+    // Sudah pesan ramah dari ApiService/ErrorHandler.
+    return e;
+  }
+  // Error parsing/logic lokal → tampilkan pesan generik yang aman.
+  return 'Terjadi kendala saat memuat data. Silakan coba lagi.';
 }

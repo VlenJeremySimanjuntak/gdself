@@ -30,12 +30,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   String? _validate() {
     final email    = _emailController.text.trim();
     final password = _passwordController.text;
+
     if (email.isEmpty) return 'Email tidak boleh kosong.';
     if (!RegExp(r'^[\w.+-]+@[\w-]+\.[a-zA-Z]{2,}$').hasMatch(email)) {
       return 'Format email tidak valid.';
     }
     if (password.isEmpty) return 'Password tidak boleh kosong.';
-    if (password.length < 6) return 'Password minimal 6 karakter.';
+    
     return null;
   }
 
@@ -259,7 +260,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                             // TOMBOL MASUK DENGAN GOOGLE
                             OutlinedButton.icon(
-                              // ✅ PERBAIKAN 2: Logika Google Sign-In New User
                               onPressed: authState.isLoading ? null : () async {
                                 final result = await ref.read(userProvider.notifier).loginWithGoogle();
                                 if (!mounted) return;
@@ -283,9 +283,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     ),
                                   );
 
+                                } else if (status == 'cancelled') {
+                                  // ✅ FIX 2: Tampilkan sebagai Notifikasi Pop-up (SnackBar)
+                                  // Pesan ini akan otomatis hilang sendiri setelah 3 detik!
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text("Google Sign-In dibatalkan."),
+                                      backgroundColor: Colors.orange, // Warna oranye peringatan
+                                      duration: Duration(seconds: 3),
+                                    ),
+                                  );
+
                                 } else if (status == 'error') {
-                                  // Error sudah di-set ke authState.errorMessage
-                                  // tidak perlu lakukan apa-apa, UI sudah menampilkan error
+                                  // Error sistem akan tetap muncul di kotak merah
                                 }
                               },
                               icon: const FaIcon(
