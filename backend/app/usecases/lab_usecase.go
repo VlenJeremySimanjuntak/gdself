@@ -117,11 +117,59 @@ func resolveTrenStatus(prevHas, currHas bool, namaParam, currentTren, currentRem
 	return currentTren, currentReminder
 }
 
+// ────────────────────────────────────────────────────────────────
+// Kalkulasi Skor Wearable (Tanpa Heart Rate)
+// ────────────────────────────────────────────────────────────────
+func CalculateWearableScore(w models.WearableData) int {
+	score := 0
+
+	// 1. Aturan Analisis Detak Jantung (HR) dengan Baseline Dinamis
+	if w.HR > 0 {
+		if w.BaselineHRMin > 0 && w.BaselineHRMax > 0 {
+			if w.HR < w.BaselineHRMin {
+				score += 1 // Di bawah baseline normal
+			} else if w.HR > w.BaselineHRMax {
+				score += 2 // Di atas baseline normal (indikasi klinis)
+			}
+		} else {
+			// Fallback standar jika baseline tidak dikirim
+			if w.HR > 100 {
+				score += 2
+			} else if w.HR < 60 {
+				score += 1
+			}
+		}
+	}
+
+	// 2. Aturan Analisis Durasi Tidur
+	if w.SleepMinutes > 0 {
+		if w.SleepMinutes < w.BaselineSleepMin { 
+			score += 2 
+		} else if w.SleepMinutes > w.BaselineSleepMax { 
+			score += 1 
+		}
+	}
+
+	// 3. Aturan Analisis Tekanan Darah (TD)
+	if w.Sys > 0 && w.Dia > 0 {
+		if w.Sys >= 130 || w.Dia > 80 { 
+			score += 2 
+		} else if w.Sys < 90 || w.Dia < 60 { 
+			score += 1 
+		}
+	}
+
+	return score
+}
+
+// ────────────────────────────────────────────────────────────────
+// Fungsi Assess Utama
+// ────────────────────────────────────────────────────────────────
 func (u *labUsecase) Assess(input models.AssessmentInput) (models.AssessmentResult, error) {
 	var res models.AssessmentResult
 
 	if !input.IsLabDay {
-		res.Interpretation = "Assessment harian diproses saat sync wearable."
+		res.Interpretation = "Assessment harian diproses melalui endpoint wearable terpisah."
 		return res, nil
 	}
 
@@ -130,7 +178,6 @@ func (u *labUsecase) Assess(input models.AssessmentInput) (models.AssessmentResu
 		return res, fmt.Errorf("minimal parameter TSHs harus diisi")
 	}
 
-	// FT4 opsional, hanya TSHs yang wajib.
 	hasTSH := false
 	for _, p := range input.Lab.Parameters {
 		key := strings.ToUpper(strings.TrimSpace(p.NamaParameter))
@@ -191,7 +238,6 @@ func (u *labUsecase) Assess(input models.AssessmentInput) (models.AssessmentResu
 			return false
 		}
 
-		// ✅ FIX: bedakan "Tidak Diketahui" vs "Data Belum Cukup"
 		trenResult.TrenTSH, trenResult.ReminderTrenTSH = resolveTrenStatus(
 			hasParam(input.PrevLab.Parameters, "TSH"),
 			hasParam(input.Lab.Parameters, "TSH"),
@@ -229,59 +275,12 @@ func (u *labUsecase) Assess(input models.AssessmentInput) (models.AssessmentResu
 
 		if existingTren.IDHasilAITren != 0 {
 			tren.IDHasilAITren = existingTren.IDHasilAITren
-			_, err := u.hasilAITren.UpdateHasilAITren(tren)
-			if err != nil {
-				fmt.Printf("Warning: gagal update AI Tren: %v\n", err)
-			}
+			u.hasilAITren.UpdateHasilAITren(tren)
 		} else {
-			_, err := u.hasilAITren.CreateHasilAITren(tren)
-			if err != nil {
-				fmt.Printf("Warning: gagal simpan AI Tren: %v\n", err)
-			}
+			u.hasilAITren.CreateHasilAITren(tren)
 		}
 	}
 
 	res.Interpretation = currResult.Interpretasi
-
-	// ============================================================
-	// 🔥 FORWARD UPDATE: EFEK DOMINO UNTUK DATA MASA DEPAN
-	// ============================================================
-	if input.IsLabDay && input.Lab.IDLaporanLab != 0 {
-		// Cari apakah ada data laporan SETELAH tanggal data yang saat ini diinput
-		nextLab, err := u.laporanRepo.GetNextLab(input.Lab.IDLaporanLab)
-		
-		// Jika ditemukan (artinya user menginput data masa lalu, misal Mei setelah Juli)
-		if err == nil && nextLab.IDLaporanLab != 0 {
-			
-			// Siapkan parameter dari nextLab menggunakan trik konversi JSON
-			// yang sama persis dengan PrevLab agar terhindar dari panic pointer *float64
-			dbParams := []map[string]interface{}{}
-			for _, h := range nextLab.HasilLab {
-				dbParams = append(dbParams, map[string]interface{}{
-					"nama_parameter":    h.Parameter.NamaParameter,
-					"nilai_hasil":       h.NilaiHasil,
-					"nilai_batas_bawah": h.NilaiBatasBawah,
-					"nilai_batas_atas":  h.NilaiBatasAtas,
-				})
-			}
-			
-			var nextLabInput models.AssessmentLabInput
-			paramBytes, _ := json.Marshal(map[string]interface{}{
-				"id_laporan_lab": nextLab.IDLaporanLab,
-				"parameters":     dbParams,
-			})
-			json.Unmarshal(paramBytes, &nextLabInput)
-
-			_, errAssessNext := u.Assess(models.AssessmentInput{
-				IsLabDay: true,
-				Lab:      nextLabInput,
-			})
-			
-			if errAssessNext != nil {
-				fmt.Printf("Warning: gagal forward-update AI Tren untuk Laporan ID %d: %v\n", nextLab.IDLaporanLab, errAssessNext)
-			}
-		}
-	}
-
 	return res, nil
 }

@@ -1,10 +1,10 @@
 package models
 
 type AssessmentInput struct {
-	Lab      AssessmentLabInput  `json:"lab"`
-	PrevLab  *AssessmentLabInput `json:"prev_lab,omitempty"`
-	Wearable WearableData        `json:"wearable"`
-	IsLabDay bool                `json:"is_lab_day"`
+	Lab      AssessmentLabInput   `json:"lab"`
+	PrevLab  *AssessmentLabInput  `json:"prev_lab,omitempty"`
+	Wearable *WearableData        `json:"wearable,omitempty"` // Dibuat pointer agar opsional & aman
+	IsLabDay bool                 `json:"is_lab_day"`
 }
 
 type AssessmentLabInput struct {
@@ -20,12 +20,7 @@ type AssessmentParamInput struct {
 }
 
 type AssessmentResult struct {
-	LabScore       int     `json:"lab_score"`
-	LabCode        string  `json:"lab_code"`
-	WearableScore  int     `json:"wearable_score"`
-	TrendFactorY   float64 `json:"trend_factor_y"`
-	FinalScore     float64 `json:"final_score"`
-	Interpretation string  `json:"interpretation"`
+	Interpretation string `json:"interpretation"`
 }
 
 type RangeNilai struct {

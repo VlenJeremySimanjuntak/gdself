@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"net/mail" // ✅ TAMBAHAN: Untuk validasi format email
 	"time"
 
 	"monitoring-service/app/helpers"
@@ -36,6 +37,11 @@ func NewUserUsecase(repo repositories.UserRepository) UserUsecase {
 func (u *userUsecase) CreateUser(user models.User) (models.User, error) {
 	if user.Email == "" || user.Nama == "" || user.Password == "" {
 		return models.User{}, fmt.Errorf("email, nama, dan password tidak boleh kosong")
+	}
+
+	// ✅ FIX: Validasi format email (Mencegah insert manual dari endpoint)
+	if _, err := mail.ParseAddress(user.Email); err != nil {
+		return models.User{}, fmt.Errorf("format email tidak valid")
 	}
 
 	existingUser, err := u.repo.GetByEmail(user.Email)
@@ -127,7 +133,7 @@ func (u *userUsecase) GoogleLogin(idToken string) (models.User, error) {
 			needsUpdate = true
 		}
 	}
-	
+
 	if user.FotoProfil == "" && picture != "" {
 		user.FotoProfil = picture
 		needsUpdate = true

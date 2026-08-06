@@ -179,7 +179,7 @@ func (u *wearableUsecase) updateOrCreateHasilAI(tx *gorm.DB, wearable models.Wea
 			hasilAI.ReminderTd = "Tekanan darah berada di atas batas normal. Disarankan pengurangan asupan garam dan pemantauan berkala."
 		} else if wearable.Sistolik < 90 || wearable.Diastolik < 60 {
 			hasilAI.StatusTd = "Rendah"
-			hasilAI.ReminderTd = "Tekanan darah berada di bawah batas normal. Disarankan untuk memantau kondisi fisik."
+			hasilAI.ReminderTd = "Tekanan darah bera 	da di bawah batas normal. Disarankan untuk memantau kondisi fisik."
 		} else {
 			hasilAI.StatusTd = "Normal"
 			hasilAI.ReminderTd = "Tekanan darah berada dalam kondisi normal. Pertahankan pola hidup sehat."

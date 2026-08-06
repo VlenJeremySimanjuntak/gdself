@@ -56,12 +56,18 @@ func (u *hasilLabUsecase) CreateHasilLab(input models.CreateHasilLabRequest) (mo
 	}
 
 	var isTshHigh, isFt4High bool
+	var hasTSH bool // ✅ TAMBAHAN: Untuk melacak apakah ada TSH di payload
 
 	// ==========================================
 	// BLOK VALIDASI SEBELUM SIMPAN KE DB
 	// ==========================================
 	for _, param := range input.Parameters {
 		paramNameUpper := strings.ToUpper(strings.TrimSpace(param.NamaParameter))
+
+		// ✅ TAMBAHAN: Tandai jika TSH atau TSHS ditemukan
+		if paramNameUpper == "TSH" || paramNameUpper == "TSHS" {
+			hasTSH = true
+		}
 
 		// Ambil nilai yang dikirim (bisa dari .Nilai atau .NilaiHasil)
 		nilai := param.Nilai
@@ -88,10 +94,8 @@ func (u *hasilLabUsecase) CreateHasilLab(input models.CreateHasilLabRequest) (mo
 					if paramNameUpper == "FT4" && *nilai > *param.NilaiBatasAtas {
 						isFt4High = true
 					}
-				}
 
-				// Cek nilai melompat jauh (> 10x batas atas)
-				if param.NilaiBatasAtas != nil && *param.NilaiBatasAtas > 0 {
+					// Cek nilai melompat jauh (> 10x batas atas)
 					if *nilai > (*param.NilaiBatasAtas * 10.0) {
 						return models.HasilLab{}, fmt.Errorf("TREMOR_WARNING: Nilai %s tampak sangat jauh dari batas rujukan atas. Mohon periksa kembali angka yang diketik.", param.NamaParameter)
 					}
@@ -99,20 +103,31 @@ func (u *hasilLabUsecase) CreateHasilLab(input models.CreateHasilLabRequest) (mo
 			}
 		}
 
-		// Cek batas terbalik atau sama
-		if !input.ForceSave && param.NilaiBatasBawah != nil && param.NilaiBatasAtas != nil {
-			if *param.NilaiBatasBawah > 0 && *param.NilaiBatasAtas > 0 && *param.NilaiBatasBawah >= *param.NilaiBatasAtas {
-				// 🛠️ DISPENSASI TRAB
-				if paramNameUpper == "TRAB" && *param.NilaiBatasBawah == *param.NilaiBatasAtas {
-					// Loloskan
-				} else {
-					return models.HasilLab{}, fmt.Errorf("TREMOR_WARNING: Rentang batas %s terbalik atau sama (Batas Bawah >= Batas Atas).", param.NamaParameter)
+		// ✅ PERBAIKAN: LOGIKA RENTANG (Tolak Mutlak, TIDAK BOLEH di-bypass oleh ForceSave)
+		if param.NilaiBatasBawah != nil && param.NilaiBatasAtas != nil {
+			bb := *param.NilaiBatasBawah
+			ba := *param.NilaiBatasAtas
+
+			if bb > 0 && ba > 0 {
+				if bb > ba {
+					// Batas bawah lebih besar dari batas atas (100% Error)
+					return models.HasilLab{}, fmt.Errorf("Gagal! Rentang batas %s tidak valid (Batas Bawah %v > Batas Atas %v).", param.NamaParameter, bb, ba)
+				}
+				
+				if bb == ba && paramNameUpper != "TRAB" {
+					// Batas bawah sama dengan batas atas (Error kecuali TRAb)
+					return models.HasilLab{}, fmt.Errorf("Gagal! Rentang batas %s tidak boleh sama (Batas Bawah == Batas Atas).", param.NamaParameter)
 				}
 			}
 		}
 	}
 
-	// Evaluasi Uji Konsistensi
+	// ✅ TAMBAHAN: Validasi Wajib TSH
+	if !hasTSH {
+		return models.HasilLab{}, fmt.Errorf("Data hasil lab minimal harus menyertakan parameter TSH atau TSHs")
+	}
+
+	// Evaluasi Uji Konsistensi (Tidak Boleh ForceSave)
 	if !input.ForceSave && isTshHigh && isFt4High {
 		return models.HasilLab{}, fmt.Errorf("CONSISTENCY_ERROR: TSH dan FT4 tercatat sama-sama tinggi. Secara fisiologis ini paradoks. Mohon periksa kembali sampel atau kemungkinan interferensi alat.")
 	}

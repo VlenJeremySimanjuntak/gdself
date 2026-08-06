@@ -8,10 +8,10 @@ type Riwayat struct {
 	// Relationships
 	User       *User        `json:"user,omitempty" gorm:"foreignKey:IDUser;references:IDUser;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	
-	// ✅ PERBAIKAN: Hapus constraint:- 
-	Wearable   []Wearable   `json:"wearable,omitempty" gorm:"foreignKey:IDRiwayat;references:IDRiwayat"`
-	LaporanLab []LaporanLab `json:"laporan_lab,omitempty" gorm:"foreignKey:IDRiwayat;references:IDRiwayat"`
-	USGTiroid  []USGTiroid  `json:"usg_tiroid,omitempty" gorm:"foreignKey:IDRiwayat;references:IDRiwayat"`
+	// ✅ PERBAIKAN: Menambahkan constraint eksplisit CASCADE pada relasi Has-Many
+	Wearable   []Wearable   `json:"wearable,omitempty" gorm:"foreignKey:IDRiwayat;references:IDRiwayat;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	LaporanLab []LaporanLab `json:"laporan_lab,omitempty" gorm:"foreignKey:IDRiwayat;references:IDRiwayat;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	USGTiroid  []USGTiroid  `json:"usg_tiroid,omitempty" gorm:"foreignKey:IDRiwayat;references:IDRiwayat;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }
 
 func (Riwayat) TableName() string {

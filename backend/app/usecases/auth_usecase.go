@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"net/mail" // ✅ TAMBAHAN: Untuk validasi format email
 	"time"
 
 	"monitoring-service/app/helpers"
@@ -43,6 +44,11 @@ func NewAuthUsecase(
 // ── SendOTP ──────────────────────────────────────────────────────────────────
 func (u *authUsecase) SendOTP(email, otpType string) error {
 	if otpType == "register" {
+		// ✅ FIX: Validasi format email secara general
+		if _, err := mail.ParseAddress(email); err != nil {
+			return fmt.Errorf("format email tidak valid")
+		}
+
 		existing, err := u.userRepo.GetByEmail(email)
 		if err == nil && existing.IDUser != 0 {
 			return fmt.Errorf("email sudah terdaftar")
@@ -54,7 +60,7 @@ func (u *authUsecase) SendOTP(email, otpType string) error {
 		if err != nil || existing.IDUser == 0 {
 			return fmt.Errorf("email tidak terdaftar")
 		}
-		
+
 		// ✅ FIX BUG: Cek apakah password kosong (bukan cek provider google)
 		// Jadi kalau user daftar via Google tapi sudah buat password, dia TETAP BISA reset password!
 		if existing.Password == "" {
@@ -196,38 +202,38 @@ func (u *authUsecase) ForgotPassword(email string) error {
 }
 
 func (u *authUsecase) ResetPassword(email, code, newPassword string) error {
-    otp, err := u.otpRepo.GetUsedOTPByEmail(email, "reset_password")
-    if err != nil {
-        return fmt.Errorf("sesi reset password tidak valid atau sudah kedaluwarsa")
-    }
+	otp, err := u.otpRepo.GetUsedOTPByEmail(email, "reset_password")
+	if err != nil {
+		return fmt.Errorf("sesi reset password tidak valid atau sudah kedaluwarsa")
+	}
 
-    if otp.Code != code {
-        return fmt.Errorf("sesi reset password tidak valid")
-    }
+	if otp.Code != code {
+		return fmt.Errorf("sesi reset password tidak valid")
+	}
 
-    if time.Now().After(otp.ExpiredAt) {
-        return fmt.Errorf("sesi reset password sudah kedaluwarsa, silakan ulangi")
-    }
+	if time.Now().After(otp.ExpiredAt) {
+		return fmt.Errorf("sesi reset password sudah kedaluwarsa, silakan ulangi")
+	}
 
-    user, err := u.userRepo.GetByEmail(email)
-    if err != nil || user.IDUser == 0 {
-        return fmt.Errorf("user tidak ditemukan")
-    }
+	user, err := u.userRepo.GetByEmail(email)
+	if err != nil || user.IDUser == 0 {
+		return fmt.Errorf("user tidak ditemukan")
+	}
 
-    hashedPassword, err := helpers.HashPassword(newPassword)
-    if err != nil {
-        return fmt.Errorf("gagal mengenkripsi password")
-    }
+	hashedPassword, err := helpers.HashPassword(newPassword)
+	if err != nil {
+		return fmt.Errorf("gagal mengenkripsi password")
+	}
 
-    // ✅ Update langsung ke kolom password saja pakai DB raw update
-    // Hindari pakai u.userRepo.Update() yang mungkin skip password field
-    err = repositories.DB.Model(&models.User{}).
-        Where("id_user = ?", user.IDUser).
-        Update("password", string(hashedPassword)).Error
-    if err != nil {
-        return fmt.Errorf("gagal menyimpan password baru: %v", err)
-    }
+	// ✅ Update langsung ke kolom password saja pakai DB raw update
+	// Hindari pakai u.userRepo.Update() yang mungkin skip password field
+	err = repositories.DB.Model(&models.User{}).
+		Where("id_user = ?", user.IDUser).
+		Update("password", string(hashedPassword)).Error
+	if err != nil {
+		return fmt.Errorf("gagal menyimpan password baru: %v", err)
+	}
 
-    u.otpRepo.DeleteByEmail(email, "reset_password")
-    return nil
+	u.otpRepo.DeleteByEmail(email, "reset_password")
+	return nil
 }

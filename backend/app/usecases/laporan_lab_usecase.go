@@ -44,13 +44,30 @@ func (u *laporanLabUsecase) CreateLaporanLab(laporan models.LaporanLab, idUser u
 		return models.LaporanLab{}, fmt.Errorf("nama_lab tidak boleh kosong")
 	}
 
-	if laporan.IDRiwayat == 0 {
+	if laporan.IDRiwayat != 0 {
+		// 1. Ambil data Riwayat dari database berdasarkan IDRiwayat
+		existingRiwayat, err := u.riwayatRepo.GetByID(laporan.IDRiwayat) 
+		if err != nil || existingRiwayat.IDRiwayat == 0 {
+			return models.LaporanLab{}, fmt.Errorf("id_riwayat tidak valid atau tidak ditemukan")
+		}
+
+		// 2. Cek apakah Riwayat ini benar milik idUser yang request
+		if existingRiwayat.IDUser != idUser {
+			// Pesan yang lebih tegas, menembak langsung ke masalah relasi
+			return models.LaporanLab{}, fmt.Errorf("akses ditolak: id_riwayat %d tidak terdaftar atas id_user %d", laporan.IDRiwayat, idUser)
+		}
+
+	} else {
+		// =========================================================
+		// LOGIKA LAMA: Jika IDRiwayat == 0 (Kosong)
+		// =========================================================
 		if idUser == 0 {
 			return models.LaporanLab{}, fmt.Errorf("id_user atau id_riwayat harus diisi")
 		}
 
 		today := models.CustomDate(time.Now())
 		existing, err := u.riwayatRepo.GetByUserIDAndDate(idUser, today)
+		
 		if err == nil && existing.IDRiwayat != 0 {
 			laporan.IDRiwayat = existing.IDRiwayat
 		} else {

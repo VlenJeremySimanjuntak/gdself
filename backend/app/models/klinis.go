@@ -12,9 +12,11 @@ type LaporanLab struct {
 	TglPeriksa   *CustomDate `json:"tgl_periksa" gorm:"column:tgl_periksa;type:date"`
 
 	Riwayat     *Riwayat      `json:"riwayat,omitempty" gorm:"foreignKey:IDRiwayat;references:IDRiwayat;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	HasilLab    []HasilLab    `json:"hasil_lab,omitempty" gorm:"foreignKey:IDLaporanLab;references:IDLaporanLab"`
-	HasilAILab  []HasilAILab  `json:"hasil_ai_lab,omitempty" gorm:"foreignKey:IDLaporanLab;references:IDLaporanLab"`
-	HasilAITren []HasilAITren `json:"hasil_ai_tren,omitempty" gorm:"foreignKey:IDLaporanLab;references:IDLaporanLab"`
+	
+	// ✅ PERBAIKAN: Tambahan constraint CASCADE untuk child dari LaporanLab
+	HasilLab    []HasilLab    `json:"hasil_lab,omitempty" gorm:"foreignKey:IDLaporanLab;references:IDLaporanLab;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	HasilAILab  []HasilAILab  `json:"hasil_ai_lab,omitempty" gorm:"foreignKey:IDLaporanLab;references:IDLaporanLab;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	HasilAITren []HasilAITren `json:"hasil_ai_tren,omitempty" gorm:"foreignKey:IDLaporanLab;references:IDLaporanLab;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }
 
 func (LaporanLab) TableName() string {
@@ -33,9 +35,9 @@ type HasilLab struct {
 	NilaiBatasBawah *float64  `json:"nilai_batas_bawah" gorm:"column:nilai_batas_bawah;type:decimal(10,3)"`
 	NilaiBatasAtas  *float64  `json:"nilai_batas_atas" gorm:"column:nilai_batas_atas;type:decimal(10,3)"`
 	
-	MeasurementStatus     string `json:"measurement_status" gorm:"column:measurement_status;type:varchar(50)"`
-	PhysicalConditionCode string `json:"physical_condition_code" gorm:"column:physical_condition_code;type:varchar(100)"`
-	PhysicalConditionNote string `json:"physical_condition_note" gorm:"column:physical_condition_note;type:text"`
+	MeasurementStatus     string    `json:"measurement_status" gorm:"column:measurement_status;type:varchar(50)"`
+	PhysicalConditionCode string    `json:"physical_condition_code" gorm:"column:physical_condition_code;type:varchar(100)"`
+	PhysicalConditionNote string    `json:"physical_condition_note" gorm:"column:physical_condition_note;type:text"`
 
 	CreatedAt       time.Time `json:"created_at" gorm:"column:created_at;autoCreateTime:milli"`
 
@@ -93,7 +95,7 @@ type CreateHasilLabRequest struct {
 	NilaiBatasAtas  *float64                 `json:"nilai_batas_atas,omitempty"`
 	Parameters      []CreateParameterRequest `json:"parameters" binding:"required"`
 
-	ForceSave       bool                     `json:"force_save"`
+	ForceSave  bool        `json:"force_save"`
 	IDReport   uint        `json:"id_report,omitempty"`
 	IDRiwayat  uint        `json:"id_riwayat,omitempty"`
 	IDUser     uint        `json:"id_user,omitempty"`

@@ -3,7 +3,7 @@ package controllers
 import (
 	"net/http"
 	"strconv"
-
+	"strings"
 	"monitoring-service/app/constants"
 	"monitoring-service/app/models"
 	"monitoring-service/app/usecases"
@@ -51,7 +51,6 @@ func (ctrl *laporanLabController) Create(c echo.Context) error {
 	}
 
 	// Mapping ke model LaporanLab
-	// Note: IDRiwayat akan di-handle oleh usecase (create or find existing Riwayat)
 	laporan := models.LaporanLab{
 		IDRiwayat:  input.IDRiwayat,
 		TglPeriksa: input.TglPeriksa,
@@ -60,8 +59,22 @@ func (ctrl *laporanLabController) Create(c echo.Context) error {
 
 	result, err := ctrl.usecase.CreateLaporanLab(laporan, input.IDUser)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": err.Error(),
+		// =========================================================
+		// ✅ PERBAIKAN: Mencegah 500 Internal Server Error
+		// =========================================================
+		statusCode := http.StatusInternalServerError
+		errMsg := err.Error()
+
+		if strings.Contains(errMsg, "akses ditolak") {
+			statusCode = http.StatusForbidden // 403
+		} else if strings.Contains(errMsg, "tidak ditemukan") || strings.Contains(errMsg, "tidak valid") {
+			statusCode = http.StatusNotFound // 404
+		} else if strings.Contains(errMsg, "kosong") || strings.Contains(errMsg, "harus diisi") {
+			statusCode = http.StatusBadRequest // 400
+		}
+
+		return c.JSON(statusCode, map[string]string{
+			"error": errMsg,
 		})
 	}
 

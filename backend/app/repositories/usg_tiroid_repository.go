@@ -2,7 +2,6 @@ package repositories
 
 import (
 	"monitoring-service/app/models"
-	"fmt"
 
 	"gorm.io/gorm"
 )
@@ -15,6 +14,7 @@ type UsgTiroidRepository interface {
 	GetAll() ([]models.USGTiroid, error)
 	Update(id uint, usg models.USGTiroid) (models.USGTiroid, error)
 	Delete(id uint) error
+	GetOwnerUserID(id uint) (uint, error)
 }
 
 type usgTiroidRepository struct {
@@ -43,17 +43,15 @@ func (r *usgTiroidRepository) GetByRiwayatID(riwayatID uint) ([]models.USGTiroid
 }
 
 func (r *usgTiroidRepository) GetByUserID(userID uint) ([]models.USGTiroid, error) {
-    var usgs []models.USGTiroid
-    err := r.db.Raw(`
-        SELECT usg_tiroid.* 
-        FROM usg_tiroid 
-        JOIN riwayat ON riwayat.id_riwayat = usg_tiroid.id_riwayat 
-        WHERE riwayat.id_user = ?
-        ORDER BY usg_tiroid.tgl_pemeriksaan DESC
-    `, userID).Scan(&usgs).Error
-
-    fmt.Printf("DEBUG raw rows: %d, error: %v\n", len(usgs), err)
-    return usgs, err
+	var usgs []models.USGTiroid
+	err := r.db.Raw(`
+		SELECT usg_tiroid.*
+		FROM usg_tiroid
+		JOIN riwayat ON riwayat.id_riwayat = usg_tiroid.id_riwayat
+		WHERE riwayat.id_user = ?
+		ORDER BY usg_tiroid.tgl_pemeriksaan DESC
+	`, userID).Scan(&usgs).Error
+	return usgs, err
 }
 
 func (r *usgTiroidRepository) GetAll() ([]models.USGTiroid, error) {
@@ -72,4 +70,16 @@ func (r *usgTiroidRepository) Update(id uint, usg models.USGTiroid) (models.USGT
 
 func (r *usgTiroidRepository) Delete(id uint) error {
 	return r.db.Delete(&models.USGTiroid{}, id).Error
+}
+
+// GetOwnerUserID mengembalikan id_user pemilik data USG (lewat relasi riwayat).
+func (r *usgTiroidRepository) GetOwnerUserID(id uint) (uint, error) {
+	var userID uint
+	err := r.db.Raw(`
+		SELECT riwayat.id_user
+		FROM usg_tiroid
+		JOIN riwayat ON riwayat.id_riwayat = usg_tiroid.id_riwayat
+		WHERE usg_tiroid.id_usg = ?
+	`, id).Scan(&userID).Error
+	return userID, err
 }

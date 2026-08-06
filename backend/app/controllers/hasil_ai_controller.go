@@ -3,7 +3,7 @@ package controllers
 import (
 	"net/http"
 	"strconv"
-	"strings" // ✅ WAJIB DITAMBAHKAN
+	"strings"
 
 	"monitoring-service/app/models"
 	"monitoring-service/app/usecases"
@@ -12,24 +12,18 @@ import (
 )
 
 type HasilAIController interface {
-	// Endpoints untuk HasilAIHarian (dari Wearable)
 	CreateHarian(c echo.Context) error
 	GetHarianByID(c echo.Context) error
 	GetHarianByWearableID(c echo.Context) error
 	GetHarianByRiwayatID(c echo.Context) error
 
-	// Endpoints untuk HasilAILab (dari Laporan Lab)
 	GetLabByID(c echo.Context) error
 	GetLabByLaporanLabID(c echo.Context) error
 
-	// Endpoints untuk HasilAITren (dari Laporan Lab)
 	GetTrenByID(c echo.Context) error
 	GetTrenByLaporanLabID(c echo.Context) error
 
 	GetLatestValidByUserAndParam(c echo.Context) error
-
-
-	// Endpoint untuk memproses assessment (menggantikan Create yang lama)
 	ProcessAssessment(c echo.Context) error
 }
 
@@ -37,7 +31,7 @@ type hasilAIController struct {
 	harianUsecase usecases.HasilAIHarianUsecase
 	labUsecase    usecases.HasilAILabUsecase
 	trenUsecase   usecases.HasilAITrenUsecase
-	labUsecase2   usecases.LabUsecase // Untuk memanggil Assess
+	labUsecase2   usecases.LabUsecase 
 }
 
 func NewHasilAIController(
@@ -54,10 +48,6 @@ func NewHasilAIController(
 	}
 }
 
-// ==========================================
-// HASIL AI HARIAN (DARI WEARABLE)
-// ==========================================
-
 func (ctrl *hasilAIController) CreateHarian(c echo.Context) error {
 	var input models.HasilAIHarian
 
@@ -68,7 +58,6 @@ func (ctrl *hasilAIController) CreateHarian(c echo.Context) error {
 		})
 	}
 
-	// Validasi field wajib
 	if input.IDWearable == 0 {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "id_wearable harus diisi",
@@ -148,7 +137,6 @@ func (ctrl *hasilAIController) GetHarianByRiwayatID(c echo.Context) error {
 		})
 	}
 
-	// Jika tidak ada data, kembalikan array kosong
 	if hasilList == nil {
 		hasilList = []models.HasilAIHarian{}
 	}
@@ -159,10 +147,6 @@ func (ctrl *hasilAIController) GetHarianByRiwayatID(c echo.Context) error {
 		Data:       hasilList,
 	})
 }
-
-// ==========================================
-// HASIL AI LAB (DARI LAPORAN LAB)
-// ==========================================
 
 func (ctrl *hasilAIController) GetLabByID(c echo.Context) error {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
@@ -194,7 +178,6 @@ func (ctrl *hasilAIController) GetLabByLaporanLabID(c echo.Context) error {
 
 	hasil, err := ctrl.labUsecase.GetHasilAILabByLaporanLabID(uint(laporanLabID))
 	if err != nil {
-		// ✅ PERBAIKAN: Gunakan strings.Contains agar lebih fleksibel menangkap error GORM
 		if strings.Contains(strings.ToLower(err.Error()), "not found") {
 			return c.JSON(http.StatusOK, models.Response{
 				StatusCode: http.StatusOK,
@@ -202,16 +185,11 @@ func (ctrl *hasilAIController) GetLabByLaporanLabID(c echo.Context) error {
 				Data:       nil,
 			})
 		}
-		
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, models.Response{StatusCode: http.StatusOK, Message: "Hasil AI Lab ditemukan", Data: hasil})
 }
-
-// ==========================================
-// HASIL AI TREN (DARI LAPORAN LAB)
-// ==========================================
 
 func (ctrl *hasilAIController) GetTrenByID(c echo.Context) error {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
@@ -243,7 +221,6 @@ func (ctrl *hasilAIController) GetTrenByLaporanLabID(c echo.Context) error {
 
 	hasil, err := ctrl.trenUsecase.GetHasilAITrenByLaporanLabID(uint(laporanLabID))
 	if err != nil {
-		// ✅ PERBAIKAN: Sama seperti di atas
 		if strings.Contains(strings.ToLower(err.Error()), "not found") {
 			return c.JSON(http.StatusOK, models.Response{
 				StatusCode: http.StatusOK,
@@ -251,16 +228,11 @@ func (ctrl *hasilAIController) GetTrenByLaporanLabID(c echo.Context) error {
 				Data:       nil,
 			})
 		}
-		
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, models.Response{StatusCode: http.StatusOK, Message: "Hasil AI Tren ditemukan", Data: hasil})
 }
-
-// ==========================================
-// PROCESS ASSESSMENT (MENGGANTIKAN CREATE LAMA)
-// ==========================================
 
 func (ctrl *hasilAIController) ProcessAssessment(c echo.Context) error {
 	var input models.AssessmentInput
@@ -272,7 +244,6 @@ func (ctrl *hasilAIController) ProcessAssessment(c echo.Context) error {
 		})
 	}
 
-	// Validasi: jika lab day, lab data harus ada
 	if input.IsLabDay {
 		if input.Lab.IDLaporanLab == 0 && len(input.Lab.Parameters) == 0 {
 			return c.JSON(http.StatusBadRequest, map[string]string{
@@ -280,15 +251,14 @@ func (ctrl *hasilAIController) ProcessAssessment(c echo.Context) error {
 			})
 		}
 	} else {
-		// ✅ PERBAIKAN: Tambahkan Sys dan Dia agar Tekanan Darah juga lolos validasi
-		if input.Wearable.HR == 0 && input.Wearable.SleepMinutes == 0 && input.Wearable.Sys == 0 && input.Wearable.Dia == 0 {
+		// Validasi aman jika wearable dikirim atau tidak dikirim
+		if input.Wearable != nil && input.Wearable.SleepMinutes == 0 && input.Wearable.Sys == 0 && input.Wearable.Dia == 0 {
 			return c.JSON(http.StatusBadRequest, map[string]string{
-				"error": "data wearable (hr, sleep_minutes, sys, atau dia) diperlukan untuk assessment harian",
+				"error": "data wearable diperlukan untuk assessment harian",
 			})
 		}
 	}
 
-	// Panggil LabUsecase.Assess untuk memproses assessment
 	result, err := ctrl.labUsecase2.Assess(input)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
@@ -323,9 +293,32 @@ func (ctrl *hasilAIController) GetLatestValidByUserAndParam(c echo.Context) erro
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	// ✅ Ambil hanya status & reminder untuk parameter yang diminta,
+	// bukan seluruh baris hasil_ai_lab (yang berisi semua parameter sekaligus).
+	var status, reminder string
+	switch paramKey {
+	case "TSH", "TSHS":
+		status, reminder = result.StatusTsh, result.ReminderTsh
+	case "FT3":
+		status, reminder = result.StatusFt3, result.ReminderFt3
+	case "FT4":
+		status, reminder = result.StatusFt4, result.ReminderFt4
+	case "TRAB":
+		status, reminder = result.StatusTrab, result.ReminderTrab
+	}
+
 	return c.JSON(http.StatusOK, models.Response{
 		StatusCode: http.StatusOK,
 		Message:    "Data ditemukan",
-		Data:       result,
+		Data: map[string]interface{}{
+			"id_hasil_ai_lab": result.IDHasilAILab,
+			"id_laporan_lab":  result.IDLaporanLab,
+			"parameter":       paramKey,
+			"status":          status,
+			"reminder":        reminder,
+			"interpretasi":    result.Interpretasi,
+			"tgl_hasil_ai":    result.TglHasilAi,
+			"created_at":      result.CreatedAt,
+		},
 	})
 }

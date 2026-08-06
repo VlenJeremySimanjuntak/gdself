@@ -13,6 +13,7 @@ type UsgTiroidUsecase interface {
 	GetAllUsgTiroid() ([]models.USGTiroid, error)
 	UpdateUsgTiroid(id uint, input models.USGTiroid) (models.USGTiroid, error)
 	DeleteUsgTiroid(id uint) error
+	GetUsgOwnerUserID(id uint) (uint, error)
 }
 
 type usgTiroidUsecase struct {
@@ -24,7 +25,6 @@ func NewUsgTiroidUsecase(repo repositories.UsgTiroidRepository) UsgTiroidUsecase
 }
 
 func (u *usgTiroidUsecase) CreateUsgTiroid(usg models.USGTiroid) (models.USGTiroid, error) {
-	// Langsung dilempar ke repo repository tanpa validasi penghambat
 	return u.repo.Create(usg)
 }
 
@@ -50,4 +50,8 @@ func (u *usgTiroidUsecase) UpdateUsgTiroid(id uint, input models.USGTiroid) (mod
 
 func (u *usgTiroidUsecase) DeleteUsgTiroid(id uint) error {
 	return u.repo.Delete(id)
+}
+
+func (u *usgTiroidUsecase) GetUsgOwnerUserID(id uint) (uint, error) {
+	return u.repo.GetOwnerUserID(id)
 }

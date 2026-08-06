@@ -18,7 +18,6 @@ type Wearable struct {
 
 	// Relationships
 	Riwayat       *Riwayat        `json:"riwayat,omitempty" gorm:"foreignKey:IDRiwayat;references:IDRiwayat;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	// ✅ PERBAIKAN: Hapus constraint:- di baris bawah ini
 	HasilAIHarian []HasilAIHarian `json:"hasil_ai_harian,omitempty" gorm:"foreignKey:IDWearable;references:IDWearable"`
 }
 
@@ -50,13 +49,12 @@ type UpdateWearableRequest struct {
 	Diastolik     int         `json:"diastolik"` 
 }
 
-// Struct tambahan untuk kebutuhan Kalkulasi Mesin AI (Tidak masuk Database)
+// ✅ WearableData dengan HR & Baseline-nya
 type WearableData struct {
-	HR           float64 `json:"hr"`
-	SleepMinutes float64 `json:"sleep_minutes"`
-	Sys          float64 `json:"sys"` 
-	Dia          float64 `json:"dia"` 
-
+	HR               float64 `json:"hr"`
+	SleepMinutes     float64 `json:"sleep_minutes"`
+	Sys              float64 `json:"sys"` 
+	Dia              float64 `json:"dia"` 
 	BaselineHRMin    float64 `json:"baseline_hr_min"`
 	BaselineHRMax    float64 `json:"baseline_hr_max"`
 	BaselineSleepMin float64 `json:"baseline_sleep_min"`

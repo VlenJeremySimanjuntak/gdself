@@ -2,13 +2,10 @@ package services
 
 import (
 	"crypto/rand"
-	"crypto/tls"
 	"fmt"
 	"math/big"
-	"net"
 	"net/smtp"
 	"os"
-	"time"
 )
 
 type EmailService struct {
@@ -22,12 +19,12 @@ type EmailService struct {
 
 func NewEmailService() *EmailService {
 	return &EmailService{
-		FromEmail: os.Getenv("SMTP_FROM_EMAIL"), // sama dengan SMTP_USER
+		FromEmail: os.Getenv("SMTP_FROM_EMAIL"), // Pastikan sama dengan SMTP_USER
 		FromName:  "GdSelf App",
 		SMTPHost:  "smtp.gmail.com",
 		SMTPPort:  "587",
-		SMTPUser:  os.Getenv("SMTP_USER"),     // email Gmail kamu
-		SMTPPass:  os.Getenv("SMTP_APP_PASS"), // App Password 16 digit dari Google
+		SMTPUser:  os.Getenv("SMTP_USER"),     // Email Gmail kamu
+		SMTPPass:  os.Getenv("SMTP_APP_PASS"), // App Password 16 digit
 	}
 }
 
@@ -63,63 +60,27 @@ func (s *EmailService) SendOTPEmail(toEmail, otpCode, emailType string) error {
 	}
 
 	from := fmt.Sprintf("%s <%s>", s.FromName, s.FromEmail)
-	msg := []byte(
-		"From: " + from + "\r\n" +
-			"To: " + toEmail + "\r\n" +
-			"Subject: " + subject + "\r\n" +
-			"MIME-Version: 1.0\r\n" +
-			"Content-Type: text/html; charset=\"UTF-8\"\r\n" +
-			"\r\n" +
-			htmlBody + "\r\n")
 
-	return s.sendWithTimeout(toEmail, msg, 8*time.Second)
-}
+	// Format Header yang bersih disesuaikan
+	headers := "From: " + from + "\r\n" +
+		"To: " + toEmail + "\r\n" +
+		"Subject: " + subject + "\r\n" +
+		"MIME-Version: 1.0;\r\n" +
+		"Content-Type: text/html; charset=\"UTF-8\";\r\n\r\n"
 
-// ✅ Timeout manual 8 detik, supaya kalau port diblokir, gagal cepat dan jelas
-func (s *EmailService) sendWithTimeout(toEmail string, msg []byte, timeout time.Duration) error {
+	msg := []byte(headers + htmlBody)
+
+	// Menggunakan smtp.SendMail bawaan seperti kode temanmu
 	addr := s.SMTPHost + ":" + s.SMTPPort
-
-	conn, err := net.DialTimeout("tcp", addr, timeout)
-	if err != nil {
-		return fmt.Errorf("gagal konek ke %s (kemungkinan port diblokir): %v", addr, err)
-	}
-	defer conn.Close()
-
-	client, err := smtp.NewClient(conn, s.SMTPHost)
-	if err != nil {
-		return fmt.Errorf("gagal membuat SMTP client: %v", err)
-	}
-	defer client.Close()
-
-	if err = client.StartTLS(&tls.Config{ServerName: s.SMTPHost}); err != nil {
-		return fmt.Errorf("gagal StartTLS: %v", err)
-	}
-
 	auth := smtp.PlainAuth("", s.SMTPUser, s.SMTPPass, s.SMTPHost)
-	if err = client.Auth(auth); err != nil {
-		return fmt.Errorf("gagal autentikasi SMTP (cek email/App Password): %v", err)
-	}
 
-	if err = client.Mail(s.FromEmail); err != nil {
-		return fmt.Errorf("gagal set From: %v", err)
-	}
-	if err = client.Rcpt(toEmail); err != nil {
-		return fmt.Errorf("gagal set To: %v", err)
-	}
-
-	w, err := client.Data()
+	err := smtp.SendMail(addr, auth, s.FromEmail, []string{toEmail}, msg)
 	if err != nil {
-		return fmt.Errorf("gagal membuka data writer: %v", err)
-	}
-	_, err = w.Write(msg)
-	if err != nil {
-		return fmt.Errorf("gagal menulis pesan: %v", err)
-	}
-	if err = w.Close(); err != nil {
-		return fmt.Errorf("gagal menutup data writer: %v", err)
+		fmt.Printf("SMTP Error: %v\n", err)
+		return fmt.Errorf("gagal mengirim email: %v", err)
 	}
 
-	return client.Quit()
+	return nil
 }
 
 func (s *EmailService) buildRegisterEmailBody(otp string) string {
