@@ -37,7 +37,7 @@ func extractHormoneValues(params []models.AssessmentParamInput) map[string]model
 }
 
 // ==========================================
-// EVALUASI PER PARAMETER
+// EVALUASI PER PARAMETER (Disesuaikan dengan Aturan Skripsi)
 // ==========================================
 
 func evaluateTSH(p models.AssessmentParamInput) (status, reminder string) {
@@ -46,14 +46,14 @@ func evaluateTSH(p models.AssessmentParamInput) (status, reminder string) {
 	}
 	if p.NilaiHasil < p.NilaiBatasBawah {
 		return "Rendah",
-			"Hasil pemeriksaan menunjukkan bahwa TSHs berada di bawah rentang yang diharapkan."
+			"Hasil pemeriksaan menunjukkan bahwa nilai TSHs berada di bawah batas bawah nilai rujukan yang dimasukkan pengguna."
 	}
 	if p.NilaiHasil > p.NilaiBatasAtas {
 		return "Tinggi",
-			"Hasil pemeriksaan menunjukkan bahwa TSHs berada di atas rentang yang diharapkan."
+			"Hasil pemeriksaan menunjukkan bahwa nilai TSHs berada di atas batas atas nilai rujukan yang dimasukkan pengguna."
 	}
 	return "Normal",
-		"Hasil pemeriksaan menunjukkan bahwa TSHs berada dalam rentang yang diharapkan."
+		"Hasil pemeriksaan menunjukkan bahwa nilai TSHs berada dalam rentang nilai rujukan yang dimasukkan pengguna."
 }
 
 func evaluateFT3(p models.AssessmentParamInput) (status, reminder string) {
@@ -62,14 +62,14 @@ func evaluateFT3(p models.AssessmentParamInput) (status, reminder string) {
 	}
 	if p.NilaiHasil < p.NilaiBatasBawah {
 		return "Rendah",
-			"Hasil pemeriksaan menunjukkan bahwa FT3 berada di bawah rentang yang diharapkan."
+			"Hasil pemeriksaan menunjukkan bahwa nilai FT3 berada di bawah batas bawah nilai rujukan yang dimasukkan pengguna."
 	}
 	if p.NilaiHasil > p.NilaiBatasAtas {
 		return "Tinggi",
-			"Hasil pemeriksaan menunjukkan bahwa FT3 berada di atas rentang yang diharapkan."
+			"Hasil pemeriksaan menunjukkan bahwa nilai FT3 berada di atas batas atas nilai rujukan yang dimasukkan pengguna."
 	}
 	return "Normal",
-		"Hasil pemeriksaan menunjukkan bahwa FT3 berada dalam rentang yang diharapkan."
+		"Hasil pemeriksaan menunjukkan bahwa nilai FT3 berada dalam rentang nilai rujukan yang dimasukkan pengguna."
 }
 
 func evaluateFT4(p models.AssessmentParamInput) (status, reminder string) {
@@ -78,14 +78,14 @@ func evaluateFT4(p models.AssessmentParamInput) (status, reminder string) {
 	}
 	if p.NilaiHasil < p.NilaiBatasBawah {
 		return "Rendah",
-			"Hasil pemeriksaan menunjukkan bahwa FT4 berada di bawah rentang yang diharapkan."
+			"Hasil pemeriksaan menunjukkan bahwa nilai FT4 berada di bawah batas bawah nilai rujukan yang dimasukkan pengguna."
 	}
 	if p.NilaiHasil > p.NilaiBatasAtas {
 		return "Tinggi",
-			"Hasil pemeriksaan menunjukkan bahwa FT4 berada di atas rentang yang diharapkan."
+			"Hasil pemeriksaan menunjukkan bahwa nilai FT4 berada di atas batas atas nilai rujukan yang dimasukkan pengguna."
 	}
 	return "Normal",
-		"Hasil pemeriksaan menunjukkan bahwa FT4 berada dalam rentang yang diharapkan."
+		"Hasil pemeriksaan menunjukkan bahwa nilai FT4 berada dalam rentang nilai rujukan yang dimasukkan pengguna."
 }
 
 func evaluateTRAb(p models.AssessmentParamInput) (status, reminder string) {

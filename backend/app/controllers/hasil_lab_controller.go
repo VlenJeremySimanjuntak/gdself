@@ -38,6 +38,28 @@ func NewHasilLabController(u usecases.HasilLabUsecase) HasilLabController {
 }
 
 // =========================================================================
+// ✅ PERBAIKAN: Error bisnis/validasi (bukan error server) harus dikembalikan
+// sebagai 400 Bad Request, bukan 500 Internal Server Error.
+// Prefix-prefix ini dipakai di app/usecases/hasil_lab_usecase.go untuk
+// menandai error yang berasal dari kesalahan input pengguna.
+// =========================================================================
+var businessValidationErrorPrefixes = []string{
+	"VALIDATION_ERROR:",
+	"ABSURDITY_ERROR:",
+	"CONSISTENCY_ERROR:",
+}
+
+func extractBusinessValidationError(err error) (string, bool) {
+	msg := err.Error()
+	for _, prefix := range businessValidationErrorPrefixes {
+		if strings.HasPrefix(msg, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(msg, prefix)), true
+		}
+	}
+	return "", false
+}
+
+// =========================================================================
 // IMPLEMENTASI FUNGSI-FUNGSI CONTROLLER
 // =========================================================================
 
@@ -79,6 +101,16 @@ func (ctrl *hasilLabController) Create(c echo.Context) error {
 				"status":            "error",
 				"message":           strings.TrimSpace(strings.TrimPrefix(err.Error(), "TREMOR_WARNING:")),
 				"need_confirmation": true,
+			})
+		}
+
+		// ✅ PERBAIKAN: Error validasi bisnis (mis. rentang batas bawah > batas atas,
+		// nilai fisiologis tidak masuk akal, atau kontradiksi TSH/FT4) adalah
+		// kesalahan input pengguna, bukan kegagalan server -> 400 Bad Request.
+		if msg, ok := extractBusinessValidationError(err); ok {
+			return c.JSON(http.StatusBadRequest, map[string]interface{}{
+				"status":  "error",
+				"message": msg,
 			})
 		}
 
@@ -252,6 +284,14 @@ func (ctrl *hasilLabController) Update(c echo.Context) error {
 				"status":            "error",
 				"message":           strings.TrimSpace(strings.TrimPrefix(err.Error(), "TREMOR_WARNING:")),
 				"need_confirmation": true,
+			})
+		}
+
+		// ✅ PERBAIKAN: Error validasi bisnis -> 400 Bad Request, bukan 500.
+		if msg, ok := extractBusinessValidationError(err); ok {
+			return c.JSON(http.StatusBadRequest, map[string]interface{}{
+				"status":  "error",
+				"message": msg,
 			})
 		}
 

@@ -110,13 +110,10 @@ func (u *hasilLabUsecase) CreateHasilLab(input models.CreateHasilLabRequest) (mo
 
 			if bb > 0 && ba > 0 {
 				if bb > ba {
-					// Batas bawah lebih besar dari batas atas (100% Error)
-					return models.HasilLab{}, fmt.Errorf("Gagal! Rentang batas %s tidak valid (Batas Bawah %v > Batas Atas %v).", param.NamaParameter, bb, ba)
+					return models.HasilLab{}, fmt.Errorf("VALIDATION_ERROR: Gagal! Rentang batas %s tidak valid (Batas Bawah %v > Batas Atas %v).", param.NamaParameter, bb, ba)
 				}
-				
 				if bb == ba && paramNameUpper != "TRAB" {
-					// Batas bawah sama dengan batas atas (Error kecuali TRAb)
-					return models.HasilLab{}, fmt.Errorf("Gagal! Rentang batas %s tidak boleh sama (Batas Bawah == Batas Atas).", param.NamaParameter)
+					return models.HasilLab{}, fmt.Errorf("VALIDATION_ERROR: Gagal! Rentang batas %s tidak boleh sama (Batas Bawah == Batas Atas).", param.NamaParameter)
 				}
 			}
 		}

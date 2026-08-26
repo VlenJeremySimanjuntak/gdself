@@ -22,3 +22,6 @@ vendor/
 *.hprof
 build/
 .dart_tool/
+
+key.properties
+*.jks
