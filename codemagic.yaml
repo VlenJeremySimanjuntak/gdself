@@ -19,7 +19,8 @@ workflows:
 
       - name: Build iOS
         script: |
-          flutter build ios --release --no-codesign
+          flutter build ios --debug --no-codesign
 
     artifacts:
-      - frontend/build/ios/iphoneos/*.app
+      - frontend/build/ios/iphoneos/**/*.app
+      - /tmp/xcodebuild_logs/*.log
