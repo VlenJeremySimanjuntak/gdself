@@ -24,17 +24,33 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
   File? _imageFile;
   bool _isSaving = false;
 
+  // State untuk melacak apakah user sudah menekan tombol simpan
+  bool _isSubmitted = false;
+
   // --- Warna Kustom Berdasarkan Desain ---
-  final Color _primaryBlue = const Color(0xFF00618A); // Warna biru tua tombol/header
-  final Color _inputBgColor = const Color(0xFFE6EFEA); // Warna abu-abu kehijauan input
-  final Color _textColor = const Color(0xFF2D3748); // Warna teks dark
+  final Color _primaryBlue = const Color(0xFF00618A);
+  final Color _inputBgColor = const Color(0xFFE6EFEA);
+  final Color _textColor = const Color(0xFF2D3748);
+  final Color _errorColor = Colors.red.shade700;
+
+  // Getters validasi
+  bool get _isRsEmpty => _rsController.text.trim().isEmpty;
+  bool get _isDateEmpty => _selectedDate == null;
+  bool get _isImageEmpty => _imageFile == null;
 
   // Fungsi untuk simpan data
   Future<void> _simpan() async {
-    // 1. Validasi Input
-    if (_rsController.text.trim().isEmpty || _selectedDate == null || _imageFile == null) {
+    setState(() {
+      _isSubmitted = true;
+    });
+
+    // 1. Validasi Input Wajib
+    if (_isRsEmpty || _isDateEmpty || _isImageEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Mohon lengkapi data wajib (*).')),
+        const SnackBar(
+          content: Text('Mohon lengkapi semua kolom wajib (*) bertanda merah.'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
@@ -70,7 +86,7 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
         ref.read(monitoringProvider.notifier).fetchMonitoringData(userId);
       }
 
-      // 5. Matikan loading & Tampilkan Dialog Instan
+      // 5. Matikan loading & Tampilkan Dialog
       setState(() => _isSaving = false);
 
       if (mounted) {
@@ -80,8 +96,8 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
           title: success ? "Berhasil!" : "Gagal!",
           message: success ? "Data USG berhasil disimpan." : (ref.read(usgProvider).errorMessage ?? "Terjadi kesalahan."),
           onOk: () {
-            Navigator.pop(context); // Tutup dialog
-            if (success) Navigator.pop(context, true); // Tutup layar input
+            Navigator.pop(context);
+            if (success) Navigator.pop(context, true);
           },
         );
       }
@@ -102,7 +118,7 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.now(),
+      initialDate: _selectedDate ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime.now(),
       builder: (context, child) {
@@ -130,16 +146,16 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
       context: context,
       builder: (BuildContext context) => CupertinoActionSheet(
         title: Text(
-            'Unggah Foto USG',
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: _textColor
-            )
+          'Unggah Foto USG',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: _textColor,
+          ),
         ),
         message: const Text(
-            'Pilih sumber foto Anda',
-            style: TextStyle(fontSize: 12)
+          'Pilih sumber foto Anda',
+          style: TextStyle(fontSize: 12),
         ),
         actions: <CupertinoActionSheetAction>[
           CupertinoActionSheetAction(
@@ -148,8 +164,8 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
               _getImage(ImageSource.gallery);
             },
             child: Text(
-                'Pilih dari Galeri',
-                style: TextStyle(color: _primaryBlue, fontSize: 16)
+              'Pilih dari Galeri',
+              style: TextStyle(color: _primaryBlue, fontSize: 16),
             ),
           ),
           CupertinoActionSheetAction(
@@ -158,8 +174,8 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
               _getImage(ImageSource.camera);
             },
             child: Text(
-                'Ambil Foto',
-                style: TextStyle(color: _primaryBlue, fontSize: 16)
+              'Ambil Foto',
+              style: TextStyle(color: _primaryBlue, fontSize: 16),
             ),
           ),
         ],
@@ -167,22 +183,18 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
           isDestructiveAction: true,
           onPressed: () => Navigator.pop(context),
           child: const Text(
-              'Batal',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
+            'Batal',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
         ),
       ),
     );
   }
 
-  // ✅ INI FUNGSI YANG TERTINGGAL TADI: Untuk mengeksekusi pengambilan gambarnya
   Future<void> _getImage(ImageSource source) async {
     final picker = ImagePicker();
     try {
-      final pickedFile = await picker.pickImage(
-        source: source,
-        // Parameter kompresi dan batas resolusi DIHAPUS
-      );
+      final pickedFile = await picker.pickImage(source: source);
       if (pickedFile != null) {
         setState(() {
           _imageFile = File(pickedFile.path);
@@ -204,35 +216,64 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
     super.dispose();
   }
 
-  // --- Komponen Builder untuk Input Field agar rapi ---
-  Widget _buildLabel(String text) {
+  // --- Helper Widgets ---
+  Widget _buildLabel(String text, {bool isRequired = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: Colors.grey.shade800,
+      child: RichText(
+        text: TextSpan(
+          text: text,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey.shade800,
+            fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily,
+          ),
+          children: [
+            if (isRequired)
+              const TextSpan(
+                text: ' *',
+                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+              ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildInputContainer({required Widget child}) {
-    return Container(
+  Widget _buildInputContainer({required Widget child, bool hasError = false}) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
       width: double.infinity,
       decoration: BoxDecoration(
-        color: _inputBgColor,
+        color: hasError ? Colors.red.shade50 : _inputBgColor,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: hasError ? Colors.red : Colors.transparent,
+          width: 1.2,
+        ),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: child,
     );
   }
 
+  Widget _buildErrorMessage(String message) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, left: 4),
+      child: Text(
+        message,
+        style: TextStyle(fontSize: 11, color: _errorColor, fontWeight: FontWeight.w500),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final rsHasError = _isSubmitted && _isRsEmpty;
+    final dateHasError = _isSubmitted && _isDateEmpty;
+    final imageHasError = _isSubmitted && _isImageEmpty;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FBFA),
       appBar: AppBar(
@@ -258,10 +299,7 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
           gradient: LinearGradient(
             begin: Alignment.topRight,
             end: Alignment.bottomLeft,
-            colors: [
-              Color(0xFFE0F2F1),
-              Color(0xFFF8FBFA),
-            ],
+            colors: [Color(0xFFE0F2F1), Color(0xFFF8FBFA)],
             stops: [0.0, 0.3],
           ),
         ),
@@ -272,7 +310,6 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Title Section
                 const Text(
                   'USG Tiroid',
                   style: TextStyle(
@@ -285,11 +322,7 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
                 const SizedBox(height: 8),
                 Text(
                   'Pastikan Anda mengisi dengan\nbenar.',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade600,
-                    height: 1.5,
-                  ),
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade600, height: 1.5),
                 ),
                 const SizedBox(height: 32),
 
@@ -313,20 +346,20 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
                     children: [
                       Text(
                         'Unggah USG Tiroid',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: _textColor,
-                        ),
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: _textColor),
                       ),
                       const SizedBox(height: 24),
 
                       // Nama Rumah Sakit
-                      _buildLabel('Nama Rumah Sakit'),
+                      _buildLabel('Nama Rumah Sakit', isRequired: true),
                       _buildInputContainer(
+                        hasError: rsHasError,
                         child: TextField(
                           controller: _rsController,
                           style: TextStyle(fontSize: 13, color: _textColor),
+                          onChanged: (_) {
+                            if (_isSubmitted) setState(() {});
+                          },
                           decoration: InputDecoration(
                             border: InputBorder.none,
                             hintText: 'Rumah Sakit',
@@ -334,13 +367,15 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
                           ),
                         ),
                       ),
+                      if (rsHasError) _buildErrorMessage('Nama Rumah Sakit wajib diisi'),
                       const SizedBox(height: 20),
 
                       // Tanggal Pemeriksaan
-                      _buildLabel('Tanggal Pemeriksaan'),
+                      _buildLabel('Tanggal Pemeriksaan', isRequired: true),
                       GestureDetector(
                         onTap: _pickDate,
                         child: _buildInputContainer(
+                          hasError: dateHasError,
                           child: Padding(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             child: Row(
@@ -355,26 +390,37 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
                                     color: _selectedDate != null ? _textColor : Colors.grey.shade500,
                                   ),
                                 ),
-                                Icon(Icons.calendar_today_outlined, size: 18, color: Colors.grey.shade500),
+                                Icon(
+                                  Icons.calendar_today_outlined,
+                                  size: 18,
+                                  color: dateHasError ? Colors.red : Colors.grey.shade500,
+                                ),
                               ],
                             ),
                           ),
                         ),
                       ),
+                      if (dateHasError) _buildErrorMessage('Tanggal Pemeriksaan wajib dipilih'),
                       const SizedBox(height: 20),
 
                       // Unggah Foto
-                      _buildLabel('Unggah Foto'),
+                      _buildLabel('Unggah Foto', isRequired: true),
                       GestureDetector(
                         onTap: _pickImage,
-                        child: Container(
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
                           height: 160,
                           width: double.infinity,
                           decoration: BoxDecoration(
-                            color: _imageFile != null ? Colors.transparent : const Color(0xFFF1F6F5),
+                            color: _imageFile != null
+                                ? Colors.transparent
+                                : (imageHasError ? Colors.red.shade50 : const Color(0xFFF1F6F5)),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: _imageFile != null ? Colors.transparent : Colors.grey.shade300,
+                              color: _imageFile != null
+                                  ? Colors.transparent
+                                  : (imageHasError ? Colors.red : Colors.grey.shade300),
+                              width: imageHasError ? 1.2 : 1.0,
                             ),
                           ),
                           child: _imageFile != null
@@ -387,25 +433,33 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
                             children: [
                               Container(
                                 padding: const EdgeInsets.all(12),
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFFE4EFED),
+                                decoration: BoxDecoration(
+                                  color: imageHasError ? Colors.red.shade100 : const Color(0xFFE4EFED),
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(Icons.camera_alt_outlined, color: Color(0xFF00796B), size: 20),
+                                child: Icon(
+                                  Icons.camera_alt_outlined,
+                                  color: imageHasError ? Colors.red : const Color(0xFF00796B),
+                                  size: 20,
+                                ),
                               ),
                               const SizedBox(height: 12),
                               Text(
                                 'Klik untuk pilih dari Galeri atau Kamera',
-                                style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: imageHasError ? Colors.red.shade700 : Colors.grey.shade600,
+                                ),
                               ),
                             ],
                           ),
                         ),
                       ),
+                      if (imageHasError) _buildErrorMessage('Foto hasil USG wajib diunggah'),
                       const SizedBox(height: 20),
 
-                      // Catatan Dokter
-                      _buildLabel('Catatan Dokter / Deskripsi'),
+                      // Catatan Dokter (Opsional)
+                      _buildLabel('Catatan Dokter / Deskripsi', isRequired: false),
                       _buildInputContainer(
                         child: TextField(
                           controller: _catatanController,
@@ -442,9 +496,7 @@ class _InputUsgScreenState extends ConsumerState<InputUsgScreen> {
                     onPressed: _isSaving ? null : _simpan,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _primaryBlue,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                       elevation: 0,
                     ),
                     child: _isSaving

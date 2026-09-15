@@ -161,74 +161,51 @@ class MonitoringNotifier extends Notifier<MonitoringState> {
 
         state = state.copyWith(isLoading: false, history: mappedHistory);
 
-        // ── Fetch Hasil AI (per parameter, ambil yang terbaru & VALID untuk masing2 param) ──
+        // ── ✅ PERBAIKAN FATAL: Fetch Hasil AI (Ambil dari laporan terbaru seperti di HomeScreen) ──
         try {
           if (dataList.isNotEmpty) {
             final latestLaporan = dataList.last;
             final latestLabId = latestLaporan['id_laporan_lab'] ?? latestLaporan['id_report'];
 
-            // CARI TAHU PARAMETER APA SAJA YANG ADA DI LAPORAN TERBARU
-            List<String> paramsInCurrentReport = [];
-            if (latestLaporan['hasil_lab'] != null && latestLaporan['hasil_lab'] is List) {
-              for (var h in latestLaporan['hasil_lab']) {
-                if (h is Map && h['parameter'] is Map) {
-                  String pName = h['parameter']['nama_parameter']?.toString().toUpperCase() ?? '';
-                  if (pName == 'TSHS') pName = 'TSH';
-
-                  // ✅ CEK JUGA NILAI HASILNYA
-                  // Pastikan tidak null dan tidak berupa teks kosong
-                  var nilaiHasil = h['nilai_hasil'];
-                  if (nilaiHasil != null && nilaiHasil.toString().trim().isNotEmpty) {
-                    paramsInCurrentReport.add(pName);
-                  }
-                }
-              }
-            }
-            final paramKeys = ['TSH', 'FT3', 'FT4', 'TRAB'];
-            Map<String, Map<String, dynamic>> validPerParam = {};
-
-            await Future.wait(paramKeys.map((key) async {
-              try {
-                // HANYA CEK AI JIKA PARAMETERNYA BENAR-BENAR ADA DI LAPORAN TERBARU
-                if (paramsInCurrentReport.contains(key)) {
-                  final res = await _apiService.get('/hasil-ai/lab/user/$userId/param/$key');
-                  if (res.statusCode == 200 && res.data['data'] != null) {
-                    validPerParam[key] = res.data['data'];
-                  }
-                }
-              } catch (e) {
-                debugPrint('ℹ️ Gagal ambil AI valid utk $key: $e');
-              }
-            }));
-
-            Map<String, dynamic>? dataTren;
             if (latestLabId != null) {
+              HasilAIGabunganModel? aiModel;
+
+              // 1. Tarik Data AI Lab secara penuh
+              Map<String, dynamic>? dataLab;
               try {
-                final aiTrenResponse = await _apiService.get('/hasil-ai/tren/laporan/$latestLabId');
-                if (aiTrenResponse.statusCode == 200) {
-                  final responseData = aiTrenResponse.data['data'];
-                  if (responseData != null && responseData is Map<String, dynamic>) {
-                    dataTren = responseData;
-                  }
+                final labRes = await _apiService.get('/hasil-ai/lab/laporan/$latestLabId');
+                if (labRes.statusCode == 200 && labRes.data['data'] != null) {
+                  dataLab = labRes.data['data'] is Map ? labRes.data['data'] : null;
                 }
               } catch (e) {
-                debugPrint('ℹ️ AI Tren tidak ditemukan atau error: $e');
+                debugPrint('ℹ️ AI Lab info belum ada/error: $e');
               }
-            }
 
-            HasilAIGabunganModel? aiModel;
-            if (validPerParam.isNotEmpty) {
-              aiModel = HasilAIGabunganModel.fromMergedParams(validPerParam);
-              if (dataTren != null) {
-                aiModel = aiModel.withTren(dataTren);
-              } else {
-                aiModel = aiModel.withTrenDefault();
+              // 2. Tarik Data AI Tren secara penuh
+              Map<String, dynamic>? dataTren;
+              try {
+                final trenRes = await _apiService.get('/hasil-ai/tren/laporan/$latestLabId');
+                if (trenRes.statusCode == 200 && trenRes.data['data'] != null) {
+                  dataTren = trenRes.data['data'] is Map ? trenRes.data['data'] : null;
+                }
+              } catch (e) {
+                debugPrint('ℹ️ AI Tren info belum ada/error: $e');
               }
-            } else if (dataTren != null) {
-              aiModel = HasilAIGabunganModel.fromTrenOnly(dataTren);
-            }
 
-            state = state.copyWith(latestAiResult: aiModel);
+              // 3. Gabungkan Data (Pasti terbaca karena kita pakai model kebal error yang tadi dibuat)
+              if (dataLab != null) {
+                aiModel = HasilAIGabunganModel.fromLabJson(dataLab);
+                if (dataTren != null) {
+                  aiModel = aiModel.withTren(dataTren);
+                }
+              } else if (dataTren != null) {
+                aiModel = HasilAIGabunganModel.fromTrenOnly(dataTren);
+              }
+
+              state = state.copyWith(latestAiResult: aiModel);
+            } else {
+              state = state.copyWith(latestAiResult: null);
+            }
           } else {
             // PAKSA KOSONG JIKA TIDAK ADA LAPORAN
             state = state.copyWith(latestAiResult: null);

@@ -158,7 +158,7 @@ class _RiwayatHormonDetailScreenState extends ConsumerState<RiwayatHormonDetailS
             ],
           ),
           const SizedBox(height: 20),
-          Text(isStabil ? "Hormon Terkendali" : "Lonjakan Hormon", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF2D4052))),
+          Text(isStabil ? "Status Hormon" : "Status Hormon", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF2D4052))),
           const SizedBox(height: 10),
           Text(
             "$ringkasan\nTidak ada perubahan signifikan terkait detak jantung, tidur, dan stres.\nPertahankan pola hidup sehat Anda.",

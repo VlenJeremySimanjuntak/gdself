@@ -40,56 +40,44 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     }
   }
 
-  // 🔧 DIUBAH: Monitoring/list = THUMBNAIL (~400px) via endpoint ber-JWT.
+  // 🔧 Thumbnail via endpoint ber-JWT
   String _getFotoThumbnailUrl(int? usgId, String? fotoPath) {
     if (usgId == null || fotoPath == null || fotoPath.isEmpty) return '';
-    String baseUrl = ApiService().sendRequest.options.baseUrl; // sudah termasuk ".../api"
+    String baseUrl = ApiService().sendRequest.options.baseUrl;
     final cleanBase = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
     return '$cleanBase/usg-tiroid/$usgId/foto/thumbnail';
   }
 
+  // 🔧 Foto Original via endpoint ber-JWT
   String _getFotoOriginalUrl(int? usgId, String? fotoPath) {
     if (usgId == null || fotoPath == null || fotoPath.isEmpty) return '';
     String baseUrl = ApiService().sendRequest.options.baseUrl;
     final cleanBase = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
-    return '$cleanBase/usg-tiroid/$usgId/foto'; // Mengarah ke endpoint foto asli
+    return '$cleanBase/usg-tiroid/$usgId/foto';
   }
 
+  // 🛠️ Pengecekan data untuk card alert
   bool _checkHasAlertData(HasilAIGabunganModel? aiResult, String selectedTab) {
     if (aiResult == null) return false;
     String status = "";
-    String reminderLab = "";
+
     switch (selectedTab) {
       case "FT3":
         status = aiResult.statusFt3;
-        reminderLab = aiResult.reminderFt3;
         break;
       case "FT4":
         status = aiResult.statusFt4;
-        reminderLab = aiResult.reminderFt4;
         break;
       case "TSHs":
         status = aiResult.statusTsh;
-        reminderLab = aiResult.reminderTsh;
         break;
       case "TRAb":
         status = aiResult.statusTrab;
-        reminderLab = aiResult.reminderTrab;
         break;
     }
 
     String cleanStatus = status.trim().toLowerCase();
-    String cleanReminder = reminderLab.toLowerCase();
-
-    bool isPerluVerifikasi = cleanReminder.contains("di luar rentang yang wajar") ||
-        cleanReminder.contains("periksa kembali angka");
-
-    bool isBelumAdaData = cleanStatus.isEmpty ||
-        cleanStatus == "null" ||
-        (cleanStatus.contains("tidak diketahui") && !isPerluVerifikasi) ||
-        cleanStatus.contains("tidak terinterpretasi");
-
-    return !isBelumAdaData;
+    return cleanStatus.isNotEmpty && cleanStatus != "-" && cleanStatus != "null";
   }
 
   @override
@@ -98,7 +86,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     final monitorState = ref.watch(monitoringProvider);
     final user = ref.watch(userProvider).user;
 
-    // 🔧 DITAMBAH: header JWT + ngrok-skip untuk gambar USG.
     final authHeaders = ref.watch(userProvider).authHeaders;
 
     List<Map<String, dynamic>> currentData = List.from(monitorState.history[_selectedTab] ?? []);
@@ -131,8 +118,8 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
             const SizedBox(height: 24),
             _buildHeaderTitle(),
             const SizedBox(height: 24),
-            if (showAlertCard) ...[
-              _buildAlertCard(aiResult!, _selectedTab),
+            if (showAlertCard && aiResult != null) ...[
+              _buildAlertCard(aiResult, _selectedTab),
               const SizedBox(height: 32),
             ],
             _buildChartCard(screenWidth, hasLabDataForTab, currentData),
@@ -608,7 +595,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
-  // 🔧 DIUBAH: terima authHeaders + pakai THUMBNAIL untuk preview kartu.
   Widget _buildFilledUsgCard(UsgTiroidModel usg, Map<String, String>? authHeaders) {
     final String tanggal = usg.tglPemeriksaan != null
         ? DateFormat('dd MMMM yyyy', 'id_ID').format(usg.tglPemeriksaan!)
@@ -648,19 +634,17 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: imageUrl.isNotEmpty
-                ? GestureDetector( // ✅ Bungkus dengan GestureDetector
+                ? GestureDetector(
               onTap: () {
-                // ✅ Dapatkan URL original (bukan thumbnail)
                 final String originalUrl = _getFotoOriginalUrl(usg.idUsg, usg.fotoPath);
-                // ✅ Tampilkan dialog full screen
                 _showFullScreenImage(context, originalUrl, authHeaders);
               },
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: Image.network(
-                  imageUrl, // Di kartu tetap pakai thumbnail
+                  imageUrl,
                   headers: authHeaders,
-                  fit: BoxFit.cover, // Tetap pakai cover agar kartu rapi
+                  fit: BoxFit.cover,
                   loadingBuilder: (context, child, loadingProgress) {
                     if (loadingProgress == null) return child;
                     return const Center(
@@ -794,13 +778,14 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     );
   }
 
+  // 🛠️ FIX TOTAL: Menghilangkan titik di awal, fallback warna tren, dan pembersihan status.
   Widget _buildAlertCard(HasilAIGabunganModel aiResult, String selectedTab) {
-    // 🛠️ FIX: Warna background telah disesuaikan dengan kode Hex Figma E2EAE9
     const Color fixedBgColor = Color(0xFFE2EAE9);
 
     String status = "";
     String reminderLab = "";
     String reminderTren = "";
+
     switch (selectedTab) {
       case "FT3":
         status = aiResult.statusFt3;
@@ -825,41 +810,54 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     }
 
     String cleanStatus = status.trim().toLowerCase();
-    String cleanReminder = reminderLab.toLowerCase();
+    String deskripsi = reminderLab.trim();
 
-    bool isPerluVerifikasi = cleanReminder.contains("di luar rentang yang wajar") ||
-        cleanReminder.contains("periksa kembali angka");
+    bool trenValid = reminderTren.isNotEmpty &&
+        reminderTren != "-" &&
+        reminderTren.toLowerCase() != "tidak diketahui" &&
+        reminderTren.toLowerCase() != "null";
 
-    String statusLabel = "";
-    Color statusColor;
-    String deskripsi = "";
-
-    if (isPerluVerifikasi) {
-      statusLabel = "PERLU VERIFIKASI";
-      statusColor = const Color(0xFFD97706);
-      deskripsi = reminderLab;
-    } else {
-      bool isNormal = cleanStatus == "normal" || cleanStatus == "negatif";
-      statusLabel = status.trim().toUpperCase();
-      statusColor = isNormal ? const Color(0xFF16A34A) : const Color(0xFFDC2626);
-      deskripsi = reminderLab;
-
-      bool trenValid = reminderTren.isNotEmpty &&
-          reminderTren != "-" &&
-          reminderTren.toLowerCase() != "tidak diketahui";
-
-      if (trenValid) {
-        if (!deskripsi.trim().endsWith('.')) {
+    // 1. Mencegah munculnya titik di awal kalimat jika reminderLab kosong
+    if (trenValid) {
+      if (deskripsi.isNotEmpty) {
+        if (!deskripsi.endsWith('.')) {
           deskripsi += ". ";
         } else {
           deskripsi += " ";
         }
-        deskripsi += reminderTren;
       }
+      deskripsi += reminderTren.trim();
     }
 
-    return _buildBaseAlertCard(
-        "Kondisi Hormon", statusLabel, statusColor, fixedBgColor, deskripsi);
+    // 2. Tentukan Status & Warna
+    bool isTidakDiketahui = cleanStatus.isEmpty ||
+        cleanStatus == "-" ||
+        cleanStatus == "null" ||
+        cleanStatus.contains("tidak diketahui");
+
+    String statusLabel = isTidakDiketahui ? "TIDAK DIKETAHUI" : status.trim().toUpperCase();
+    Color statusColor;
+
+    // Fallback cerdas: Jika status dari DB gagal ditarik ke string pertama, tapi teks tren menyatakan "normal"
+    bool isTrendNormalFallback = isTidakDiketahui && deskripsi.toLowerCase().contains("normal");
+
+    if (cleanStatus.contains("normal") || cleanStatus.contains("negatif") || cleanStatus.contains("tetap")) {
+      statusColor = const Color(0xFF16A34A); // Hijau (Aman)
+    } else if (isTrendNormalFallback) {
+      statusColor = const Color(0xFF16A34A); // Hijau (Diambil dari konteks teks tren)
+      statusLabel = "NORMAL"; // Override supaya tidak terlihat menakutkan
+    } else if (cleanStatus.contains("verifikasi") || cleanStatus.contains("luar rentang")) {
+      statusColor = const Color(0xFFD97706); // Oranye (Warning)
+    } else if (isTidakDiketahui && !trenValid) {
+      statusColor = const Color(0xFF64748B); // Abu-abu
+      statusLabel = "BELUM ADA DATA";
+    } else if (isTidakDiketahui) {
+      statusColor = const Color(0xFFDC2626); // Merah untuk Tidak Diketahui (error)
+    } else {
+      statusColor = const Color(0xFFDC2626); // Merah untuk Tinggi/Rendah/Positif
+    }
+
+    return _buildBaseAlertCard("Status Hormon", statusLabel, statusColor, fixedBgColor, deskripsi);
   }
 
   Widget _buildBaseAlertCard(String title, String statusLabel, Color statusColor, Color bgColor, String deskripsi) {
@@ -908,7 +906,7 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
 void _showFullScreenImage(BuildContext context, String imageUrl, Map<String, String>? authHeaders) {
   showDialog(
     context: context,
-    barrierColor: Colors.black.withOpacity(0.9), // Latar belakang gelap
+    barrierColor: Colors.black.withOpacity(0.9),
     builder: (BuildContext context) {
       return Dialog(
         backgroundColor: Colors.transparent,
@@ -916,7 +914,6 @@ void _showFullScreenImage(BuildContext context, String imageUrl, Map<String, Str
         child: Stack(
           alignment: Alignment.center,
           children: [
-            // InteractiveViewer agar gambar bisa di-zoom (dicubit)
             InteractiveViewer(
               panEnabled: true,
               minScale: 0.5,
@@ -936,8 +933,6 @@ void _showFullScreenImage(BuildContext context, String imageUrl, Map<String, Str
                 ),
               ),
             ),
-
-            // Tombol Close (Silang) di pojok kanan atas
             Positioned(
               top: 40,
               right: 20,

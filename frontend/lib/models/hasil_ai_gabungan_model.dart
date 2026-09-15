@@ -52,20 +52,46 @@ class HasilAIGabunganModel {
     this.reminderTrenTrab,
   });
 
+  // ✅ ALAT PENCARI SUPER KEBAL ERROR
+  // Fungsi ini otomatis mengecek semua bentuk tulisan dan mencari sampai ke dalam objek "data"
+  static dynamic _find(Map<String, dynamic>? map, List<String> keys) {
+    if (map == null) return null;
+
+    // 1. Cek langsung di root map
+    for (var key in keys) {
+      if (map[key] != null) return map[key];
+    }
+
+    // 2. Cek apakah respon dibungkus dalam {"data": { ... }} (Standar Response API)
+    if (map['data'] != null && map['data'] is Map) {
+      final dataMap = map['data'] as Map;
+      for (var key in keys) {
+        if (dataMap[key] != null) return dataMap[key];
+      }
+    }
+
+    return null;
+  }
+
   factory HasilAIGabunganModel.fromLabJson(Map<String, dynamic> json) {
     return HasilAIGabunganModel(
-      idHasilAiLab: _toInt(json['id_hasil_ai_lab'] ?? json['IdHasilAiLab']),
-      idLaporanLab: _toInt(json['id_laporan_lab'] ?? json['IdLaporanLab']),
-      statusTsh: (json['status_tsh'] ?? json['StatusTSH'])?.toString() ?? 'Tidak Diketahui',
-      reminderTsh: (json['reminder_tsh'] ?? json['ReminderTSH'])?.toString() ?? '',
-      statusFt3: (json['status_ft3'] ?? json['StatusFT3'])?.toString() ?? 'Tidak Diketahui',
-      reminderFt3: (json['reminder_ft3'] ?? json['ReminderFT3'])?.toString() ?? '',
-      statusFt4: (json['status_ft4'] ?? json['StatusFT4'])?.toString() ?? 'Tidak Diketahui',
-      reminderFt4: (json['reminder_ft4'] ?? json['ReminderFT4'])?.toString() ?? '',
-      statusTrab: (json['status_trab'] ?? json['StatusTRAb'] ?? json['StatusTrab'] ?? json['statusTrab'])?.toString() ?? 'Tidak Diketahui',
-      reminderTrab: (json['reminder_trab'] ?? json['ReminderTRAb'] ?? json['ReminderTrab'] ?? json['reminderTrab'])?.toString() ?? '',
-      interpretasi: (json['interpretasi'] ?? json['Interpretasi'])?.toString() ?? 'Tidak Diketahui',
-      tglHasilAi: _parseDateTime(json['tgl_hasil_ai'] ?? json['TglHasilAi']),
+      idHasilAiLab: _toInt(_find(json, ['id_hasil_ai_lab', 'IdHasilAiLab'])),
+      idLaporanLab: _toInt(_find(json, ['id_laporan_lab', 'IdLaporanLab'])),
+
+      statusTsh: _find(json, ['status_tsh', 'StatusTSH', 'StatusTsh'])?.toString() ?? 'Tidak Diketahui',
+      reminderTsh: _find(json, ['reminder_tsh', 'ReminderTSH', 'ReminderTsh'])?.toString() ?? '',
+
+      statusFt3: _find(json, ['status_ft3', 'StatusFT3', 'StatusFt3'])?.toString() ?? 'Tidak Diketahui',
+      reminderFt3: _find(json, ['reminder_ft3', 'ReminderFT3', 'ReminderFt3'])?.toString() ?? '',
+
+      statusFt4: _find(json, ['status_ft4', 'StatusFT4', 'StatusFt4'])?.toString() ?? 'Tidak Diketahui',
+      reminderFt4: _find(json, ['reminder_ft4', 'ReminderFT4', 'ReminderFt4'])?.toString() ?? '',
+
+      statusTrab: _find(json, ['status_trab', 'StatusTRAb', 'StatusTrab'])?.toString() ?? 'Tidak Diketahui',
+      reminderTrab: _find(json, ['reminder_trab', 'ReminderTRAb', 'ReminderTrab'])?.toString() ?? '',
+
+      interpretasi: _find(json, ['interpretasi', 'Interpretasi'])?.toString() ?? 'Tidak Diketahui',
+      tglHasilAi: _parseDateTime(_find(json, ['tgl_hasil_ai', 'TglHasilAi'])),
     );
   }
 
@@ -75,39 +101,31 @@ class HasilAIGabunganModel {
     Map<String, dynamic>? ft4 = validPerParam['FT4'];
     Map<String, dynamic>? trab = validPerParam['TRAB'];
 
-    String getStatus(Map<String, dynamic>? src, String key) =>
-        (src?[key])?.toString() ?? 'Tidak Diketahui';
-    String getReminder(Map<String, dynamic>? src, String key) =>
-        (src?[key])?.toString() ?? '';
-
     return HasilAIGabunganModel(
-      idHasilAiLab: _toInt(tsh?['id_hasil_ai_lab'] ?? ft3?['id_hasil_ai_lab'] ?? ft4?['id_hasil_ai_lab'] ?? trab?['id_hasil_ai_lab']),
-      idLaporanLab: _toInt(tsh?['id_laporan_lab'] ?? ft3?['id_laporan_lab'] ?? ft4?['id_laporan_lab'] ?? trab?['id_laporan_lab']),
-      statusTsh: getStatus(tsh, 'status_tsh'),
-      reminderTsh: getReminder(tsh, 'reminder_tsh'),
-      statusFt3: getStatus(ft3, 'status_ft3'),
-      reminderFt3: getReminder(ft3, 'reminder_ft3'),
-      statusFt4: getStatus(ft4, 'status_ft4'),
-      reminderFt4: getReminder(ft4, 'reminder_ft4'),
-      statusTrab: getStatus(trab, 'status_trab'),
-      reminderTrab: getReminder(trab, 'reminder_trab'),
-      interpretasi: tsh?['interpretasi']?.toString() ?? 'Tidak Diketahui',
-      tglHasilAi: _parseDateTime(tsh?['tgl_hasil_ai']),
+      idHasilAiLab: _toInt(_find(tsh, ['id_hasil_ai_lab']) ?? _find(ft3, ['id_hasil_ai_lab'])),
+      idLaporanLab: _toInt(_find(tsh, ['id_laporan_lab']) ?? _find(ft3, ['id_laporan_lab'])),
+
+      statusTsh: _find(tsh, ['status_tsh', 'StatusTSH', 'StatusTsh'])?.toString() ?? 'Tidak Diketahui',
+      reminderTsh: _find(tsh, ['reminder_tsh', 'ReminderTSH', 'ReminderTsh'])?.toString() ?? '',
+
+      statusFt3: _find(ft3, ['status_ft3', 'StatusFT3', 'StatusFt3'])?.toString() ?? 'Tidak Diketahui',
+      reminderFt3: _find(ft3, ['reminder_ft3', 'ReminderFT3', 'ReminderFt3'])?.toString() ?? '',
+
+      statusFt4: _find(ft4, ['status_ft4', 'StatusFT4', 'StatusFt4'])?.toString() ?? 'Tidak Diketahui',
+      reminderFt4: _find(ft4, ['reminder_ft4', 'ReminderFT4', 'ReminderFt4'])?.toString() ?? '',
+
+      statusTrab: _find(trab, ['status_trab', 'StatusTRAb', 'StatusTrab'])?.toString() ?? 'Tidak Diketahui',
+      reminderTrab: _find(trab, ['reminder_trab', 'ReminderTRAb', 'ReminderTrab'])?.toString() ?? '',
+
+      interpretasi: _find(tsh, ['interpretasi', 'Interpretasi'])?.toString() ?? 'Tidak Diketahui',
+      tglHasilAi: _parseDateTime(_find(tsh, ['tgl_hasil_ai', 'TglHasilAi'])),
     );
   }
 
-  // ✅ BARU: Constructor hanya dari data Tren (Lab default)
   factory HasilAIGabunganModel.fromTrenOnly(Map<String, dynamic> trenJson) {
-    String? getVal(List<String> keys) {
-      for (var key in keys) {
-        if (trenJson.containsKey(key)) return trenJson[key]?.toString();
-      }
-      return null;
-    }
-
     return HasilAIGabunganModel(
       idHasilAiLab: null,
-      idLaporanLab: _toInt(trenJson['id_laporan_lab'] ?? trenJson['IdLaporanLab']),
+      idLaporanLab: _toInt(_find(trenJson, ['id_laporan_lab', 'IdLaporanLab'])),
       statusTsh: 'Tidak Diketahui',
       reminderTsh: '-',
       statusFt3: 'Tidak Diketahui',
@@ -119,26 +137,19 @@ class HasilAIGabunganModel {
       interpretasi: 'Tidak Diketahui',
       tglHasilAi: null,
 
-      idHasilAiTren: _toInt(trenJson['id_hasil_ai_tren'] ?? trenJson['IdHasilAiTren']),
-      trenTsh: getVal(['tren_tsh', 'TrenTSH', 'trenTsh']),
-      reminderTrenTsh: getVal(['reminder_tren_tsh', 'ReminderTrenTSH', 'reminderTrenTsh']),
-      trenFt3: getVal(['tren_ft3', 'TrenFT3', 'trenFt3']),
-      reminderTrenFt3: getVal(['reminder_tren_ft3', 'ReminderTrenFT3', 'reminderTrenFt3']),
-      trenFt4: getVal(['tren_ft4', 'TrenFT4', 'trenFt4']),
-      reminderTrenFt4: getVal(['reminder_tren_ft4', 'ReminderTrenFT4', 'reminderTrenFt4']),
-      trenTrab: getVal(['tren_trab', 'TrenTRAb', 'TrenTrab', 'trenTrab']),
-      reminderTrenTrab: getVal(['reminder_tren_trab', 'ReminderTrenTRAb', 'ReminderTrenTrab', 'reminderTrenTrab']),
+      idHasilAiTren: _toInt(_find(trenJson, ['id_hasil_ai_tren', 'IdHasilAiTren'])),
+      trenTsh: _find(trenJson, ['tren_tsh', 'TrenTSH', 'trenTsh'])?.toString(),
+      reminderTrenTsh: _find(trenJson, ['reminder_tren_tsh', 'ReminderTrenTSH', 'reminderTrenTsh'])?.toString(),
+      trenFt3: _find(trenJson, ['tren_ft3', 'TrenFT3', 'trenFt3'])?.toString(),
+      reminderTrenFt3: _find(trenJson, ['reminder_tren_ft3', 'ReminderTrenFT3', 'reminderTrenFt3'])?.toString(),
+      trenFt4: _find(trenJson, ['tren_ft4', 'TrenFT4', 'trenFt4'])?.toString(),
+      reminderTrenFt4: _find(trenJson, ['reminder_tren_ft4', 'ReminderTrenFT4', 'reminderTrenFt4'])?.toString(),
+      trenTrab: _find(trenJson, ['tren_trab', 'TrenTRAb', 'TrenTrab', 'trenTrab'])?.toString(),
+      reminderTrenTrab: _find(trenJson, ['reminder_tren_trab', 'ReminderTrenTRAb', 'ReminderTrenTrab', 'reminderTrenTrab'])?.toString(),
     );
   }
 
   HasilAIGabunganModel withTren(Map<String, dynamic> trenJson) {
-    String? getVal(List<String> keys) {
-      for (var key in keys) {
-        if (trenJson.containsKey(key)) return trenJson[key]?.toString();
-      }
-      return null;
-    }
-
     return HasilAIGabunganModel(
       idHasilAiLab: idHasilAiLab,
       idLaporanLab: idLaporanLab,
@@ -153,15 +164,15 @@ class HasilAIGabunganModel {
       interpretasi: interpretasi,
       tglHasilAi: tglHasilAi,
 
-      idHasilAiTren: _toInt(trenJson['id_hasil_ai_tren'] ?? trenJson['IdHasilAiTren']),
-      trenTsh: getVal(['tren_tsh', 'TrenTSH', 'trenTsh']),
-      reminderTrenTsh: getVal(['reminder_tren_tsh', 'ReminderTrenTSH', 'reminderTrenTsh']),
-      trenFt3: getVal(['tren_ft3', 'TrenFT3', 'trenFt3']),
-      reminderTrenFt3: getVal(['reminder_tren_ft3', 'ReminderTrenFT3', 'reminderTrenFt3']),
-      trenFt4: getVal(['tren_ft4', 'TrenFT4', 'trenFt4']),
-      reminderTrenFt4: getVal(['reminder_tren_ft4', 'ReminderTrenFT4', 'reminderTrenFt4']),
-      trenTrab: getVal(['tren_trab', 'TrenTRAb', 'TrenTrab', 'trenTrab']),
-      reminderTrenTrab: getVal(['reminder_tren_trab', 'ReminderTrenTRAb', 'ReminderTrenTrab', 'reminderTrenTrab']),
+      idHasilAiTren: _toInt(_find(trenJson, ['id_hasil_ai_tren', 'IdHasilAiTren'])),
+      trenTsh: _find(trenJson, ['tren_tsh', 'TrenTSH', 'trenTsh'])?.toString(),
+      reminderTrenTsh: _find(trenJson, ['reminder_tren_tsh', 'ReminderTrenTSH', 'reminderTrenTsh'])?.toString(),
+      trenFt3: _find(trenJson, ['tren_ft3', 'TrenFT3', 'trenFt3'])?.toString(),
+      reminderTrenFt3: _find(trenJson, ['reminder_tren_ft3', 'ReminderTrenFT3', 'reminderTrenFt3'])?.toString(),
+      trenFt4: _find(trenJson, ['tren_ft4', 'TrenFT4', 'trenFt4'])?.toString(),
+      reminderTrenFt4: _find(trenJson, ['reminder_tren_ft4', 'ReminderTrenFT4', 'reminderTrenFt4'])?.toString(),
+      trenTrab: _find(trenJson, ['tren_trab', 'TrenTRAb', 'TrenTrab', 'trenTrab'])?.toString(),
+      reminderTrenTrab: _find(trenJson, ['reminder_tren_trab', 'ReminderTrenTRAb', 'ReminderTrenTrab', 'reminderTrenTrab'])?.toString(),
     );
   }
 

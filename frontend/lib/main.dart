@@ -56,33 +56,61 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class _AppRouter extends ConsumerWidget {
+// 🔧 PERBAIKAN 1: Diubah jadi ConsumerStatefulWidget agar Future tidak terpanggil berulang kali
+class _AppRouter extends ConsumerStatefulWidget {
   const _AppRouter();
+
+  @override
+  ConsumerState<_AppRouter> createState() => _AppRouterState();
+}
+
+class _AppRouterState extends ConsumerState<_AppRouter> {
+  late Future<_AppState> _appStateFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    // Panggil fungsi cek state SEKALI SAJA saat aplikasi baru dibuka
+    _appStateFuture = _checkAppState();
+  }
 
   Future<_AppState> _checkAppState() async {
     final prefs = await SharedPreferences.getInstance();
     final hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
 
+    // 🔧 PERBAIKAN 2: Kita cek apakah ada Token tersimpan secara lokal.
+    // Sesuaikan kata 'token' dengan key yang Mas gunakan saat menyimpan JWT waktu Login
+    final String? token = prefs.getString('token');
+    final bool hasTokenLokal = token != null && token.isNotEmpty;
+
     UserModel? user;
-    try {
-      user = await ApiService().restoreSession();
-    } catch (e) {
-      debugPrint('🔥 Gagal restoreSession: $e');
-      user = null;
+    if (hasTokenLokal) {
+      try {
+        user = await ApiService().restoreSession();
+      } catch (e) {
+        // Jika gagal karena internet putus saat HP baru bangun dari layar kunci,
+        // KITA BIARKAN SAJA! Jangan buat aplikasi mengira user belum login.
+        debugPrint('🔥 Gagal restoreSession (Mungkin internet putus saat Wake-up): $e');
+        user = null;
+      }
     }
 
-    return _AppState(hasSeenOnboarding: hasSeenOnboarding, user: user);
+    return _AppState(
+        hasSeenOnboarding: hasSeenOnboarding,
+        hasTokenLokal: hasTokenLokal, // <- Info penting yang akan kita pakai
+        user: user
+    );
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return FutureBuilder<_AppState>(
-      future: _checkAppState(),
+      future: _appStateFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Scaffold(
             backgroundColor: Colors.white,
-            body: Center(child: CircularProgressIndicator()),
+            body: Center(child: CircularProgressIndicator(color: Color(0xFF006699))),
           );
         }
 
@@ -95,12 +123,18 @@ class _AppRouter extends ConsumerWidget {
 
         if (!appState.hasSeenOnboarding) {
           return const OnboardingScreen();
-        } else if (appState.user != null) {
-          Future.microtask(() {
-            ref.read(userProvider.notifier).setUser(appState.user!);
-          });
+        }
+        // 🔧 PERBAIKAN 3: Jika token LOKAL ada, PAKSA masuk ke HomeScreen!
+        // Jangan pedulikan apakah API restoreSession tadi sukses atau kena TimeOut.
+        else if (appState.hasTokenLokal) {
+          if (appState.user != null) {
+            Future.microtask(() {
+              ref.read(userProvider.notifier).setUser(appState.user!);
+            });
+          }
           return const HomeScreen();
-        } else {
+        }
+        else {
           return const LoginScreen();
         }
       },
@@ -110,6 +144,12 @@ class _AppRouter extends ConsumerWidget {
 
 class _AppState {
   final bool hasSeenOnboarding;
+  final bool hasTokenLokal; // Parameter tambahan penolong
   final UserModel? user;
-  const _AppState({required this.hasSeenOnboarding, required this.user});
+
+  const _AppState({
+    required this.hasSeenOnboarding,
+    required this.hasTokenLokal,
+    required this.user
+  });
 }

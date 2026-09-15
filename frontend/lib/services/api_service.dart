@@ -40,6 +40,7 @@ class ApiService {
   final Dio _dio = Dio(
     BaseOptions(
       baseUrl: 'https://gdself.generasisehat.com/api',
+      // baseURL:'https://gdself.generasisehat.com/api'.
       // baseUrl: 'https://engaged-kick-utilize.ngrok-free.dev/api',
       connectTimeout: const Duration(seconds: 40),
       receiveTimeout: const Duration(seconds: 40),
@@ -52,18 +53,13 @@ class ApiService {
 
   Dio get sendRequest => _dio;
 
-  // =======================================================================
-  // ✅ TAMBAHAN BARU: Helper untuk mempermudah UI mengambil URL & Token
-  // =======================================================================
   String get baseUrl => _dio.options.baseUrl;
   Map<String, String> get authHeaders => {'Authorization': 'Bearer $token'};
-  // =======================================================================
 
   String _addPrefix(String endpoint) {
     return endpoint.startsWith('/') ? endpoint : '/$endpoint';
   }
 
-  // ── Token helpers ─────────────────────────────────────────────────────────
   Future<void> _loadToken() async {
     try {
       _token = await _secureStorage.read(key: _tokenKey);

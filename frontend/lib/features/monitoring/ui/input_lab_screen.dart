@@ -374,22 +374,14 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
   }
 
   void _simpanDataLab() async {
+    // ✅ DIUBAH: Peringatan jika belum lengkap diubah jadi POP-UP Dialog
     if (!_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Mohon lengkapi semua field yang wajib diisi (*)."),
-        ),
-      );
-      return;
-    }
-
-    if (_tshValCtrl.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Gagal disimpan! Parameter TSHs wajib diisi."),
-          backgroundColor: AppColors.errorRed,
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppStatusDialog.show(
+        context,
+        isSuccess: false,
+        title: "Data Belum Lengkap",
+        message: "Mohon lengkapi semua kolom yang wajib diisi.",
+        onOk: () => Navigator.pop(context),
       );
       return;
     }
@@ -402,17 +394,16 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
       final maxVal = _parseSafeDouble(maxCtrl.text, defMax);
 
       if (minVal > 0 && maxVal > 0 && minVal >= maxVal) {
-
         if (namaHormon == "TRAb" && minVal == maxVal) {
           return true; // Loloskan!
         }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Gagal! Rentang rujukan $namaHormon tidak valid (Batas Bawah tidak boleh ≥ Batas Atas)."),
-            backgroundColor: AppColors.errorRed,
-            behavior: SnackBarBehavior.floating,
-          ),
+        // Validasi batas juga menggunakan POP-UP
+        AppStatusDialog.show(
+          context,
+          isSuccess: false,
+          title: "Rentang Tidak Valid",
+          message: "Rentang rujukan $namaHormon tidak valid (Batas Bawah tidak boleh lebih besar atau sama dengan Batas Atas).",
+          onOk: () => Navigator.pop(context),
         );
         return false;
       }
@@ -605,7 +596,7 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
               ),
               const SizedBox(height: 16),
 
-              // ✅ 3. TSHs di urutan ketiga (dengan isRequired: true)
+              // ✅ 3. TSHs di urutan ketiga (dengan isRequired: true & validator)
               _buildHormoneSection(
                 title: "TSHs",
                 sub: "Thyroid Stimulating Hormone-sensitive",
@@ -620,6 +611,13 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
                 }),
                 isRequired: true,
                 preview: _previewTSH,
+                // ✅ DITAMBAHKAN VALIDATOR KHUSUS TSHs
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Nilai hasil pemeriksaan TSHs wajib diisi';
+                  }
+                  return null;
+                },
               ),
               const SizedBox(height: 16),
 
@@ -781,6 +779,7 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
     required ValueChanged<String?> onUnitChanged,
     bool isRequired = false,
     String? preview,
+    String? Function(String?)? validator, // ✅ DITAMBAHKAN PARAMETER VALIDATOR
   }) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -828,6 +827,7 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
           const SizedBox(height: 8),
           TextFormField(
             controller: valCtrl,
+            validator: validator, // ✅ VALIDATOR DITERAPKAN DI SINI
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [
               FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
@@ -842,9 +842,19 @@ class _InputLabScreenState extends ConsumerState<InputLabScreen> {
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               filled: true,
               fillColor: const Color(0xFFEEF3F6),
-              border: OutlineInputBorder(
+              // ✅ BORDER DIUBAH AGAR MENDUKUNG TAMPILAN ERROR MERAH
+              enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide.none),
+              focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: AppColors.primaryBlue)),
+              errorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: AppColors.errorRed)),
+              focusedErrorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: AppColors.errorRed)),
               suffixIcon: Padding(
                 padding: const EdgeInsets.only(right: 8.0),
                 child: DropdownButtonHideUnderline(
