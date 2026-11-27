@@ -234,14 +234,15 @@ func (ctrl *obatController) Update(c echo.Context) error {
 			"detail": err.Error(),
 		})
 	}
-	if input.TglMulai == nil || input.TglSelesai == nil || strings.TrimSpace(*input.TglSelesai) == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "tgl_mulai dan tgl_selesai harus diisi",
-		})
-	}
-
-	if _, err := time.Parse("2006-01-02", strings.TrimSpace(*input.TglSelesai)); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "tgl_selesai harus berformat YYYY-MM-DD"})
+	if input.TglSelesai != nil {
+		if strings.TrimSpace(*input.TglSelesai) == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"error": "tgl_selesai tidak boleh kosong",
+			})
+		}
+		if _, err := time.Parse("2006-01-02", strings.TrimSpace(*input.TglSelesai)); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "tgl_selesai harus berformat YYYY-MM-DD"})
+		}
 	}
 
 	obat, err := ctrl.usecase.UpdateObat(uint(id), input)
