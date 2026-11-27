@@ -84,13 +84,11 @@ func (u *obatUsecase) UpdateObat(id uint, input models.UpdateObatRequest) (model
 		return models.Obat{}, fmt.Errorf("id tidak valid")
 	}
 
-	// 1. Ambil data lama dari database untuk referensi data yang tidak diubah
 	obatLama, err := u.repo.GetByID(id)
 	if err != nil || obatLama.IDObat == 0 {
 		return models.Obat{}, fmt.Errorf("obat tidak ditemukan")
 	}
 
-	// 2. Petakan field baru dari input DTO. Jika kosong, pertahankan nilai lama.
 	namaObat := obatLama.NamaObat
 	if input.NamaObat != "" {
 		namaObat = input.NamaObat
@@ -108,62 +106,34 @@ func (u *obatUsecase) UpdateObat(id uint, input models.UpdateObatRequest) (model
 		tipeObat = input.TipeObat
 	}
 
-	if input.TglMulai == nil || input.TglSelesai == nil {
-		return models.Obat{}, fmt.Errorf("tgl_mulai dan tgl_selesai harus diisi")
+	tglMulai := obatLama.TglMulai
+	if input.TglMulai != nil {
+		tglMulai = input.TglMulai
 	}
 
-	// Parsing tanggal selesai baru dari form Flutter
-	tglSelesaiBaru, err := time.Parse("2006-01-02", strings.TrimSpace(*input.TglSelesai))
-	if err != nil {
-		return models.Obat{}, fmt.Errorf("tgl_selesai harus berformat YYYY-MM-DD")
+	tglSelesai := obatLama.TglSelesai
+	if input.TglSelesai != nil {
+		tglSelesaiBaru, err := time.Parse("2006-01-02", strings.TrimSpace(*input.TglSelesai))
+		if err != nil {
+			return models.Obat{}, fmt.Errorf("tgl_selesai harus berformat YYYY-MM-DD")
+		}
+		tglSelesai = &tglSelesaiBaru
 	}
 
-	// Definisikan waktu hari ini untuk memotong masa aktif resep lama
-	now := time.Now()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-
-	// Validasi silang tanggal selesai baru terhadap tanggal mulai baru yang dikirim Flutter
-	if err := validateTglSelesaiAgainstTglMulai(input.TglMulai, &tglSelesaiBaru); err != nil {
+	if err := validateTglSelesaiAgainstTglMulai(tglMulai, tglSelesai); err != nil {
 		return models.Obat{}, err
 	}
 
-	// ==================== MAPPING JADWAL OBAT BARU ====================
-	var jadwalBaru []models.JadwalObat
-
-	if len(input.JadwalObat) > 0 {
-		// A. Jika Flutter mengirim struktur jadwal yang diubah oleh pengguna
-		for _, j := range input.JadwalObat {
-			jadwalBaru = append(jadwalBaru, models.JadwalObat{
-				Hari:           j.Hari,
-				WaktuMinumObat: j.WaktuMinumObat,
-				// IDObat & IDJadwalObat dikosongkan agar GORM men-generate ID baru dalam record resep baru
-			})
-		}
-	} else {
-		// B. Jika Flutter tidak merubah jadwal, wariskan jadwal lama ke resep baru
-		for _, j := range obatLama.JadwalObat {
-			jadwalBaru = append(jadwalBaru, models.JadwalObat{
-				Hari:           j.Hari,
-				WaktuMinumObat: j.WaktuMinumObat,
-			})
-		}
-	}
-	// ==================================================================
-
-	// 3. Susun struktur objek Obat yang baru
-	obatBaru := models.Obat{
-		IDUser:     obatLama.IDUser,
+	obatUpdate := models.Obat{
 		NamaObat:   namaObat,
 		Dosis:      dosis,
 		Frekuensi:  frekuensi,
 		TipeObat:   tipeObat,
-		TglMulai:   input.TglMulai,
-		TglSelesai: &tglSelesaiBaru,
-		JadwalObat: jadwalBaru, // Mengikat data anak tabel jadwal_obat yang baru
+		TglMulai:   tglMulai,
+		TglSelesai: tglSelesai,
 	}
 
-	// 4. Perintahkan repository mengeksekusi pembaruan via jalur Transaksi
-	return u.repo.UpdateResepBaru(id, today, obatBaru)
+	return u.repo.Update(id, obatUpdate)
 }
 
 func (u *obatUsecase) GetKepatuhanObat(id uint) (ObatKepatuhanResponse, error) {
